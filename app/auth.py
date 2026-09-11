@@ -1,11 +1,23 @@
 """
-Accounts and sessions, one set per portal.
+Accounts, sessions and roles, one set per portal.
 
 Ghar (households) and Kaam (workers) sign up freely; Sabha (the council)
 needs the cooperative's council code. A Kaam sign-up also creates the
 worker record the allocation engine uses. Sessions are random tokens kept
 in the sessions table (hashed) and handed to the browser as an httpOnly
-cookie — no external auth provider, by design.
+cookie — no external auth provider, by design. API clients (Swagger, curl,
+tests) may send the same token as `Authorization: Bearer <token>`; sign-up
+and sign-in responses include it as `session_token` for that purpose.
+
+Roles follow the portal an account belongs to:
+
+    ghar  -> customer    books, reads and rates their own bookings
+    kaam  -> worker      manages their own availability, completes their own jobs
+    sabha -> council     runs the cooperative: assigns work, sees everything
+
+The FastAPI dependencies at the bottom (`require_role`, `require_customer`,
+...) are what the endpoints use to identify the caller; the frontend's
+route choice is never trusted on its own.
 
 Config (environment):
     SAHAKARSETU_COUNCIL_CODE   code that unlocks Sabha sign-up (default SABHA-2026)
@@ -23,7 +35,8 @@ import secrets
 import sqlite3
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from fastapi import Cookie, Depends, Header, HTTPException
+from pydantic import BaseModel, Field, computed_field, model_validator
 
 from app import repository
 from app.database import connection
@@ -31,6 +44,11 @@ from app.schemas import WorkerCreate
 
 Portal = Literal["ghar", "kaam", "sabha"]
 PORTALS: tuple[Portal, ...] = ("ghar", "kaam", "sabha")
+
+Role = Literal["customer", "worker", "council"]
+ROLES: tuple[Role, ...] = ("customer", "worker", "council")
+ROLE_OF_PORTAL: dict[str, Role] = {"ghar": "customer", "kaam": "worker", "sabha": "council"}
+PORTAL_OF_ROLE: dict[str, Portal] = {role: portal for portal, role in ROLE_OF_PORTAL.items()}
 
 SESSION_COOKIE = "sahakarsetu_session"
 PBKDF2_ITERATIONS = 200_000
@@ -60,6 +78,16 @@ class User(BaseModel):
     worker_id: int | None = None
     languages: list[str] = Field(default_factory=list)
     created_at: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def access_role(self) -> Role:
+        """customer / worker / council — what the account may do (`role` is a council member's title)."""
+        return ROLE_OF_PORTAL[self.portal]
+
+    @property
+    def is_council(self) -> bool:
+        return self.portal == "sabha"
 
 
 class SignupRequest(BaseModel):
@@ -220,3 +248,50 @@ def end_session(token: str | None) -> None:
         return
     with connection() as conn:
         conn.execute("DELETE FROM sessions WHERE token_hash = ?", (_hash_token(token),))
+
+
+# ── who is calling? (FastAPI dependencies) ───────────────────────────────
+
+def session_token_from(session_cookie: str | None, authorization: str | None) -> str | None:
+    """The session token from the cookie, or from `Authorization: Bearer ...` for API clients."""
+    if authorization:
+        scheme, _, token = authorization.partition(" ")
+        if scheme.lower() == "bearer" and token.strip():
+            return token.strip()
+    return session_cookie
+
+
+def current_user(
+    session: str | None = Cookie(default=None, alias=SESSION_COOKIE),
+    authorization: str | None = Header(default=None),
+) -> User | None:
+    """The signed-in user, or None. Never raises: endpoints decide what anonymity means."""
+    return user_for_token(session_token_from(session, authorization))
+
+
+def require_user(user: User | None = Depends(current_user)) -> User:
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in first")
+    return user
+
+
+def require_role(*roles: Role):
+    """Dependency factory: `Depends(require_role("council"))` → the signed-in user if their role is allowed, else 401/403."""
+    allowed = set(roles)
+
+    def dependency(user: User = Depends(require_user)) -> User:
+        if user.access_role not in allowed:
+            wanted = " or ".join(sorted(allowed))
+            raise HTTPException(
+                status_code=403,
+                detail=f"This action is for {wanted} accounts; you are signed in as {user.access_role}",
+            )
+        return user
+
+    return dependency
+
+
+# Council members administer the cooperative, so they may do what customers and workers can.
+require_customer = require_role("customer", "council")
+require_worker = require_role("worker", "council")
+require_council = require_role("council")
