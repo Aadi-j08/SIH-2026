@@ -67,13 +67,7 @@ export default function Landing() {
               सहकार सेतु
             </span>
           </div>
-          <nav className="nav-links" aria-label="Portals">
-            {PORTAL_ORDER.map((id) => (
-              <Link key={id} to={PORTALS[id].landing} className="hide-narrow">
-                <span className="dot-mark" style={{ background: PORTALS[id].accent }} />
-                {PORTALS[id].name} · {PORTALS[id].tag}
-              </Link>
-            ))}
+          <nav className="nav-links" aria-label="Site">
             <a href="#how" className="hide-narrow">
               How it works
             </a>
