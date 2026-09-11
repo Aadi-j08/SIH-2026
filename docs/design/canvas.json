@@ -1,0 +1,22 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Screens" },
+    { "id": "page-2", "name": "Alternatives" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html",       "title": "Customer · Book a service",   "x": 0,   "y": 0, "w": 390,  "h": 844, "page": "page-1" },
+    { "file": "Worker.dc.html",     "title": "Worker · Voice availability", "x": 480, "y": 0, "w": 390,  "h": 844, "page": "page-1" },
+    { "file": "Admin.dc.html",      "title": "Admin · Dashboard",           "x": 960, "y": 0, "w": 1440, "h": 900, "page": "page-1" },
+    { "file": "DirectionB.dc.html", "title": "Direction B · Utility form",  "x": 0,   "y": 0, "w": 390,  "h": 844, "page": "page-2" },
+    { "file": "DirectionC.dc.html", "title": "Direction C · Bold poster",   "x": 480, "y": 0, "w": 390,  "h": 844, "page": "page-2" }
+  ],
+  "annotations": [
+    { "id": "direction-a", "x": 960, "y": 0, "w": 420, "page": "page-2",
+      "text": "Direction A · Warm civic — chosen; built out on the Screens page.\n\nPaper background, dark ink, terracotta for actions, green for “free / positive”. Bricolage Grotesque headings, Manrope body, Noto Sans Devanagari for Hindi. 44–56px tap targets for low-literacy, one-handed use.\n\nTradeoff: the most conventional of the three — friendly and trustworthy, less distinctive." },
+    { "id": "direction-b", "x": 960, "y": 250, "w": 420, "page": "page-2",
+      "text": "Direction B · Utility form (sketch, left)\n\nPublic-service clarity: numbered steps, thick borders, monochrome with one signal blue, radio lists instead of tiles. Reads instantly, translates trivially.\n\nTradeoff: feels bureaucratic; the cooperative’s warmth and the “why this worker” story get no room." },
+    { "id": "direction-c", "x": 960, "y": 480, "w": 420, "page": "page-2",
+      "text": "Direction C · Bold poster (sketch, right)\n\nOne huge word per service, full-bleed bands, tap to choose — no form on the first screen. Very legible, very memorable, great for a demo.\n\nTradeoff: booking becomes 2–3 screens, and the poster style doesn’t stretch to a dense admin dashboard." }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}
