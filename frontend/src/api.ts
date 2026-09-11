@@ -155,6 +155,35 @@ export type Forecast = {
   points: ForecastPoint[];
 };
 
+export type PublicStats = {
+  workers: number;
+  bookings_completed: number;
+  welfare_fund_rupees: number;
+  average_rating: number | null;
+};
+
+export type StaffingDay = {
+  date: string;
+  weekday: string;
+  expected_bookings: number;
+  workers_needed: number;
+  available_workers: number;
+  shortage: number;
+};
+
+export type StaffingForecast = {
+  trade: string;
+  area: string | null;
+  horizon_days: number;
+  peak_day: string | null;
+  expected_bookings: number;
+  workers_needed: number;
+  available_workers: number;
+  shortage: number;
+  recommendation: string;
+  days: StaffingDay[];
+};
+
 export type PortalId = "ghar" | "kaam" | "sabha";
 
 export type User = {
@@ -288,6 +317,9 @@ export const api = {
   admin: {
     dashboard: () => get<Dashboard>("/admin/dashboard"),
   },
+  stats: () => get<PublicStats>("/stats"),
+  staffing: (trade: string, days = 7, area?: string) =>
+    get<StaffingForecast>(`/forecast/staffing?trade=${encodeURIComponent(trade)}&days=${days}${area ? `&area=${encodeURIComponent(area)}` : ""}`),
   forecast: (trade?: string, days = 7) =>
     get<Forecast>(`/forecast?days=${days}${trade ? `&trade=${encodeURIComponent(trade)}` : ""}`),
 };

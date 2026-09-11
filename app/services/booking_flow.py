@@ -26,7 +26,8 @@ from app.services.ledger import SPLIT_PERCENT, paise_to_rupees, rupees_to_paise,
 
 PENDING, ASSIGNED, COMPLETED = "pending", "assigned", "completed"
 
-# Social Security (Central) Rules, 2026: benefits after 90 engagement days with one aggregator.
+# Prototype cooperative eligibility threshold: 90 engagement days.
+# This is configurable and is not a legal claim.
 ELIGIBILITY_DAYS = 90
 # Ledger timestamps are UTC (CURRENT_TIMESTAMP); engagement days are counted in IST.
 _IST = "'+330 minutes'"

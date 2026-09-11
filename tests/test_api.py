@@ -3,7 +3,15 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+import pytest
+
 SITE = (23.1800, 77.4200)
+
+
+@pytest.fixture
+def client(council):
+    """This suite calls council-only endpoints (workers, forecast, recommendations); run it signed in as council."""
+    return council
 
 
 def worker_payload(name="Asha", trade="plumbing", lat=SITE[0], lon=SITE[1], **extra) -> dict:
