@@ -48,7 +48,9 @@ app = FastAPI(
 )
 app.include_router(booking_flow_router)
 
-FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+FRONTEND_DIST = FRONTEND_DIR / "dist"
+FRONTEND_PUBLIC = FRONTEND_DIR / "public"   # static files (photos) picked up without a rebuild
 
 
 @app.get("/", tags=["health"])
@@ -64,9 +66,12 @@ def web_app(path: str = "") -> FileResponse:
     """Serve the built frontend; unknown paths fall back to index.html so the SPA router can handle them."""
     if not FRONTEND_DIST.is_dir():
         raise HTTPException(status_code=404, detail="Frontend not built. Run `npm install && npm run build` in frontend/.")
-    target = (FRONTEND_DIST / path).resolve() if path else FRONTEND_DIST / "index.html"
-    if path and target.is_file() and FRONTEND_DIST in target.parents:
-        return FileResponse(target)
+    for base in (FRONTEND_DIST, FRONTEND_PUBLIC):
+        target = (base / path).resolve() if path else base / "index.html"
+        if path and target.is_file() and base in target.parents:
+            return FileResponse(target)
+    if "." in path.rsplit("/", 1)[-1]:      # looks like a file (image, script): a real 404, not the SPA shell
+        raise HTTPException(status_code=404, detail="Not found")
     return FileResponse(FRONTEND_DIST / "index.html")
 
 
