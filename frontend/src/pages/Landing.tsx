@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 
 import { api, formatRupees, type Dashboard } from "../api";
@@ -7,7 +7,34 @@ import { BrandMark, PORTALS, type PortalId } from "../components/PortalShell";
 
 const ORDER: PortalId[] = ["ghar", "kaam", "sabha"];
 
+/** Photos live in frontend/public/img (see the README there). A slot hides itself until its file exists. */
+const img = (name: string) => `${import.meta.env.BASE_URL}img/${name}`;
+
+/** Door photos, by portal (filenames follow docs/design/image-prompts.md). */
+const DOOR_PHOTO: Record<PortalId, string> = { ghar: "customer.jpg", kaam: "worker.jpg", sabha: "cooperative.jpg" };
+
+function Photo({ name, alt, className = "photo" }: { name: string; alt: string; className?: string }) {
+  const [missing, setMissing] = useState(false);
+  if (missing) return null;
+  return <img className={className} src={img(name)} alt={alt} loading="lazy" onError={() => setMissing(true)} />;
+}
+
+/** True once the browser has confirmed the file exists; used for background photos. */
+function useImageExists(name: string): boolean {
+  const [exists, setExists] = useState(false);
+  useEffect(() => {
+    const probe = new Image();
+    probe.onload = () => setExists(true);
+    probe.src = img(name);
+  }, [name]);
+  return exists;
+}
+
 export default function Landing() {
+  const bandPhoto = useImageExists("work-itself.jpg");
+  const bandStyle: CSSProperties | undefined = bandPhoto
+    ? { backgroundImage: `linear-gradient(rgba(38, 29, 23, 0.86), rgba(38, 29, 23, 0.86)), url(${img("work-itself.jpg")})` }
+    : undefined;
   return (
     <div className="landing">
       <div className="wrap">
@@ -44,7 +71,7 @@ export default function Landing() {
               <span className="small muted">Prototype · Smart India Hackathon 2026</span>
             </div>
           </div>
-          <HeroExplanation />
+          <HeroVisual />
         </section>
 
         <section className="doors" aria-label="Choose a portal">
@@ -54,7 +81,7 @@ export default function Landing() {
         </section>
       </div>
 
-      <section className="band">
+      <section className={`band${bandPhoto ? " has-photo" : ""}`} style={bandStyle}>
         <div className="wrap">
           <div className="stack" style={{ gap: 10 }}>
             <div className="label" style={{ color: "var(--ink-on-dark)", letterSpacing: "0.08em" }}>Why a cooperative</div>
@@ -85,6 +112,7 @@ export default function Landing() {
           </div>
           <div className="cols-4">
             <div className="feature">
+              <Photo name="neighbourhood.jpg" alt="" />
               <span className="icon" style={{ background: "var(--terracotta-t)", color: "var(--terracotta-d)" }}>
                 <ListOrdered size={22} />
               </span>
@@ -92,6 +120,7 @@ export default function Landing() {
               <p>Every job is scored on distance (30%), who has had the fewest jobs this week (35%), rating (20%) and declared availability (15%). The pick arrives with its reason in plain words.</p>
             </div>
             <div className="feature">
+              <Photo name="worker.jpg" alt="" />
               <span className="icon" style={{ background: "var(--green-t)", color: "var(--green-d)" }}>
                 <Mic size={22} />
               </span>
@@ -99,6 +128,7 @@ export default function Landing() {
               <p>“Kal subah free hoon lekin shaam ko nahi.” One sentence, Hindi or English, becomes a schedule. No forms, no typing.</p>
             </div>
             <div className="feature">
+              <Photo name="money.jpg" alt="" />
               <span className="icon" style={{ background: "var(--paper-2)", color: "var(--ink-2)" }}>
                 <Receipt size={22} />
               </span>
@@ -106,6 +136,7 @@ export default function Landing() {
               <p>Worker · welfare fund · platform. Every bill is split to the paisa and the ledger is open to the customer, the worker and the cooperative.</p>
             </div>
             <div className="feature">
+              <Photo name="demand-forecast.jpg" alt="" />
               <span className="icon" style={{ background: "var(--indigo-t)", color: "var(--indigo-d)" }}>
                 <TrendingUp size={22} />
               </span>
@@ -157,6 +188,7 @@ function Door({ id }: { id: PortalId }) {
   const p = PORTALS[id];
   return (
     <Link to={p.path} className="door" data-portal={id}>
+      <Photo name={DOOR_PHOTO[id]} alt="" />
       <div className="row between">
         <span className="name">
           {p.name} <span className="hi">{p.hindi}</span>
@@ -201,6 +233,17 @@ function Bar({ label, weight, value }: { label: string; weight: string; value: n
       <div className="bar thin">
         <div style={{ width: `${value}%`, background: "var(--terracotta)" }} />
       </div>
+    </div>
+  );
+}
+
+/** Hero photo (when present) with the worked allocation example laid over it. */
+function HeroVisual() {
+  const hasPhoto = useImageExists("hero.jpg");
+  return (
+    <div className={`hero-visual${hasPhoto ? " has-photo" : ""}`}>
+      {hasPhoto && <img className="photo" src={img("hero.jpg")} alt="A plumber from the cooperative fixing a kitchen sink while the household looks on" />}
+      <HeroExplanation />
     </div>
   );
 }

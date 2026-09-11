@@ -277,3 +277,18 @@ h2 { font-family: var(--font-display); font-size: 17px; font-weight: 700; letter
 
 .split { display: flex; gap: 2px; height: 28px; border-radius: 8px; overflow: hidden; }
 .swatch { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+
+/* ── landing photos (slots hide themselves until the file exists) ───── */
+
+.photo { display: block; width: 100%; object-fit: cover; background: var(--paper-2); }
+.hero-visual { position: relative; display: flex; flex-direction: column; }
+.hero-visual .photo { aspect-ratio: 4 / 3; border-radius: 24px; }
+.hero-visual .hero-art { margin-top: 12px; }
+@media (min-width: 721px) {
+  .hero-visual.has-photo .hero-art { position: absolute; left: -32px; bottom: -28px; width: 78%; margin: 0; box-shadow: 0 16px 40px rgba(38, 29, 23, 0.14); background: var(--paper); }
+  .hero-visual.has-photo { margin-bottom: 28px; }
+}
+@media (max-width: 720px) { .hero-visual { display: flex; } .hero-visual .hero-art { display: none; } .hero-visual:not(.has-photo) { display: none; } }
+.door .photo { aspect-ratio: 4 / 5; max-height: 220px; border-radius: 12px; margin: -6px 0 2px; }
+.feature .photo { aspect-ratio: 16 / 9; border-radius: 12px; margin-bottom: 4px; }
+.band.has-photo { background-color: var(--ink); background-size: cover; background-position: center; }

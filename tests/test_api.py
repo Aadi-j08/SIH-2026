@@ -174,6 +174,7 @@ def test_web_app_is_served_with_spa_fallback_or_explains_how_to_build(client):
         assert response.status_code == 200 and response.headers["content-type"].startswith("text/html")
         assert client.get("/app/worker").text == response.text                 # SPA route -> index.html
         assert client.get("/app/manifest.webmanifest").status_code == 200
-        assert client.get("/app/..%2F..%2Fapp%2Fmain.py").text == response.text  # never escapes dist/
+        assert client.get("/app/..%2F..%2Fapp%2Fmain.py").status_code == 404     # never escapes dist/
+        assert client.get("/app/img/missing.jpg").status_code == 404               # missing files 404, not the SPA shell
     else:
         assert response.status_code == 404 and "npm run build" in response.json()["detail"]
