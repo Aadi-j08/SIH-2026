@@ -114,6 +114,55 @@ export const Refresh = (p: IconProps) => (
   </Icon>
 );
 
+export const ArrowLeft = (p: IconProps) => (
+  <Icon {...p} strokeWidth={2.25}>
+    <path d="M19 12H5M11 6l-6 6 6 6" />
+  </Icon>
+);
+export const ArrowDown = (p: IconProps) => (
+  <Icon {...p} strokeWidth={2.25}>
+    <path d="M12 5v14M6 13l6 6 6-6" />
+  </Icon>
+);
+export const ListOrdered = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 6h18M3 12h12M3 18h6" />
+  </Icon>
+);
+export const Receipt = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M5 3h14v18l-2.5-1.5L14 21l-2-1.5L10 21l-2.5-1.5L5 21z" />
+    <path d="M9 8h6M9 12h6M9 16h4" />
+  </Icon>
+);
+export const TrendingUp = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 17l6-6 4 4 8-8" />
+    <path d="M15 7h6v6" />
+  </Icon>
+);
+export const LayoutGrid = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="3" width="7" height="7" rx="1.5" />
+    <rect x="14" y="3" width="7" height="7" rx="1.5" />
+    <rect x="3" y="14" width="7" height="7" rx="1.5" />
+    <rect x="14" y="14" width="7" height="7" rx="1.5" />
+  </Icon>
+);
+export const CalendarIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M3 10h18M8 3v4M16 3v4" />
+  </Icon>
+);
+export const Users = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="9" cy="8" r="3.5" />
+    <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
+    <path d="M16 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-4.5-6.2" />
+  </Icon>
+);
+
 export const TRADE_ICONS: Record<string, (p: IconProps) => ReactElement> = {
   plumbing: Wrench,
   electrical: Zap,

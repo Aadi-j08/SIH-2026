@@ -22,7 +22,7 @@ cd frontend && npm install && npm run build && cd ..
 
 | Open | What |
 |---|---|
-| http://127.0.0.1:8000/app/ | the web app — Customer / Worker / Admin |
+| http://127.0.0.1:8000/app/ | the web app: landing page + three portals — **Ghar** (customer), **Kaam** (worker), **Sabha** (cooperative admin) |
 | http://127.0.0.1:8000/docs | interactive API docs |
 
 While working on the UI, run `npm run dev` inside `frontend/` and open
@@ -55,11 +55,11 @@ app/
     ledger.py              mock payment split, in paise
   routers/booking_flow.py  the booking-lifecycle endpoints
   booking_flow_db.py       booking-flow tables, atomic transactions
-frontend/                  Vite + React + TypeScript PWA (Customer, Worker, Admin)
+frontend/                  Vite + React + TypeScript PWA: landing page + Ghar / Kaam / Sabha portals
 tests/                     pytest suite
 docs/
   INTEGRATION.md           notes on the booking-flow module
-  design/                  screen mockups (Direction A "Warm civic") and the design canvas
+  design/                  screen mockups (Direction A "Warm civic"); design/portals/ = landing + portal identities
 ```
 
 ## How the pieces fit

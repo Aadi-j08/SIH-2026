@@ -74,7 +74,7 @@ export default function Admin() {
 
   return (
     <div className="page wide">
-      <div className="row between" style={{ alignItems: "flex-end", flexWrap: "wrap", gap: 12 }}>
+      <div id="top" className="row between" style={{ alignItems: "flex-end", flexWrap: "wrap", gap: 12 }}>
         <div className="stack" style={{ gap: 4 }}>
           <h1 style={{ fontSize: 28 }}>Dashboard</h1>
           <div className="sub">{today} · this week</div>
@@ -107,7 +107,7 @@ export default function Admin() {
             <StatTile label="Fairness · Gini" value={dashboard.fairness.jobs_gini.toFixed(2)} caption="0 = jobs shared perfectly evenly" valueColor="var(--green-d)" />
           </div>
 
-          <div className="panel span-7">
+          <div className="panel span-7" id="bookings">
             <div className="row between">
               <div className="row" style={{ gap: 8 }}>
                 <h2>Pending bookings</h2>
@@ -127,7 +127,7 @@ export default function Admin() {
             )}
           </div>
 
-          <div className="panel span-5">
+          <div className="panel span-5" id="forecast">
             <div className="row between" style={{ alignItems: "flex-start" }}>
               <div className="stack" style={{ gap: 2 }}>
                 <h2>Demand forecast</h2>
@@ -144,7 +144,7 @@ export default function Admin() {
             {forecast ? <ForecastChart forecast={forecast} /> : <div className="small muted">No forecast yet.</div>}
           </div>
 
-          <div className="panel span-7">
+          <div className="panel span-7" id="workers">
             <div className="stack" style={{ gap: 2 }}>
               <h2>Workers · jobs this week</h2>
               <div className="small muted">The engine favours whoever has had the fewest jobs</div>
@@ -152,7 +152,7 @@ export default function Admin() {
             <WorkersList dashboard={dashboard} />
           </div>
 
-          <div className="panel span-5">
+          <div className="panel span-5" id="money">
             <div className="stack" style={{ gap: 2 }}>
               <h2>Where the money went</h2>
               <div className="small muted">Every completed job is split 85 / 10 / 5, to the paisa</div>
@@ -322,13 +322,13 @@ function ForecastChart({ forecast }: { forecast: Forecast }) {
             </text>
           ))}
         </g>
-        <g fill="var(--terracotta-t)">
+        <g fill="var(--accent-t)">
           {forecast.points.map((p, i) => {
             const cx = 24 + slot * i + slot / 2;
             return <rect key={p.date} x={cx - 10} y={y(p.upper)} width="20" height={Math.max(2, y(p.lower) - y(p.upper))} rx="3" />;
           })}
         </g>
-        <g fill="var(--terracotta)" clipPath="url(#forecast-plot)">
+        <g fill="var(--accent)" clipPath="url(#forecast-plot)">
           {forecast.points.map((p, i) => {
             const cx = 24 + slot * i + slot / 2;
             const top = y(p.expected_bookings);
@@ -363,7 +363,7 @@ function ForecastChart({ forecast }: { forecast: Forecast }) {
       </svg>
       <div className="row tiny muted" style={{ gap: 18, flexWrap: "wrap" }}>
         <span className="row" style={{ gap: 6 }}>
-          <span className="swatch" style={{ background: "var(--terracotta-t)" }} />
+          <span className="swatch" style={{ background: "var(--accent-t)" }} />
           Light band = 80% likely range
         </span>
         <span className="row" style={{ gap: 6 }}>
