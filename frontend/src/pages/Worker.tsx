@@ -86,7 +86,7 @@ function Greeting({ worker, workers, onPick }: { worker: WorkerT; workers: Worke
         </div>
         <label className="small muted row" style={{ gap: 6 }}>
           {titleCase(worker.trade)} · Cooperative member ·
-          <select value={worker.id} onChange={(e) => onPick(Number(e.target.value))} aria-label="Switch worker" style={{ border: 0, background: "transparent", color: "var(--terracotta-d)", fontWeight: 600 }}>
+          <select value={worker.id} onChange={(e) => onPick(Number(e.target.value))} aria-label="Switch worker" style={{ border: 0, background: "transparent", color: "var(--accent-d)", fontWeight: 600 }}>
             {workers.map((w) => (
               <option key={w.id} value={w.id}>
                 {w.name}
@@ -189,7 +189,7 @@ function VoiceAvailability({ worker, onSaved }: { worker: WorkerT; onSaved: (w: 
           </button>
         </div>
         <div className="row" style={{ gap: 8 }}>
-          <div className="roles" style={{ borderColor: "#4a403a" }}>
+          <div className="seg" style={{ borderColor: "#4a403a" }}>
             {[
               ["hi-IN", "हिंदी"],
               ["en-IN", "English"],
