@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import sqlite3
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -32,6 +33,12 @@ def _run(operation: Callable[..., Any], *args: Any) -> Any:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except AllocationBridgeError as exc:
         raise HTTPException(status_code=500, detail=f"Allocation bridge error: {exc}") from exc
+    except sqlite3.OperationalError as exc:
+        # Surface transient lock/schema failures as retryable responses rather
+        # than allowing an opaque 500 during concurrent dashboard polling.
+        if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+            raise HTTPException(status_code=503, detail="The database is busy; please retry.") from exc
+        raise
 
 
 @router.post("/bookings/{booking_id}/assign", response_model=AssignmentResult)
