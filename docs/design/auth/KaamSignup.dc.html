@@ -1,0 +1,105 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&amp;family=Manrope:wght@400..700&amp;family=Noto+Sans+Devanagari:wght@400;600&amp;display=swap">
+  <style>
+    body { margin: 0; background: #FCFAF6; color: #261D17; font-family: Manrope, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #00792F; } a:hover { color: #25984D; }
+    .display { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; }
+    .hi { font-family: "Noto Sans Devanagari", "Nirmala UI", Mangal, sans-serif; }
+    svg { display: block; }
+    .chip { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 44px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1.5px solid #E2DDD5; font-size: 13px; font-weight: 600; color: #5C534D; }
+    .chip.on { background: #261D17; border-color: #261D17; color: #FCFAF6; font-weight: 700; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 1040px; background: #FCFAF6; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box;">
+
+  <!-- top bar -->
+  <div style="display: flex; align-items: center; justify-content: space-between; padding: 22px 20px 0 20px;">
+    <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #5C534D; height: 44px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"></path></svg>
+      Sign in
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="display: flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 999px; background: #D9F3DD; color: #00792F; font-size: 12px; font-weight: 700;">Kaam · Work</div>
+      <div style="display: flex; align-items: center; gap: 2px; border: 1px solid #E2DDD5; border-radius: 999px; padding: 3px;">
+        <div style="font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 999px; color: #5C534D;">EN</div>
+        <div class="hi" style="font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 999px; background: #261D17; color: #FCFAF6;">हिं</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- heading: Hindi first, like the Kaam portal -->
+  <div style="display: flex; flex-direction: column; gap: 6px; padding: 18px 20px 0 20px;">
+    <div class="display hi" style="font-size: 30px; font-weight: 700; line-height: 1.1; letter-spacing: -0.01em;">काम में शामिल हों</div>
+    <div style="font-size: 14px; line-height: 1.45; color: #5C534D;">Join Kaam. Your cooperative will see your profile and start sharing work with you.</div>
+  </div>
+
+  <!-- form -->
+  <div style="display: flex; flex-direction: column; gap: 16px; padding: 22px 20px 0 20px; flex-grow: 1;">
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #8C857F;">Your name · आपका नाम</div>
+      <div style="display: flex; align-items: center; height: 52px; padding: 0 14px; border-radius: 14px; background: #FFFFFF; border: 1.5px solid #E2DDD5; font-size: 16px; color: #261D17;">Asha Verma</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #8C857F;">Mobile number · मोबाइल</div>
+      <div style="display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 14px; border-radius: 14px; background: #FFFFFF; border: 1.5px solid #E2DDD5;">
+        <div style="display: flex; align-items: center; height: 34px; padding: 0 10px; border-radius: 999px; background: #F7F3EC; color: #5C534D; font-size: 12px; font-weight: 700;">+91</div>
+        <div style="font-size: 16px; color: #261D17;">91234 56780</div>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #8C857F;">What work do you do? · काम</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        <div class="chip on"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>Plumbing</div>
+        <div class="chip">Electrical</div>
+        <div class="chip">Cleaning</div>
+        <div class="chip">Carpentry</div>
+        <div class="chip">Painting</div>
+        <div class="chip">Cooking</div>
+      </div>
+      <div style="font-size: 12px; color: #8C857F;">Pick all that apply. The cooperative can change these later.</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #8C857F;">Where you work from · इलाका</div>
+      <div style="display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 14px; border-radius: 14px; background: #FFFFFF; border: 1.5px solid #E2DDD5;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8C857F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+        <div style="font-size: 16px; color: #261D17; flex-grow: 1;">Andheri East</div>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8C857F" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #8C857F;">Languages · भाषा</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        <div class="chip on hi">हिंदी</div>
+        <div class="chip">English</div>
+        <div class="chip hi">मराठी</div>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #8C857F;">Password · पासवर्ड</div>
+      <div style="display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 14px; border-radius: 14px; background: #FFFFFF; border: 1.5px solid #E2DDD5;">
+        <div style="font-size: 15px; color: #8C857F; flex-grow: 1;">At least 6 characters</div>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8C857F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+      </div>
+    </div>
+
+    <div class="display" style="display: flex; align-items: center; justify-content: center; gap: 10px; height: 56px; border-radius: 16px; background: #00792F; color: #FFFFFF; font-size: 17px; font-weight: 700; margin-top: 6px;">Create my worker account
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+    </div>
+  </div>
+
+  <!-- switch -->
+  <div style="display: flex; align-items: center; justify-content: center; gap: 6px; padding: 16px 20px 28px 20px; font-size: 14px; color: #5C534D;">
+    Already on Kaam? <span style="font-weight: 700; color: #00792F;">Sign in</span>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

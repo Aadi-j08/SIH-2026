@@ -18,6 +18,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from app import database, repository
+from app.routers.auth import router as auth_router
 from app.routers.booking_flow import router as booking_flow_router
 from app.schemas import (
     Booking,
@@ -46,6 +47,7 @@ app = FastAPI(
     description="Fair work allocation, voice availability and demand forecasting for a workers' cooperative.",
     lifespan=lifespan,
 )
+app.include_router(auth_router)
 app.include_router(booking_flow_router)
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"

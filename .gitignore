@@ -19,6 +19,7 @@ Thumbs.db
 # Generated design canvas (sources are the .dc.html + canvas.json beside it)
 docs/design/sahakarsetu-screens.html
 docs/design/portals/sahakarsetu-landing-and-portals.html
+docs/design/auth/sahakarsetu-login-and-portals.html
 
 # Original full-size photos (compressed copies live in frontend/public/img)
 docs/design/photos-original/

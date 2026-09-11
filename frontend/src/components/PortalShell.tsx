@@ -1,15 +1,53 @@
 import { useEffect, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
-import { ArrowLeft } from "./Icons";
+import { type PortalId } from "../api";
+import { initials, useAuth } from "../lib/auth";
+import { LogOut } from "./Icons";
 
-export type PortalId = "ghar" | "kaam" | "sabha";
+export type { PortalId };
 
-export const PORTALS: Record<PortalId, { name: string; hindi: string; tag: string; path: string; accent: string; who: string; blurb: string; cta: string }> = {
-  ghar: { name: "Ghar", hindi: "घर", tag: "Home", path: "/customer", accent: "#c65d26", who: "I need a worker", blurb: "Book in a minute, see who is coming and why, pay after the job.", cta: "Book a service" },
-  kaam: { name: "Kaam", hindi: "काम", tag: "Work", path: "/worker", accent: "#25984d", who: "I am a worker", blurb: "Say when you’re free, in Hindi or English. Get jobs shared fairly. Count your days to benefits.", cta: "Open my work" },
-  sabha: { name: "Sabha", hindi: "सभा", tag: "Council", path: "/admin", accent: "#5e78d9", who: "I run the cooperative", blurb: "Assign work with the engine’s reasons, watch every rupee split, see next week’s demand.", cta: "Open the dashboard" },
+export type Portal = {
+  name: string;
+  hindi: string;
+  tag: string;
+  accent: string;
+  who: string;
+  blurb: string;
+  cta: string;
+  /** public landing page for this portal */
+  landing: string;
+  login: string;
+  signup: string;
+  /** first private page after sign-in */
+  home: string;
 };
+
+export const PORTALS: Record<PortalId, Portal> = {
+  ghar: {
+    name: "Ghar", hindi: "घर", tag: "Home", accent: "#c65d26",
+    who: "I need a worker",
+    blurb: "Book in a minute, see who is coming and why, pay after the job.",
+    cta: "Book a service",
+    landing: "/ghar", login: "/ghar/login", signup: "/ghar/signup", home: "/ghar/home",
+  },
+  kaam: {
+    name: "Kaam", hindi: "काम", tag: "Work", accent: "#25984d",
+    who: "I am a worker",
+    blurb: "Say when you’re free, in Hindi or English. Get jobs shared fairly. Count your days to benefits.",
+    cta: "Open my work",
+    landing: "/kaam", login: "/kaam/login", signup: "/kaam/signup", home: "/kaam/home",
+  },
+  sabha: {
+    name: "Sabha", hindi: "सभा", tag: "Council", accent: "#5e78d9",
+    who: "I run the cooperative",
+    blurb: "Assign work with the engine’s reasons, watch every rupee split, see next week’s demand.",
+    cta: "Open the dashboard",
+    landing: "/sabha", login: "/sabha/login", signup: "/sabha/signup", home: "/sabha/home",
+  },
+};
+
+export const PORTAL_ORDER: PortalId[] = ["ghar", "kaam", "sabha"];
 
 export function BrandMark({ color = "#c65d26", size = 28 }: { color?: string; size?: number }) {
   return (
@@ -21,17 +59,17 @@ export function BrandMark({ color = "#c65d26", size = 28 }: { color?: string; si
   );
 }
 
-export function PortalTag({ portal }: { portal: PortalId }) {
+export function PortalTag({ portal, style }: { portal: PortalId; style?: React.CSSProperties }) {
   const p = PORTALS[portal];
   return (
-    <span className={`portal-tag ${portal}`}>
+    <span className={`portal-tag ${portal}`} style={style}>
       {p.name} · {p.tag}
     </span>
   );
 }
 
 /** Sets the browser theme colour to the portal accent while the portal is open. */
-function useThemeColor(color: string) {
+export function useThemeColor(color: string) {
   useEffect(() => {
     const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
     const previous = meta?.content;
@@ -42,10 +80,32 @@ function useThemeColor(color: string) {
   }, [color]);
 }
 
+/** The signed-in person: initials, and the only way out — sign out, back to this portal's landing page. */
+export function UserMenu({ portal }: { portal: PortalId }) {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  if (!user) return null;
+  const signOut = async () => {
+    await logout();
+    navigate(PORTALS[portal].landing, { replace: true });
+  };
+  return (
+    <div className="row" style={{ gap: 8 }}>
+      <span className="avatar small-avatar" title={user.name} aria-label={user.name}>
+        {initials(user.name)}
+      </span>
+      <button type="button" className="back" onClick={signOut}>
+        <LogOut size={16} />
+        <span className="hide-narrow">Sign out</span>
+      </button>
+    </div>
+  );
+}
+
 /**
- * The frame every portal page sits in: its own accent (via data-portal),
- * its tag beside the wordmark, and a way back to the landing page instead
- * of a role switcher — so each portal reads as its own place.
+ * The frame every private portal page sits in: its own accent (via
+ * data-portal), its tag beside the wordmark, and the signed-in person with a
+ * sign-out — no link to any other portal, so each one reads as its own place.
  */
 export default function PortalShell({ portal, children, sidebar }: { portal: PortalId; children: ReactNode; sidebar?: ReactNode }) {
   const p = PORTALS[portal];
@@ -53,7 +113,7 @@ export default function PortalShell({ portal, children, sidebar }: { portal: Por
 
   const topbar = (
     <header className="topbar">
-      <Link to={p.path} className="brand">
+      <Link to={p.home} className="brand">
         <BrandMark color={p.accent} />
         <span className="wordmark">
           SahakarSetu
@@ -64,10 +124,7 @@ export default function PortalShell({ portal, children, sidebar }: { portal: Por
       </Link>
       <div className="row" style={{ gap: 10 }}>
         <PortalTag portal={portal} />
-        <Link to="/" className="back" aria-label="Back to the SahakarSetu home page">
-          <ArrowLeft size={16} />
-          <span className="hide-narrow">All portals</span>
-        </Link>
+        <UserMenu portal={portal} />
       </div>
     </header>
   );

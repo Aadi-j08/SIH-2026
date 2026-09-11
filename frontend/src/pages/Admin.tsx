@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 
 import {
   api,
@@ -13,7 +12,7 @@ import {
   type Forecast,
   type Recommendation,
 } from "../api";
-import { Plus, Refresh } from "../components/Icons";
+import { Refresh } from "../components/Icons";
 
 type PendingRow = { booking: Booking; pick: Recommendation | null };
 
@@ -84,10 +83,6 @@ export default function Admin() {
             <Refresh size={16} />
             {loading ? "Refreshing…" : "Refresh"}
           </button>
-          <Link to="/customer" className="btn outline small">
-            <Plus size={16} />
-            New booking
-          </Link>
         </div>
       </div>
 

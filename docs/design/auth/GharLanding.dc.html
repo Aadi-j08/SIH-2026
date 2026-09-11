@@ -1,0 +1,132 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&amp;family=Manrope:wght@400..700&amp;family=Noto+Sans+Devanagari:wght@400;600&amp;display=swap">
+  <style>
+    body { margin: 0; background: #FCFAF6; color: #261D17; font-family: Manrope, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #A53E00; } a:hover { color: #C65D26; }
+    .display { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; }
+    .hi { font-family: "Noto Sans Devanagari", "Nirmala UI", Mangal, sans-serif; }
+    svg { display: block; }
+    .wrap { width: 100%; max-width: 1200px; margin: 0 auto; padding: 0 40px; box-sizing: border-box; }
+    .hero { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 56px; align-items: center; }
+    .cols-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+    .cols-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+    .h1 { font-size: 56px; }
+    @media (max-width: 720px) { .wrap { padding: 0 20px; } .hero, .cols-4, .cols-3 { grid-template-columns: minmax(0, 1fr); } .h1 { font-size: 38px; } }
+  </style>
+</helmet>
+<div style="background: #FCFAF6; min-height: 100%; display: flex; flex-direction: column;">
+
+  <!-- top bar: this portal only -->
+  <div style="border-bottom: 1px solid #E2DDD5;">
+    <div class="wrap" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 16px; padding-bottom: 16px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <svg width="32" height="32" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#C65D26"></rect><path d="M96 336c40-96 104-144 160-144s120 48 160 144" fill="none" stroke="#FCFAF6" stroke-width="40" stroke-linecap="round"></path><path d="M144 336v48M256 208v176M368 336v48" stroke="#FCFAF6" stroke-width="32" stroke-linecap="round"></path></svg>
+        <div style="display: flex; flex-direction: column;">
+          <div class="display" style="font-size: 19px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.1;">SahakarSetu</div>
+          <div style="font-size: 11px; font-weight: 500; color: #8C857F;">Ghar · Home</div>
+        </div>
+        <div style="display: flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 999px; background: #FFE4D6; color: #A53E00; font-size: 13px; font-weight: 700; margin-left: 6px;">Ghar · Home</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 24px;">
+        <div style="font-size: 14px; font-weight: 600; color: #5C534D;">What you get</div>
+        <div style="font-size: 14px; font-weight: 600; color: #5C534D;">How it works</div>
+        <div style="display: flex; align-items: center; height: 44px; padding: 0 16px; border-radius: 14px; border: 1.5px solid #E2DDD5; background: #FFFFFF; color: #261D17; font-size: 14px; font-weight: 700;">Sign in</div>
+        <div class="display" style="display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 18px; border-radius: 14px; background: #C65D26; color: #FFFFFF; font-size: 15px; font-weight: 700;">Create account</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- hero -->
+  <div class="wrap" style="padding-top: 64px; padding-bottom: 72px;">
+    <div class="hero">
+      <div style="display: flex; flex-direction: column; gap: 22px;">
+        <div style="font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #A53E00;">For households</div>
+        <div class="display h1" style="font-weight: 700; line-height: 1.0; letter-spacing: -0.03em;">A plumber, electrician or cleaner from your own cooperative.</div>
+        <div style="font-size: 18px; line-height: 1.5; color: #5C534D; max-width: 540px;">Book in a minute. The cooperative’s engine picks who comes — fairly, and with the reason written down. You pay after the job, and see exactly where the money goes.</div>
+        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <div class="display" style="display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 22px; border-radius: 16px; background: #C65D26; color: #FFFFFF; font-size: 17px; font-weight: 700;">Create a Ghar account
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+          </div>
+          <div style="display: flex; align-items: center; height: 56px; padding: 0 18px; border-radius: 16px; border: 1.5px solid #E2DDD5; background: #FFFFFF; color: #261D17; font-size: 15px; font-weight: 700;">I already have one — sign in</div>
+        </div>
+        <div style="font-size: 14px; color: #8C857F;">Free to join · No advance payment · Hindi and English</div>
+      </div>
+      <img src="customer.jpg" alt="" style="display: block; width: 100%; aspect-ratio: 4 / 5; max-height: 520px; object-fit: cover; border-radius: 24px; background: #F7F3EC;">
+    </div>
+  </div>
+
+  <!-- what you get -->
+  <div style="background: #F7F3EC; border-top: 1px solid #E2DDD5; border-bottom: 1px solid #E2DDD5;">
+    <div class="wrap" style="display: flex; flex-direction: column; gap: 28px; padding-top: 64px; padding-bottom: 64px;">
+      <div style="display: flex; flex-direction: column; gap: 10px; max-width: 640px;">
+        <div style="font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #8C857F;">What you get</div>
+        <div class="display" style="font-size: 34px; font-weight: 700; line-height: 1.1; letter-spacing: -0.02em;">Everything a booking app does, minus the part that hides how it works.</div>
+      </div>
+      <div class="cols-4">
+        <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px; border-radius: 20px; background: #FFFFFF; border: 1.5px solid #E2DDD5;">
+          <div style="display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 12px; background: #FFE4D6; color: #A53E00;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg></div>
+          <div class="display" style="font-size: 19px; font-weight: 700; letter-spacing: -0.01em;">Book in a minute</div>
+          <div style="font-size: 14px; line-height: 1.5; color: #5C534D;">Pick the trade, your locality and a time. That is the whole form.</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px; border-radius: 20px; background: #FFFFFF; border: 1.5px solid #E2DDD5;">
+          <div style="display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 12px; background: #FFE4D6; color: #A53E00;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6h11M10 12h11M10 18h11M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"></path></svg></div>
+          <div class="display" style="font-size: 19px; font-weight: 700; letter-spacing: -0.01em;">See who is coming, and why</div>
+          <div style="font-size: 14px; line-height: 1.5; color: #5C534D;">Distance, fairness, rating, availability — four scores and one plain sentence.</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px; border-radius: 20px; background: #FFFFFF; border: 1.5px solid #E2DDD5;">
+          <div style="display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 12px; background: #FFE4D6; color: #A53E00;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1zM8 8h8M8 12h8M8 16h5"></path></svg></div>
+          <div class="display" style="font-size: 19px; font-weight: 700; letter-spacing: -0.01em;">Pay after, split openly</div>
+          <div style="font-size: 14px; line-height: 1.5; color: #5C534D;">The worker enters the bill. 85% to them, 10% to their welfare fund, 5% to the platform.</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px; border-radius: 20px; background: #FFFFFF; border: 1.5px solid #E2DDD5;">
+          <div style="display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 12px; background: #FFE4D6; color: #A53E00;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg></div>
+          <div class="display" style="font-size: 19px; font-weight: 700; letter-spacing: -0.01em;">Rate once, it counts</div>
+          <div style="font-size: 14px; line-height: 1.5; color: #5C534D;">One to five stars. The worker’s average updates and weighs 20% of the next pick.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- how it works, from the household's side -->
+  <div class="wrap" style="display: flex; flex-direction: column; gap: 28px; padding-top: 72px; padding-bottom: 72px;">
+    <div class="display" style="font-size: 30px; font-weight: 700; letter-spacing: -0.02em;">How it works for you</div>
+    <div class="cols-3">
+      <div style="display: flex; flex-direction: column; gap: 8px;"><div class="display" style="font-size: 40px; font-weight: 700; color: #C65D26; line-height: 1;">1</div><div style="font-weight: 700;">Create your account</div><div style="font-size: 14px; color: #5C534D; line-height: 1.45;">Name, mobile number and your locality. That is all we ask.</div></div>
+      <div style="display: flex; flex-direction: column; gap: 8px;"><div class="display" style="font-size: 40px; font-weight: 700; color: #C65D26; line-height: 1;">2</div><div style="font-weight: 700;">Book and watch the pick</div><div style="font-size: 14px; color: #5C534D; line-height: 1.45;">The cooperative assigns a worker and you see the reasons on your booking.</div></div>
+      <div style="display: flex; flex-direction: column; gap: 8px;"><div class="display" style="font-size: 40px; font-weight: 700; color: #C65D26; line-height: 1;">3</div><div style="font-weight: 700;">Pay, then rate</div><div style="font-size: 14px; color: #5C534D; line-height: 1.45;">Settle the bill after the job. Your rating shapes the next allocation.</div></div>
+    </div>
+  </div>
+
+  <!-- closing call -->
+  <div class="wrap" style="padding-bottom: 72px;">
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px; flex-wrap: wrap; padding: 32px 36px; border-radius: 24px; background: #261D17; color: #FCFAF6;">
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div class="display" style="font-size: 26px; font-weight: 700; letter-spacing: -0.02em;">Ready when you are.</div>
+        <div style="font-size: 15px; color: #C9C1B9;">Create a Ghar account, or sign in if you already have one.</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div class="display" style="display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 20px; border-radius: 16px; background: #C65D26; color: #FFFFFF; font-size: 16px; font-weight: 700;">Create account</div>
+        <div style="display: flex; align-items: center; height: 52px; padding: 0 18px; border-radius: 16px; border: 1.5px solid #4A403A; color: #FCFAF6; font-size: 15px; font-weight: 700;">Sign in</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- footer: this portal, plus one quiet way back -->
+  <div style="border-top: 1px solid #E2DDD5;">
+    <div class="wrap" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 28px; padding-bottom: 36px; font-size: 13px; color: #8C857F;">
+      <div style="display: flex; align-items: center; gap: 8px;"><div class="display" style="font-size: 16px; font-weight: 700; color: #261D17;">SahakarSetu</div><div>· Ghar · Home</div></div>
+      <div style="display: flex; align-items: center; gap: 18px;"><div>Not a household? SahakarSetu home</div><div>Privacy</div></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
