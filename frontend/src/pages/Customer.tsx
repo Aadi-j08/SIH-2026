@@ -9,6 +9,8 @@ import {
   formatRupees,
   formatWhen,
   titleCase,
+  storageGet,
+  storageSet,
   type BookingDetail,
   type Recommendation,
 } from "../api";
@@ -49,7 +51,7 @@ function BookingForm() {
   const [phone, setPhone] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const lastBooking = Number(localStorage.getItem(LAST_BOOKING_KEY) ?? 0) || null;
+  const lastBooking = Number(storageGet(LAST_BOOKING_KEY) ?? 0) || null;
 
   const useGps = () => {
     if (!navigator.geolocation) {
@@ -84,7 +86,7 @@ function BookingForm() {
         address: address.trim() || null,
         scheduled_for: when === "asap" ? null : when === "tomorrow" ? tomorrowAt(10) : custom,
       });
-      localStorage.setItem(LAST_BOOKING_KEY, String(booking.id));
+      storageSet(LAST_BOOKING_KEY, String(booking.id));
       navigate(`/customer/${booking.id}`);
     } catch (e) {
       setError(errorMessage(e));

@@ -71,7 +71,7 @@ def open_connection() -> sqlite3.Connection:
     path = _database_path()
     conn: sqlite3.Connection | None = None
     if path is not None:
-        conn = sqlite3.connect(path, timeout=10)
+        conn = sqlite3.connect(path, timeout=30)
     else:
         for name in _CONNECTION_FACTORIES:
             factory = getattr(database, name, None)
@@ -95,7 +95,9 @@ def open_connection() -> sqlite3.Connection:
     else:
         conn.isolation_level = None
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA busy_timeout = 10000")
+    conn.execute("PRAGMA busy_timeout = 30000")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
     return conn
 
 
