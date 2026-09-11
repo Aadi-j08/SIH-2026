@@ -56,6 +56,13 @@ def test_sabha_signup_is_gated_by_the_council_code(client, monkeypatch):
     assert ok.json()["user"]["role"] == "Secretary"
 
 
+def test_several_council_codes_can_be_active_at_once(client, monkeypatch):
+    monkeypatch.setenv("SAHAKARSETU_COUNCIL_CODE", "SABHA-2026, SETU-7731")
+    assert client.post("/auth/signup", json=sabha(phone="9000000201", code="SETU-7731")).status_code == 201
+    assert client.post("/auth/signup", json=sabha(phone="9000000202", code="sabha-2026")).status_code == 201
+    assert client.post("/auth/signup", json=sabha(phone="9000000203", code="SETU-0000")).status_code == 403
+
+
 def test_phone_must_be_ten_digits(client):
     assert client.post("/auth/signup", json=ghar(phone="12345")).status_code == 422
     assert client.post("/auth/signup", json=ghar(phone="+91 98765 43210")).status_code == 201

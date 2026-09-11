@@ -20,7 +20,7 @@ The FastAPI dependencies at the bottom (`require_role`, `require_customer`,
 route choice is never trusted on its own.
 
 Config (environment):
-    SAHAKARSETU_COUNCIL_CODE   code that unlocks Sabha sign-up (default SABHA-2026)
+    SAHAKARSETU_COUNCIL_CODE   code(s) that unlock Sabha sign-up, comma-separated (default SABHA-2026)
     SAHAKARSETU_SESSION_DAYS   session lifetime in days (default 30)
 """
 from __future__ import annotations
@@ -57,8 +57,20 @@ PBKDF2_ITERATIONS = 200_000
 DEFAULT_LATITUDE, DEFAULT_LONGITUDE = 23.18, 77.42
 
 
+def council_codes() -> list[str]:
+    """Accepted council codes, upper-cased. Several may be set, e.g. one per council member: "SABHA-2026,SETU-7731"."""
+    raw = os.environ.get("SAHAKARSETU_COUNCIL_CODE", "SABHA-2026")
+    return [code.strip().upper() for code in raw.split(",") if code.strip()]
+
+
 def council_code() -> str:
-    return os.environ.get("SAHAKARSETU_COUNCIL_CODE", "SABHA-2026")
+    """The primary council code (kept for callers that expect one)."""
+    return council_codes()[0]
+
+
+def is_council_code(candidate: str | None) -> bool:
+    given = (candidate or "").strip().upper()
+    return any(hmac.compare_digest(given, code) for code in council_codes())
 
 
 def session_days() -> int:
@@ -174,7 +186,7 @@ def _user(row: sqlite3.Row) -> User:
 
 def signup(data: SignupRequest) -> User:
     phone = normalise_phone(data.phone)
-    if data.portal == "sabha" and not hmac.compare_digest((data.council_code or "").strip().upper(), council_code().upper()):
+    if data.portal == "sabha" and not is_council_code(data.council_code):
         raise AuthError(403, "That council code is not right. Ask your cooperative's secretary for it.")
 
     worker_id: int | None = None
