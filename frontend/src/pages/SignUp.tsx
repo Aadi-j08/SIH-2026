@@ -4,7 +4,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { api, errorMessage, titleCase, TRADES, type PortalId, type SignupBody } from "../api";
 import { AuthShell, Field, PasswordField, PhoneField } from "../components/AuthForm";
 import { ArrowRight, Check, ChevronDown, Locate, Lock, Pin, TRADE_ICONS } from "../components/Icons";
-import { BrandMark, PORTALS, PortalTag } from "../components/PortalShell";
+import { BrandMark, PORTALS, PortalTag, Wordmark } from "../components/PortalShell";
 import { useAuth } from "../lib/auth";
 
 const LANGUAGES: { code: string; label: string; hi?: boolean }[] = [
@@ -137,10 +137,9 @@ export default function SignUp({ portal }: { portal: PortalId }) {
           <aside className="auth-side">
             <Link to={p.landing} className="brand">
               <BrandMark color={p.accent} />
-              <span className="wordmark">
-                SahakarSetu
+              <Wordmark>
                 <small>Cooperative council</small>
-              </span>
+              </Wordmark>
               <PortalTag portal="sabha" style={{ marginLeft: 6 }} />
             </Link>
             <div className="stack-lg">

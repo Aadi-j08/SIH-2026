@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
 
 import { type PortalId } from "../api";
 import { ArrowLeft, ArrowRight, Lock, Shield } from "../components/Icons";
-import { BrandMark, PORTALS, PORTAL_ORDER } from "../components/PortalShell";
+import { BrandMark, PORTALS, PORTAL_ORDER, Wordmark } from "../components/PortalShell";
 import { Photo } from "../components/Photo";
 import { useAuth } from "../lib/auth";
 
@@ -26,10 +26,7 @@ export default function Login() {
         <header className="topbar">
           <Link to="/" className="brand">
             <BrandMark />
-            <span className="wordmark">SahakarSetu</span>
-            <span className="hi hide-narrow" style={{ fontSize: 15, color: "var(--ink-3)" }}>
-              सहकार सेतु
-            </span>
+            <Wordmark />
           </Link>
           <Link to="/" className="back">
             <ArrowLeft size={16} />
