@@ -1,7 +1,7 @@
 import { Link, Navigate, Route, Routes, useParams } from "react-router-dom";
 
 import { CalendarIcon, LayoutGrid, Receipt, TrendingUp, Users } from "./components/Icons";
-import PortalShell, { BrandMark, PORTALS, PortalTag, UserMenu } from "./components/PortalShell";
+import PortalShell, { BrandMark, PORTALS, PortalTag, UserMenu, Wordmark } from "./components/PortalShell";
 import { AuthProvider, RequireAuth } from "./lib/auth";
 import Admin from "./pages/Admin";
 import Customer from "./pages/Customer";
@@ -19,10 +19,9 @@ function SabhaSidebar() {
     <aside className="sidebar">
       <Link to={p.home} className="brand">
         <BrandMark color={p.accent} />
-        <span className="wordmark">
-          SahakarSetu
+        <Wordmark>
           <small>Cooperative council</small>
-        </span>
+        </Wordmark>
       </Link>
       <PortalTag portal="sabha" />
       <nav aria-label="Dashboard sections">

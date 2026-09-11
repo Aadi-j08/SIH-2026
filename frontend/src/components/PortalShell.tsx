@@ -59,6 +59,18 @@ export function BrandMark({ color = "#c65d26", size = 28 }: { color?: string; si
   );
 }
 
+/** The brand name: "Sahakar" in Latin, "सेतु" in Devanagari — one word, two scripts. */
+export function Wordmark({ children }: { children?: ReactNode }) {
+  return (
+    <span className="wordmark">
+      <span className="wordmark-text">
+        Sahakar<span className="hi setu">सेतु</span>
+      </span>
+      {children}
+    </span>
+  );
+}
+
 export function PortalTag({ portal, style }: { portal: PortalId; style?: React.CSSProperties }) {
   const p = PORTALS[portal];
   return (
@@ -115,12 +127,11 @@ export default function PortalShell({ portal, children, sidebar }: { portal: Por
     <header className="topbar">
       <Link to={p.home} className="brand">
         <BrandMark color={p.accent} />
-        <span className="wordmark">
-          SahakarSetu
+        <Wordmark>
           <small>
             {p.name} · {p.tag}
           </small>
-        </span>
+        </Wordmark>
       </Link>
       <div className="row" style={{ gap: 10 }}>
         <PortalTag portal={portal} />
