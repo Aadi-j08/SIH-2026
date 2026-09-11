@@ -8,6 +8,8 @@ import {
   errorMessage,
   formatRupees,
   formatWhen,
+  storageGet,
+  storageSet,
   titleCase,
   type BookingDetail,
   type DashboardWorker,
@@ -22,7 +24,7 @@ const LANG_KEY = "sahakarsetu.voiceLang";
 
 export default function Worker() {
   const [workers, setWorkers] = useState<WorkerT[] | null>(null);
-  const [workerId, setWorkerId] = useState<number | null>(() => Number(localStorage.getItem(WORKER_KEY)) || null);
+  const [workerId, setWorkerId] = useState<number | null>(() => Number(storageGet(WORKER_KEY)) || null);
   const [error, setError] = useState<string | null>(null);
 
   const loadWorkers = async () => {
@@ -41,7 +43,7 @@ export default function Worker() {
   }, []);
 
   useEffect(() => {
-    if (workerId) localStorage.setItem(WORKER_KEY, String(workerId));
+    if (workerId) storageSet(WORKER_KEY, String(workerId));
   }, [workerId]);
 
   if (error) return <div className="page notice error">{error}</div>;
@@ -104,7 +106,7 @@ function Greeting({ worker, workers, onPick }: { worker: WorkerT; workers: Worke
 
 function VoiceAvailability({ worker, onSaved }: { worker: WorkerT; onSaved: (w: WorkerT) => void }) {
   const supported = speechSupported();
-  const [lang, setLang] = useState<string>(() => localStorage.getItem(LANG_KEY) ?? "hi-IN");
+  const [lang, setLang] = useState<string>(() => storageGet(LANG_KEY) ?? "hi-IN");
   const [listening, setListening] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [parsed, setParsed] = useState<VoiceParse | null>(null);
@@ -113,7 +115,7 @@ function VoiceAvailability({ worker, onSaved }: { worker: WorkerT; onSaved: (w: 
   const [message, setMessage] = useState<{ kind: "error" | "info"; text: string } | null>(null);
   const listener = useRef<Listener | null>(null);
 
-  useEffect(() => localStorage.setItem(LANG_KEY, lang), [lang]);
+  useEffect(() => storageSet(LANG_KEY, lang), [lang]);
   useEffect(() => () => listener.current?.stop(), []);
 
   const parse = async (text: string) => {
