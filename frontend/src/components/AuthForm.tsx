@@ -6,7 +6,7 @@ import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import { type PortalId } from "../api";
-import { Eye, EyeOff } from "./Icons";
+import { ArrowLeft, Eye, EyeOff } from "./Icons";
 import { BrandMark, PORTALS, PortalTag, useThemeColor } from "./PortalShell";
 
 /** Public (signed-out) frame for a portal's auth screens: brand + tag, nothing else. */
@@ -25,7 +25,13 @@ export function AuthShell({ portal, children, wide = false }: { portal: PortalId
             </small>
           </span>
         </Link>
-        <PortalTag portal={portal} />
+        <div className="row" style={{ gap: 10 }}>
+          <PortalTag portal={portal} />
+          <Link to="/" className="back" aria-label="SahakarSetu home">
+            <ArrowLeft size={16} />
+            <span className="hide-narrow">Home</span>
+          </Link>
+        </div>
       </header>
       <main className={wide ? "page auth-wide" : "page"}>{children}</main>
     </div>
