@@ -64,9 +64,13 @@ CREATE INDEX IF NOT EXISTS idx_assignments_worker   ON assignments (worker_id);
 
 def get_connection() -> sqlite3.Connection:
     """Open a connection with row access by column name and foreign keys on."""
-    conn = sqlite3.connect(DB_PATH, timeout=10)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 30000")
+    # WAL lets dashboard polling continue while a booking transaction writes.
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
     return conn
 
 

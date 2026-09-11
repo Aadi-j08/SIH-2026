@@ -165,12 +165,43 @@ export class ApiError extends Error {
   }
 }
 
+const REQUEST_TIMEOUT_MS = 15000;
+
+export function storageGet(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+export function storageSet(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Private browsing and storage quotas should not make the app unusable.
+  }
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const response = await fetch(path, {
-    method,
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method,
+      headers: body === undefined ? undefined : { "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const message = error instanceof DOMException && error.name === "AbortError"
+      ? "The server took too long to respond. Please try again."
+      : "Unable to reach the server. Check your connection and try again.";
+    throw new ApiError(0, message);
+  } finally {
+    window.clearTimeout(timeout);
+  }
   if (!response.ok) {
     let detail: unknown = response.statusText;
     try {
@@ -178,6 +209,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     } catch {
       /* not JSON */
     }
+
     throw new ApiError(response.status, detail);
   }
   return (await response.json()) as T;
