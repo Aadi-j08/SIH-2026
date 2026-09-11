@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/components/icons.tsx","./src/lib/speech.ts","./src/pages/admin.tsx","./src/pages/customer.tsx","./src/pages/worker.tsx"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/components/icons.tsx","./src/components/portalshell.tsx","./src/lib/speech.ts","./src/pages/admin.tsx","./src/pages/customer.tsx","./src/pages/landing.tsx","./src/pages/worker.tsx"],"version":"5.9.3"}

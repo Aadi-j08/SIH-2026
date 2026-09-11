@@ -1,0 +1,20 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Landing" },
+    { "id": "page-2", "name": "Portals" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html",         "title": "Landing · desktop",          "x": 0,    "y": 0, "w": 1440, "h": 2900, "page": "page-1" },
+    { "file": "LandingPhone.dc.html", "title": "Landing · phone",            "x": 1540, "y": 0, "w": 390,  "h": 5000, "page": "page-1" },
+    { "file": "Ghar.dc.html",         "title": "Ghar · Home (customer)",     "x": 0,    "y": 0, "w": 390,  "h": 844,  "page": "page-2" },
+    { "file": "Kaam.dc.html",         "title": "Kaam · Work (worker)",       "x": 480,  "y": 0, "w": 390,  "h": 844,  "page": "page-2" },
+    { "file": "Sabha.dc.html",        "title": "Sabha · Council (admin)",    "x": 960,  "y": 0, "w": 1440, "h": 900,  "page": "page-2" }
+  ],
+  "annotations": [
+    { "id": "landing-note", "x": 0, "y": -150, "w": 560, "page": "page-1",
+      "text": "Landing page — what a visitor sees at /app/ before choosing a portal.\n\nHero states the promise and shows a real allocation explanation. The three doors appear twice: compact under the hero, and the sections below make the case. “The cooperative today” pulls live numbers from the API in the built version (the figures here are sample values).\n\nSame page at phone width on the right — everything stacks to one column." },
+    { "id": "portals-note", "x": 0, "y": -170, "w": 900, "page": "page-2",
+      "text": "One family, three identities. Shared: paper background, ink, Bricolage Grotesque + Manrope + Noto Devanagari, buttons and cards.\n\nGhar · Home — terracotta (#C65D26). Light, simple, one big call to action.\nKaam · Work — green (#25984D). Hindi first, big mic, big tap targets.\nSabha · Council — indigo (#5E78D9). Sidebar, dense tables, indigo data marks.\n\nEach portal carries its own tag next to the wordmark, and links back to the landing page instead of a role switcher — that is what makes them feel like separate places." }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

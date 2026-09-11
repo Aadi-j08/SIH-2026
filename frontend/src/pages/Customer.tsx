@@ -117,7 +117,7 @@ function BookingForm() {
       <section className="stack">
         <div className="label">Where?</div>
         <label className="field">
-          <Pin size={20} style={{ color: "var(--terracotta)" }} />
+          <Pin size={20} style={{ color: "var(--accent)" }} />
           <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="House no., area, city" autoComplete="street-address" />
           <button type="button" className="adorn" onClick={useGps} disabled={locating}>
             <Locate size={16} />
@@ -369,7 +369,7 @@ function WorkerCard({
                 </span>
               </div>
               <div className="bar thin">
-                <div style={{ width: `${Math.round(value * 100)}%`, background: "var(--terracotta)" }} />
+                <div style={{ width: `${Math.round(value * 100)}%`, background: "var(--accent)" }} />
               </div>
             </div>
           ))}
@@ -411,7 +411,7 @@ function RatingForm({ bookingId, onRated }: { bookingId: number; onRated: () => 
               role="radio"
               aria-checked={stars === n}
               aria-label={`${n} star${n > 1 ? "s" : ""}`}
-              style={{ background: "none", border: 0, padding: 6, color: n <= stars ? "var(--terracotta)" : "var(--line)" }}
+              style={{ background: "none", border: 0, padding: 6, color: n <= stars ? "var(--accent)" : "var(--line)" }}
             >
               <Star size={30} filled={n <= stars} />
             </button>
