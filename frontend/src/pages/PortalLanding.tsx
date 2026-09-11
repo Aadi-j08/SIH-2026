@@ -1,14 +1,14 @@
 /**
  * A portal's own front page (/ghar, /kaam, /sabha): who it is for, what you
  * get, how it works, and the two ways in. It only ever talks about this
- * portal; the one quiet link back to the SahakarSetu home sits in the footer.
+ * portal; the way back to the SahakarSetu home is in the bar and the footer.
  */
 import { type ReactElement } from "react";
 import { Link } from "react-router-dom";
 
 import { type PortalId } from "../api";
 import {
-  ArrowRight, Bill, CalendarIcon, Check, ListOrdered, Lock, Mic, Receipt, Star, TrendingUp, Users,
+  ArrowLeft, ArrowRight, Bill, CalendarIcon, Check, ListOrdered, Lock, Mic, Receipt, Star, TrendingUp, Users,
 } from "../components/Icons";
 import { Photo } from "../components/Photo";
 import { BrandMark, PORTALS, PortalTag, useThemeColor } from "../components/PortalShell";
@@ -137,6 +137,10 @@ export default function PortalLanding({ portal }: { portal: PortalId }) {
             <PortalTag portal={portal} style={{ marginLeft: 6 }} />
           </Link>
           <nav className="nav-links" aria-label="This portal">
+            <Link to="/" aria-label="SahakarSetu home">
+              <ArrowLeft size={16} />
+              <span className="hide-narrow">SahakarSetu home</span>
+            </Link>
             <a href="#what" className="hide-narrow">What you get</a>
             <a href="#how" className="hide-narrow">How it works</a>
             {mine ? (
