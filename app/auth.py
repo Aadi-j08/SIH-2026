@@ -1,0 +1,222 @@
+"""
+Accounts and sessions, one set per portal.
+
+Ghar (households) and Kaam (workers) sign up freely; Sabha (the council)
+needs the cooperative's council code. A Kaam sign-up also creates the
+worker record the allocation engine uses. Sessions are random tokens kept
+in the sessions table (hashed) and handed to the browser as an httpOnly
+cookie — no external auth provider, by design.
+
+Config (environment):
+    SAHAKARSETU_COUNCIL_CODE   code that unlocks Sabha sign-up (default SABHA-2026)
+    SAHAKARSETU_SESSION_DAYS   session lifetime in days (default 30)
+"""
+from __future__ import annotations
+
+import datetime as dt
+import hashlib
+import hmac
+import json
+import os
+import re
+import secrets
+import sqlite3
+from typing import Literal
+
+from pydantic import BaseModel, Field, model_validator
+
+from app import repository
+from app.database import connection
+from app.schemas import WorkerCreate
+
+Portal = Literal["ghar", "kaam", "sabha"]
+PORTALS: tuple[Portal, ...] = ("ghar", "kaam", "sabha")
+
+SESSION_COOKIE = "sahakarsetu_session"
+PBKDF2_ITERATIONS = 200_000
+
+# Where the cooperative operates; a Kaam sign-up without GPS lands here.
+DEFAULT_LATITUDE, DEFAULT_LONGITUDE = 23.18, 77.42
+
+
+def council_code() -> str:
+    return os.environ.get("SAHAKARSETU_COUNCIL_CODE", "SABHA-2026")
+
+
+def session_days() -> int:
+    return int(os.environ.get("SAHAKARSETU_SESSION_DAYS", "30"))
+
+
+# ── models ───────────────────────────────────────────────────────────────
+
+class User(BaseModel):
+    """What the browser sees of an account. Never includes the password hash."""
+    id: int
+    portal: Portal
+    name: str
+    phone: str
+    locality: str | None = None
+    role: str | None = None
+    worker_id: int | None = None
+    languages: list[str] = Field(default_factory=list)
+    created_at: str | None = None
+
+
+class SignupRequest(BaseModel):
+    portal: Portal
+    name: str = Field(min_length=1, max_length=100)
+    phone: str = Field(min_length=10, max_length=20, description="Indian mobile number; spaces, dashes and +91 are stripped")
+    password: str = Field(min_length=6, max_length=200)
+    locality: str | None = Field(default=None, max_length=120, description="Ghar and Kaam: the area the person lives / works in")
+    # Kaam
+    trade: str | None = Field(default=None, max_length=50)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    languages: list[str] = Field(default_factory=list, max_length=10)
+    # Sabha
+    role: str | None = Field(default=None, max_length=60)
+    council_code: str | None = Field(default=None, max_length=60)
+
+    @model_validator(mode="after")
+    def _portal_specific_fields(self) -> "SignupRequest":
+        if self.portal == "kaam" and not (self.trade or "").strip():
+            raise ValueError("Kaam sign-up needs a trade")
+        if self.portal == "sabha":
+            if not (self.council_code or "").strip():
+                raise ValueError("Sabha sign-up needs the council code")
+            self.role = (self.role or "member").strip()
+        return self
+
+
+class LoginRequest(BaseModel):
+    portal: Portal
+    phone: str = Field(min_length=10, max_length=20)
+    password: str = Field(min_length=1, max_length=200)
+
+
+# ── helpers ──────────────────────────────────────────────────────────────
+
+class AuthError(Exception):
+    """A sign-up or sign-in problem the user can act on; the router maps it to an HTTP status."""
+
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+        self.message = message
+
+
+def normalise_phone(raw: str) -> str:
+    digits = re.sub(r"\D", "", raw)
+    if len(digits) == 12 and digits.startswith("91"):
+        digits = digits[2:]
+    elif len(digits) == 11 and digits.startswith("0"):
+        digits = digits[1:]
+    if len(digits) != 10:
+        raise AuthError(422, "Enter a 10-digit mobile number")
+    return digits
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), PBKDF2_ITERATIONS)
+    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt}${digest.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        _, iterations, salt, expected = stored.split("$")
+        digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), int(iterations))
+    except (ValueError, TypeError):
+        return False
+    return hmac.compare_digest(digest.hex(), expected)
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _user(row: sqlite3.Row) -> User:
+    data = dict(row)
+    data.pop("password_hash", None)
+    data["languages"] = json.loads(data.get("languages") or "[]")
+    return User.model_validate(data)
+
+
+# ── accounts ─────────────────────────────────────────────────────────────
+
+def signup(data: SignupRequest) -> User:
+    phone = normalise_phone(data.phone)
+    if data.portal == "sabha" and not hmac.compare_digest((data.council_code or "").strip().upper(), council_code().upper()):
+        raise AuthError(403, "That council code is not right. Ask your cooperative's secretary for it.")
+
+    worker_id: int | None = None
+    if data.portal == "kaam":
+        worker = repository.create_worker(WorkerCreate(
+            name=data.name.strip(),
+            trade=(data.trade or "").strip(),
+            phone=phone,
+            latitude=data.latitude if data.latitude is not None else DEFAULT_LATITUDE,
+            longitude=data.longitude if data.longitude is not None else DEFAULT_LONGITUDE,
+        ))
+        worker_id = worker.id
+
+    with connection() as conn:
+        try:
+            cursor = conn.execute(
+                "INSERT INTO users (portal, phone, name, password_hash, locality, role, worker_id, languages) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (data.portal, phone, data.name.strip(), hash_password(data.password),
+                 (data.locality or None) and data.locality.strip(), data.role, worker_id,
+                 json.dumps([lang.strip() for lang in data.languages if lang.strip()])),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise AuthError(409, f"There is already a {data.portal.capitalize()} account for this number. Sign in instead.") from exc
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (cursor.lastrowid,)).fetchone()
+    return _user(row)
+
+
+def login(data: LoginRequest) -> User:
+    phone = normalise_phone(data.phone)
+    with connection() as conn:
+        row = conn.execute("SELECT * FROM users WHERE portal = ? AND phone = ?", (data.portal, phone)).fetchone()
+    if row is None or not verify_password(data.password, row["password_hash"]):
+        raise AuthError(401, "Wrong mobile number or password for this portal.")
+    return _user(row)
+
+
+def get_user(user_id: int) -> User | None:
+    with connection() as conn:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    return _user(row) if row else None
+
+
+# ── sessions ─────────────────────────────────────────────────────────────
+
+def create_session(user_id: int) -> str:
+    """Start a session and return the raw token for the cookie (only its hash is stored)."""
+    token = secrets.token_urlsafe(32)
+    expires = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=session_days())).isoformat()
+    with connection() as conn:
+        conn.execute("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
+                     (_hash_token(token), user_id, expires))
+    return token
+
+
+def user_for_token(token: str | None) -> User | None:
+    if not token:
+        return None
+    now = dt.datetime.now(dt.timezone.utc).isoformat()
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id "
+            "WHERE s.token_hash = ? AND s.expires_at > ?",
+            (_hash_token(token), now),
+        ).fetchone()
+    return _user(row) if row else None
+
+
+def end_session(token: str | None) -> None:
+    if not token:
+        return
+    with connection() as conn:
+        conn.execute("DELETE FROM sessions WHERE token_hash = ?", (_hash_token(token),))

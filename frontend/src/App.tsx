@@ -1,18 +1,23 @@
-import { Link, Navigate, Route, Routes } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useParams } from "react-router-dom";
 
-import { ArrowLeft, CalendarIcon, LayoutGrid, Receipt, TrendingUp, Users } from "./components/Icons";
-import PortalShell, { BrandMark, PORTALS, PortalTag } from "./components/PortalShell";
+import { CalendarIcon, LayoutGrid, Receipt, TrendingUp, Users } from "./components/Icons";
+import PortalShell, { BrandMark, PORTALS, PortalTag, UserMenu } from "./components/PortalShell";
+import { AuthProvider, RequireAuth } from "./lib/auth";
 import Admin from "./pages/Admin";
 import Customer from "./pages/Customer";
 import Landing from "./pages/Landing";
+import Login from "./pages/Login";
+import PortalLanding from "./pages/PortalLanding";
+import SignIn from "./pages/SignIn";
+import SignUp from "./pages/SignUp";
 import Worker from "./pages/Worker";
 
-/** Sabha's desktop sidebar: the dashboard sections, plus the way back. */
+/** Sabha's desktop sidebar: the dashboard sections, and the signed-in person at the bottom. */
 function SabhaSidebar() {
   const p = PORTALS.sabha;
   return (
     <aside className="sidebar">
-      <Link to={p.path} className="brand">
+      <Link to={p.home} className="brand">
         <BrandMark color={p.accent} />
         <span className="wordmark">
           SahakarSetu
@@ -43,51 +48,75 @@ function SabhaSidebar() {
         </a>
       </nav>
       <div className="grow" />
-      <Link to="/" className="back">
-        <ArrowLeft size={16} />
-        All portals
-      </Link>
+      <UserMenu portal="sabha" />
     </aside>
   );
 }
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Landing />} />
-      <Route
-        path="/customer"
-        element={
-          <PortalShell portal="ghar">
-            <Customer />
-          </PortalShell>
-        }
-      />
-      <Route
-        path="/customer/:bookingId"
-        element={
-          <PortalShell portal="ghar">
-            <Customer />
-          </PortalShell>
-        }
-      />
-      <Route
-        path="/worker"
-        element={
-          <PortalShell portal="kaam">
-            <Worker />
-          </PortalShell>
-        }
-      />
-      <Route
-        path="/admin"
-        element={
-          <PortalShell portal="sabha" sidebar={<SabhaSidebar />}>
-            <Admin />
-          </PortalShell>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <AuthProvider>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/login" element={<Login />} />
+
+        {/* Ghar · Home */}
+        <Route path="/ghar" element={<PortalLanding portal="ghar" />} />
+        <Route path="/ghar/login" element={<SignIn portal="ghar" />} />
+        <Route path="/ghar/signup" element={<SignUp portal="ghar" />} />
+        <Route
+          path="/ghar/home/:bookingId?"
+          element={
+            <RequireAuth portal="ghar">
+              <PortalShell portal="ghar">
+                <Customer />
+              </PortalShell>
+            </RequireAuth>
+          }
+        />
+
+        {/* Kaam · Work */}
+        <Route path="/kaam" element={<PortalLanding portal="kaam" />} />
+        <Route path="/kaam/login" element={<SignIn portal="kaam" />} />
+        <Route path="/kaam/signup" element={<SignUp portal="kaam" />} />
+        <Route
+          path="/kaam/home"
+          element={
+            <RequireAuth portal="kaam">
+              <PortalShell portal="kaam">
+                <Worker />
+              </PortalShell>
+            </RequireAuth>
+          }
+        />
+
+        {/* Sabha · Council */}
+        <Route path="/sabha" element={<PortalLanding portal="sabha" />} />
+        <Route path="/sabha/login" element={<SignIn portal="sabha" />} />
+        <Route path="/sabha/signup" element={<SignUp portal="sabha" />} />
+        <Route
+          path="/sabha/home"
+          element={
+            <RequireAuth portal="sabha">
+              <PortalShell portal="sabha" sidebar={<SabhaSidebar />}>
+                <Admin />
+              </PortalShell>
+            </RequireAuth>
+          }
+        />
+
+        {/* the pre-login paths */}
+        <Route path="/customer" element={<Navigate to="/ghar/home" replace />} />
+        <Route path="/customer/:bookingId" element={<RedirectBooking />} />
+        <Route path="/worker" element={<Navigate to="/kaam/home" replace />} />
+        <Route path="/admin" element={<Navigate to="/sabha/home" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </AuthProvider>
   );
+}
+
+function RedirectBooking() {
+  const { bookingId } = useParams();
+  return <Navigate to={`/ghar/home/${bookingId}`} replace />;
 }

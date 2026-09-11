@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import {
-  DEFAULT_LOCATION,
-  TRADES,
   api,
   describeWindow,
   errorMessage,
@@ -17,67 +15,40 @@ import {
   type Worker as WorkerT,
 } from "../api";
 import { Check, Cross, Mic, Waveform } from "../components/Icons";
+import { useAuth } from "../lib/auth";
 import { listenOnce, speechSupported, type Listener } from "../lib/speech";
 
-const WORKER_KEY = "sahakarsetu.workerId";
 const LANG_KEY = "sahakarsetu.voiceLang";
 
 export default function Worker() {
-  const [workers, setWorkers] = useState<WorkerT[] | null>(null);
-  const [workerId, setWorkerId] = useState<number | null>(() => Number(storageGet(WORKER_KEY)) || null);
+  const { user } = useAuth();
+  const [worker, setWorker] = useState<WorkerT | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const loadWorkers = async () => {
-    try {
-      const list = await api.workers.list();
-      setWorkers(list);
-      if (list.length && !list.some((w) => w.id === workerId)) setWorkerId(list[0].id);
-    } catch (e) {
-      setError(errorMessage(e));
+  useEffect(() => {
+    if (!user?.worker_id) {
+      setError("This Kaam account is not linked to a worker record. Ask the cooperative to fix it.");
+      return;
     }
-  };
-
-  useEffect(() => {
-    void loadWorkers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (workerId) storageSet(WORKER_KEY, String(workerId));
-  }, [workerId]);
+    api.workers.get(user.worker_id).then(setWorker).catch((e) => setError(errorMessage(e)));
+  }, [user?.worker_id]);
 
   if (error) return <div className="page notice error">{error}</div>;
-  if (!workers) return <div className="page muted">Loading…</div>;
-
-  const worker = workers.find((w) => w.id === workerId) ?? null;
+  if (!worker) return <div className="page muted">Loading…</div>;
 
   return (
     <div className="page">
-      {worker ? (
-        <Greeting worker={worker} workers={workers} onPick={setWorkerId} />
-      ) : (
-        <div className="stack" style={{ gap: 6 }}>
-          <h1>Join the cooperative</h1>
-          <div className="sub">No workers registered yet — add yourself to get started.</div>
-        </div>
-      )}
-
-      {worker ? (
-        <>
-          <VoiceAvailability worker={worker} onSaved={(w) => setWorkers(workers.map((x) => (x.id === w.id ? w : x)))} />
-          <TodaysJob worker={worker} />
-          <ThisWeek worker={worker} />
-        </>
-      ) : (
-        <JoinForm onJoined={(w) => { setWorkers([...workers, w]); setWorkerId(w.id); }} />
-      )}
+      <Greeting worker={worker} />
+      <VoiceAvailability worker={worker} onSaved={setWorker} />
+      <TodaysJob worker={worker} />
+      <ThisWeek worker={worker} />
     </div>
   );
 }
 
-// ── greeting + worker switcher (stands in for login) ─────────────────
+// ── greeting ─────────────────────────────────────────────────────────
 
-function Greeting({ worker, workers, onPick }: { worker: WorkerT; workers: WorkerT[]; onPick: (id: number) => void }) {
+function Greeting({ worker }: { worker: WorkerT }) {
   const initials = worker.name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
   return (
     <div className="row between">
@@ -86,16 +57,7 @@ function Greeting({ worker, workers, onPick }: { worker: WorkerT; workers: Worke
           <span className="hi" style={{ fontSize: 22, fontWeight: 600 }}>नमस्ते,</span>
           <span className="display" style={{ fontSize: 24, fontWeight: 700 }}>{worker.name.split(" ")[0]}</span>
         </div>
-        <label className="small muted row" style={{ gap: 6 }}>
-          {titleCase(worker.trade)} · Cooperative member ·
-          <select value={worker.id} onChange={(e) => onPick(Number(e.target.value))} aria-label="Switch worker" style={{ border: 0, background: "transparent", color: "var(--accent-d)", fontWeight: 600 }}>
-            {workers.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="small muted">{titleCase(worker.trade)} · Cooperative member</div>
       </div>
       <span className="avatar">{initials}</span>
     </div>
@@ -400,60 +362,5 @@ function ThisWeek({ worker }: { worker: WorkerT }) {
         </div>
       </div>
     </section>
-  );
-}
-
-// ── join form (no login in the prototype) ────────────────────────────
-
-function JoinForm({ onJoined }: { onJoined: (w: WorkerT) => void }) {
-  const [name, setName] = useState("");
-  const [trade, setTrade] = useState<string>("plumbing");
-  const [phone, setPhone] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    const finish = async (latitude: number, longitude: number) => {
-      try {
-        onJoined(await api.workers.create({ name: name.trim(), trade, phone: phone.trim() || null, latitude, longitude }));
-      } catch (e) {
-        setError(errorMessage(e));
-        setBusy(false);
-      }
-    };
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => void finish(pos.coords.latitude, pos.coords.longitude),
-        () => void finish(DEFAULT_LOCATION.latitude, DEFAULT_LOCATION.longitude),
-        { timeout: 6000 },
-      );
-    } else {
-      void finish(DEFAULT_LOCATION.latitude, DEFAULT_LOCATION.longitude);
-    }
-  };
-
-  return (
-    <form className="stack-lg" onSubmit={submit}>
-      <label className="field">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" required />
-      </label>
-      <div className="chips">
-        {TRADES.map((t) => (
-          <button type="button" key={t} className={`chip${trade === t ? " on" : ""}`} onClick={() => setTrade(t)}>
-            {titleCase(t)}
-          </button>
-        ))}
-      </div>
-      <label className="field">
-        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Mobile number (optional)" inputMode="tel" />
-      </label>
-      {error && <div className="notice error">{error}</div>}
-      <button type="submit" className="btn primary" disabled={busy || !name.trim()}>
-        {busy ? "Joining…" : "Join"}
-      </button>
-    </form>
   );
 }

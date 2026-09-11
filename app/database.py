@@ -54,7 +54,31 @@ CREATE TABLE IF NOT EXISTS assignments (
     created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Accounts are per portal: the same phone may hold one Ghar, one Kaam and one
+-- Sabha account, and a session only ever opens the portal it was created for.
+CREATE TABLE IF NOT EXISTS users (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    portal          TEXT    NOT NULL CHECK (portal IN ('ghar', 'kaam', 'sabha')),
+    phone           TEXT    NOT NULL,              -- 10 digits, normalised
+    name            TEXT    NOT NULL,
+    password_hash   TEXT    NOT NULL,
+    locality        TEXT,                          -- ghar, kaam
+    role            TEXT,                          -- sabha: secretary, member, ...
+    worker_id       INTEGER REFERENCES workers(id),-- kaam: the worker record this account drives
+    languages       TEXT    NOT NULL DEFAULT '[]', -- JSON list, e.g. ["hi", "en"]
+    created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (portal, phone)
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash      TEXT    PRIMARY KEY,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at      TEXT    NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_workers_trade        ON workers (trade);
+CREATE INDEX IF NOT EXISTS idx_sessions_user        ON sessions (user_id);
 CREATE INDEX IF NOT EXISTS idx_bookings_status      ON bookings (status);
 CREATE INDEX IF NOT EXISTS idx_bookings_trade       ON bookings (trade);
 CREATE INDEX IF NOT EXISTS idx_assignments_booking  ON assignments (booking_id);

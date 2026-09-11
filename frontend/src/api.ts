@@ -155,6 +155,34 @@ export type Forecast = {
   points: ForecastPoint[];
 };
 
+export type PortalId = "ghar" | "kaam" | "sabha";
+
+export type User = {
+  id: number;
+  portal: PortalId;
+  name: string;
+  phone: string;
+  locality: string | null;
+  role: string | null;
+  worker_id: number | null;
+  languages: string[];
+  created_at: string | null;
+};
+
+export type SignupBody = {
+  portal: PortalId;
+  name: string;
+  phone: string;
+  password: string;
+  locality?: string | null;
+  trade?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  languages?: string[];
+  role?: string | null;
+  council_code?: string | null;
+};
+
 export class ApiError extends Error {
   status: number;
   detail: unknown;
@@ -219,6 +247,12 @@ const get = <T>(path: string) => request<T>("GET", path);
 const post = <T>(path: string, body?: unknown) => request<T>("POST", path, body ?? {});
 
 export const api = {
+  auth: {
+    me: () => get<{ user: User | null }>("/auth/me"),
+    signup: (body: SignupBody) => post<{ user: User }>("/auth/signup", body),
+    login: (portal: PortalId, phone: string, password: string) => post<{ user: User }>("/auth/login", { portal, phone, password }),
+    logout: () => post<{ user: null }>("/auth/logout"),
+  },
   workers: {
     list: (trade?: string) => get<Worker[]>(`/workers${trade ? `?trade=${encodeURIComponent(trade)}` : ""}`),
     get: (id: number) => get<Worker>(`/workers/${id}`),

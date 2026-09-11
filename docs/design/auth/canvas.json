@@ -1,0 +1,28 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "1 · Landing → Login" },
+    { "id": "page-2", "name": "2 · Ghar, start to finish" },
+    { "id": "page-3", "name": "3 · Kaam & Sabha sign-up" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html",        "title": "Landing · /app/",                 "x": 0,    "y": 0, "w": 1440, "h": 4200, "page": "page-1" },
+    { "file": "Login.dc.html",       "title": "Portal chooser · /app/login",     "x": 1540, "y": 0, "w": 1440, "h": 900,  "page": "page-1" },
+
+    { "file": "GharLanding.dc.html", "title": "Ghar landing · /app/ghar",        "x": 0,    "y": 0, "w": 1440, "h": 1900, "page": "page-2" },
+    { "file": "GharLogin.dc.html",   "title": "Ghar sign-in · /app/ghar/login",  "x": 1540, "y": 0, "w": 390,  "h": 844,  "page": "page-2" },
+    { "file": "GharSignup.dc.html",  "title": "Ghar sign-up · /app/ghar/signup", "x": 2020, "y": 0, "w": 390,  "h": 900,  "page": "page-2" },
+    { "file": "GharHome.dc.html",    "title": "Ghar, signed in · /app/ghar/home","x": 2500, "y": 0, "w": 390,  "h": 844,  "page": "page-2" },
+
+    { "file": "KaamSignup.dc.html",  "title": "Kaam sign-up · /app/kaam/signup", "x": 0,    "y": 0, "w": 390,  "h": 1040, "page": "page-3" },
+    { "file": "SabhaSignup.dc.html", "title": "Sabha sign-up · /app/sabha/signup","x": 480,  "y": 0, "w": 1440, "h": 900,  "page": "page-3" }
+  ],
+  "annotations": [
+    { "id": "flow-note", "x": 0, "y": -200, "w": 720, "page": "page-1",
+      "text": "New structure, borrowed from how Labour Link separates its products.\n\nLanding (left): hero unchanged; the three door cards are gone. Nav = Ghar · Kaam · Sabha · How it works · Login. Under the hero a compact strip names the three portals; further down each gets its own audience section (For households / For workers / For the council) with four points and an Explore button — this replaces the old “Four things” cards. Footer gains a Portals column.\n\nLogin (right): the common gateway at /app/login. Pick who you are → that portal’s own sign-in. Accounts are per portal; a Ghar login can never open Kaam or Sabha." },
+    { "id": "ghar-note", "x": 1540, "y": -150, "w": 900, "page": "page-2",
+      "text": "One portal, end to end: public landing (/app/ghar) → sign-in → sign-up (name, mobile, locality, password) → the existing Ghar screen, now signed in.\n\nInside the portal there is no “All portals” link any more — only the user’s initials and Sign out, which returns to /app/ghar. Kaam and Sabha follow the same four-page shape in their own colour." },
+    { "id": "kaam-sabha-note", "x": 0, "y": -170, "w": 900, "page": "page-3",
+      "text": "Kaam sign-up is Hindi-first like the rest of Kaam, and collects what the allocation engine needs: trades, area, languages. Creating the account creates the worker record.\n\nSabha sign-up is desktop-shaped and gated: the council code is the first field and is checked before anything else. Anyone without it cannot create a council account. [Council code shown is a sample.]" }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}
