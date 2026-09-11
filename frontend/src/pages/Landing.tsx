@@ -1,10 +1,10 @@
-import { useEffect, useState, type CSSProperties, type ReactElement } from "react";
+import { type CSSProperties, type ReactElement } from "react";
 import { Link } from "react-router-dom";
 
-import { api, formatRupees, type PortalId, type PublicStats } from "../api";
+import { type PortalId } from "../api";
 import { ArrowDown, ArrowRight, Check, Home, LogIn, Users, Wrench } from "../components/Icons";
 import { img, Photo, useImageExists } from "../components/Photo";
-import { BrandMark, PORTALS, PORTAL_ORDER } from "../components/PortalShell";
+import { BrandMark, PORTALS, PORTAL_ORDER, Wordmark } from "../components/PortalShell";
 import { useAuth } from "../lib/auth";
 
 /** Section photos, by portal (filenames follow docs/design/image-prompts.md). */
@@ -17,35 +17,35 @@ const PORTAL_FOR: Record<PortalId, string> = {
 };
 
 /** One section per audience: what that portal gives them, in four points. */
-const AUDIENCE: Record<PortalId, { label: string; headline: string; points: { title: string; text: string }[] }> = {
+const AUDIENCE: Record<PortalId, { label: string; headline: string; points: { title: string }[] }> = {
   ghar: {
     label: "For households",
-    headline: "Book a worker in a minute, and know why they were chosen.",
+    headline: "Book in a minute. Know who is coming, and why.",
     points: [
-      { title: "Book in a minute", text: "Trade, place, time. No advance payment." },
-      { title: "A fair pick, explained", text: "See the four scores and the reason in plain words before anyone arrives." },
-      { title: "Pay after the job", text: "The worker enters the bill; you see it split 85 · 10 · 5 in the open." },
-      { title: "Rate once, it counts", text: "One to five stars. The worker’s average updates for the next booking." },
+      { title: "Book in a minute" },
+      { title: "A fair pick, explained" },
+      { title: "Pay after the job" },
+      { title: "Rate once, it counts" },
     ],
   },
   kaam: {
     label: "For workers",
     headline: "Say when you’re free. Get your fair share of the work.",
     points: [
-      { title: "Availability by voice", text: "“Kal subah free hoon.” One sentence, Hindi or English, becomes your schedule." },
-      { title: "Nobody gets skipped", text: "Fewest jobs this week weighs 35% of every pick. Quiet weeks pull you forward." },
-      { title: "85% is yours", text: "10% goes to your welfare fund, 5% to the platform. Every bill, to the paisa." },
-      { title: "Days that count", text: "Every completed job is a recorded day of work toward your benefits." },
+      { title: "Availability by voice" },
+      { title: "Nobody gets skipped" },
+      { title: "85% is yours" },
+      { title: "Days that count" },
     ],
   },
   sabha: {
     label: "For the cooperative’s council",
-    headline: "Run the cooperative with every decision explained and every rupee visible.",
+    headline: "Every decision explained. Every rupee visible.",
     points: [
-      { title: "Assign with reasons", text: "The engine ranks eligible workers; one tap assigns, the reason stays on record." },
-      { title: "An open ledger", text: "Worker earnings, the welfare fund and the platform’s share, job by job." },
-      { title: "Next week’s demand", text: "Weekday patterns from past bookings say how many workers to keep on call." },
-      { title: "Council members only", text: "A Sabha account needs the cooperative’s council code to be created." },
+      { title: "Assign with reasons" },
+      { title: "An open ledger" },
+      { title: "Next week’s demand" },
+      { title: "Council members only" },
     ],
   },
 };
@@ -62,10 +62,7 @@ export default function Landing() {
         <header className="topbar">
           <div className="brand">
             <BrandMark />
-            <span className="wordmark">SahakarSetu</span>
-            <span className="hi hide-narrow" style={{ fontSize: 15, color: "var(--ink-3)" }}>
-              सहकार सेतु
-            </span>
+            <Wordmark />
           </div>
           <nav className="nav-links" aria-label="Site">
             <a href="#how" className="hide-narrow">
@@ -80,11 +77,12 @@ export default function Landing() {
 
         <section className="hero">
           <div className="stack" style={{ gap: 22 }}>
-            <div className="label" style={{ letterSpacing: "0.08em" }}>A bridge to cooperative work</div>
-            <h1>Fair work for the neighbourhood, run by the neighbourhood’s own cooperative.</h1>
+            <div className="stack" style={{ gap: 10 }}>
+              <h1>Fair work, close to home.</h1>
+              <div className="hi punch">काम भी, इंसाफ़ भी।</div>
+            </div>
             <p className="lede" style={{ margin: 0 }}>
-              Households book a plumber, electrician or cleaner. The cooperative’s engine picks the worker fairly — and explains why.{" "}
-              <strong style={{ color: "var(--ink)" }}>85% of every rupee goes to the worker, 10% to their welfare fund.</strong>
+              A worker from your neighbourhood’s own cooperative. <strong style={{ color: "var(--ink)" }}>85% of every rupee goes to them.</strong>
             </p>
             <div className="row" style={{ gap: 12, flexWrap: "wrap" }}>
               <Link to={user ? PORTALS[user.portal].home : "/login"} className="btn primary" style={{ background: "var(--ink)", color: "var(--paper)" }}>
@@ -96,7 +94,6 @@ export default function Landing() {
                 <ArrowDown size={18} />
               </a>
             </div>
-            <span className="small muted">Prototype · Smart India Hackathon 2026</span>
           </div>
           <HeroVisual />
         </section>
@@ -125,15 +122,15 @@ export default function Landing() {
           <div className="cols-3">
             <div className="problem">
               <h3>Nearest wins, every time</h3>
-              <p>Apps route each job to whoever is closest or highest rated. New members and quieter workers rarely get a turn.</p>
+              <p>Apps pick whoever is closest. New members rarely get a turn.</p>
             </div>
             <div className="problem">
               <h3>Commission first</h3>
-              <p>Platforms take a commission on every job. The cut comes out of the worker’s pocket and nothing comes back to them.</p>
+              <p>The cut comes out of the worker’s pocket. Nothing comes back.</p>
             </div>
             <div className="problem">
               <h3>Work that counts nowhere</h3>
-              <p>Benefits for gig workers depend on proving days of engagement. If nobody records them, they never add up.</p>
+              <p>Unrecorded days never add up to benefits.</p>
             </div>
           </div>
         </div>
@@ -158,47 +155,15 @@ export default function Landing() {
         </div>
       </section>
 
-      <LiveNumbers />
-
       <footer>
-        <div className="wrap footer-cols">
-          <div className="stack" style={{ gap: 10 }}>
-            <div className="row" style={{ gap: 8 }}>
-              <BrandMark size={24} />
-              <span className="display" style={{ fontSize: 18, fontWeight: 700, color: "var(--ink)" }}>
-                SahakarSetu
-              </span>
-            </div>
-            <p className="small" style={{ margin: 0, lineHeight: 1.5, color: "var(--ink-2)", maxWidth: 320 }}>
-              A cooperative-run platform for household services. Fair allocation, an open ledger, and a welfare fund for the people doing the work.
-            </p>
+        <div className="wrap">
+          <div className="row" style={{ gap: 8 }}>
+            <BrandMark size={24} />
+            <span className="display" style={{ fontSize: 18, fontWeight: 700, color: "var(--ink)" }}>
+              Sahakar<span className="hi">सेतु</span>
+            </span>
           </div>
-          <div className="stack" style={{ gap: 10 }}>
-            <div className="label">Portals</div>
-            {PORTAL_ORDER.map((id) => (
-              <Link key={id} to={PORTALS[id].login} className="row" style={{ gap: 8, color: "var(--ink)", fontWeight: 600, textDecoration: "none" }}>
-                <span className="dot-mark" style={{ background: PORTALS[id].accent }} />
-                {PORTALS[id].name} · {PORTALS[id].tag}
-                <span className="muted" style={{ fontWeight: 500 }}>— sign in</span>
-              </Link>
-            ))}
-          </div>
-          <div className="stack" style={{ gap: 10 }}>
-            <div className="label">Project</div>
-            <a href="#how" style={{ color: "var(--ink)", fontWeight: 600, textDecoration: "none" }}>
-              How it works
-            </a>
-            <a href="https://github.com/Aadi-j08/SIH-2026" style={{ color: "var(--ink)", fontWeight: 600, textDecoration: "none" }}>
-              GitHub · Aadi-j08/SIH-2026
-            </a>
-            <a href="/docs" style={{ color: "var(--ink)", fontWeight: 600, textDecoration: "none" }}>
-              API docs
-            </a>
-          </div>
-          <div className="footer-line">
-            <span>SahakarSetu · Smart India Hackathon 2026</span>
-            <span className="hi">सहकार सेतु</span>
-          </div>
+          <span>Household services, run by the neighbourhood’s own cooperative.</span>
         </div>
       </footer>
     </div>
@@ -245,12 +210,9 @@ function Audience({ id, flip }: { id: PortalId; flip: boolean }) {
         <h2 className="display" id={`audience-${id}`}>{a.headline}</h2>
         <div className="cols-2">
           {a.points.map((pt) => (
-            <div className="stack" style={{ gap: 6 }} key={pt.title}>
-              <div className="row" style={{ gap: 8, fontWeight: 700 }}>
-                <Check size={18} style={{ color: "var(--accent)" }} />
-                {pt.title}
-              </div>
-              <p className="small" style={{ margin: 0, lineHeight: 1.5, color: "var(--ink-2)" }}>{pt.text}</p>
+            <div className="row" style={{ gap: 8, fontWeight: 700 }} key={pt.title}>
+              <Check size={18} style={{ color: "var(--accent)" }} />
+              {pt.title}
             </div>
           ))}
         </div>
@@ -258,9 +220,6 @@ function Audience({ id, flip }: { id: PortalId; flip: boolean }) {
           <Link to={p.landing} className="btn primary" style={{ minHeight: 52, fontSize: 16, background: "var(--accent-d)" }}>
             Explore {p.name}
             <ArrowRight size={18} />
-          </Link>
-          <Link to={p.login} className="small" style={{ fontWeight: 700 }}>
-            Sign in to {p.name}
           </Link>
         </div>
       </div>
@@ -281,110 +240,7 @@ function Step({ n, color, title, text }: { n: number; color: string; title: stri
   );
 }
 
-function Bar({ label, weight, value }: { label: string; weight: string; value: number }) {
-  return (
-    <div className="stack" style={{ gap: 4 }}>
-      <div className="row between tiny">
-        <span className="muted">
-          {label} · {weight}
-        </span>
-        <span style={{ fontWeight: 700 }}>{value}%</span>
-      </div>
-      <div className="bar thin">
-        <div style={{ width: `${value}%`, background: "var(--terracotta)" }} />
-      </div>
-    </div>
-  );
-}
-
-/** Hero photo (when present) with the worked allocation example laid over it. */
+/** Hero photo; the slot hides itself until the file exists. */
 function HeroVisual() {
-  const hasPhoto = useImageExists("hero.jpg");
-  return (
-    <div className={`hero-visual${hasPhoto ? " has-photo" : ""}`}>
-      {hasPhoto && <img className="photo" src={img("hero.jpg")} alt="A plumber from the cooperative fixing a kitchen sink while the household looks on" />}
-      <HeroExplanation />
-    </div>
-  );
-}
-
-/** A worked allocation example so the core idea is visible without reading. */
-function HeroExplanation() {
-  return (
-    <aside className="hero-art" aria-label="Example of an explained allocation">
-      <div className="label">Why Asha got this job</div>
-      <div className="row" style={{ gap: 12 }}>
-        <span className="avatar">AV</span>
-        <div className="grow stack" style={{ gap: 1 }}>
-          <div style={{ fontWeight: 700 }}>Asha Verma</div>
-          <div className="small muted">Plumbing · 0.2 km away</div>
-        </div>
-        <span className="display" style={{ fontSize: 22, fontWeight: 700, color: "var(--green-d)" }}>
-          0.99
-        </span>
-      </div>
-      <div className="grid-2" style={{ gap: "8px 14px" }}>
-        <Bar label="Proximity" weight="30%" value={100} />
-        <Bar label="Fairness" weight="35%" value={100} />
-        <Bar label="Rating" weight="20%" value={95} />
-        <Bar label="Availability" weight="15%" value={100} />
-      </div>
-      <p className="small" style={{ margin: 0, lineHeight: 1.45, color: "var(--ink-2)" }}>
-        “Asha: 0.2 km from the customer; 1 job this week (fewest in the pool, so fairness favours them); rated 4.8/5; declared available for this slot.”
-      </p>
-    </aside>
-  );
-}
-
-function LiveNumbers() {
-  const [stats, setStats] = useState<PublicStats | null>(null);
-
-  useEffect(() => {
-    api.stats().then(setStats).catch(() => setStats(null));
-  }, []);
-
-  const value = (n: number | null | undefined, format: (v: number) => string = String) => (n === null || n === undefined ? "—" : format(n));
-  return (
-    <section className="section">
-      <div className="wrap" style={{ gap: 20 }}>
-        <div className="row" style={{ alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-          <h2 className="display" style={{ fontSize: 30 }}>
-            The cooperative today
-          </h2>
-          <span className="small muted">{stats ? "live from the platform" : "connecting…"}</span>
-        </div>
-        <div className="cols-4 nums">
-          <div className="number">
-            <div className="value num">{value(stats?.workers)}</div>
-            <div className="small" style={{ color: "var(--ink-2)" }}>
-              workers in the cooperative
-            </div>
-          </div>
-          <div className="number">
-            <div className="value num">{value(stats?.bookings_completed)}</div>
-            <div className="small" style={{ color: "var(--ink-2)" }}>
-              jobs completed
-            </div>
-          </div>
-          <div className="number">
-            <div className="value num" style={{ color: "var(--green-d)" }}>
-              {value(stats?.welfare_fund_rupees, formatRupees)}
-            </div>
-            <div className="small" style={{ color: "var(--ink-2)" }}>
-              in the welfare fund
-            </div>
-          </div>
-          <div className="number">
-            <div className="value num">
-              {stats?.average_rating == null ? "—" : stats.average_rating.toFixed(1)}
-              <span style={{ fontSize: 18, color: "var(--ink-3)" }}> / 5</span>
-            </div>
-            <div className="small" style={{ color: "var(--ink-2)" }}>
-              average rating
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
+  return <Photo name="hero.jpg" alt="A plumber from the cooperative fixing a kitchen sink while the household looks on" className="photo hero-photo" />;
 }

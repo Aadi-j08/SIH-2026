@@ -7,7 +7,7 @@ import { Link } from "react-router-dom";
 
 import { type PortalId } from "../api";
 import { ArrowLeft, Eye, EyeOff } from "./Icons";
-import { BrandMark, PORTALS, PortalTag, useThemeColor } from "./PortalShell";
+import { BrandMark, PORTALS, PortalTag, useThemeColor, Wordmark } from "./PortalShell";
 
 /** Public (signed-out) frame for a portal's auth screens: brand + tag, nothing else. */
 export function AuthShell({ portal, children, wide = false }: { portal: PortalId; children: ReactNode; wide?: boolean }) {
@@ -18,12 +18,11 @@ export function AuthShell({ portal, children, wide = false }: { portal: PortalId
       <header className="topbar">
         <Link to={p.landing} className="brand">
           <BrandMark color={p.accent} />
-          <span className="wordmark">
-            SahakarSetu
+          <Wordmark>
             <small>
               {p.name} · {p.tag}
             </small>
-          </span>
+          </Wordmark>
         </Link>
         <div className="row" style={{ gap: 10 }}>
           <PortalTag portal={portal} />
