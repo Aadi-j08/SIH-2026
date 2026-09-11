@@ -14,6 +14,7 @@ import {
   type BookingDetail,
   type Recommendation,
 } from "../api";
+import { useAuth } from "../lib/auth";
 import { ArrowRight, Check, Clock, Locate, Pin, Star, TRADE_ICONS } from "../components/Icons";
 
 const LAST_BOOKING_KEY = "sahakarsetu.lastBooking";
@@ -41,14 +42,15 @@ function toLocalIso(date: Date): string {
 
 function BookingForm() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [trade, setTrade] = useState<string>("plumbing");
   const [address, setAddress] = useState("");
   const [location, setLocation] = useState({ ...DEFAULT_LOCATION, fromGps: false });
   const [locating, setLocating] = useState(false);
   const [when, setWhen] = useState<When>("tomorrow");
   const [custom, setCustom] = useState(tomorrowAt(10));
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [name, setName] = useState(user?.name ?? "");
+  const [phone, setPhone] = useState(user?.phone ?? "");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const lastBooking = Number(storageGet(LAST_BOOKING_KEY) ?? 0) || null;
@@ -87,7 +89,7 @@ function BookingForm() {
         scheduled_for: when === "asap" ? null : when === "tomorrow" ? tomorrowAt(10) : custom,
       });
       storageSet(LAST_BOOKING_KEY, String(booking.id));
-      navigate(`/customer/${booking.id}`);
+      navigate(`/ghar/home/${booking.id}`);
     } catch (e) {
       setError(errorMessage(e));
       setSubmitting(false);
@@ -98,7 +100,16 @@ function BookingForm() {
     <form className="page" onSubmit={submit}>
       <div className="stack" style={{ gap: 6 }}>
         <h1>Book a service</h1>
-        <div className="sub">A fairly-chosen worker from your local cooperative.</div>
+        <div className="sub">
+          {user ? (
+            <>
+              Namaste, {user.name.split(" ")[0]}
+              {user.locality ? ` · ${user.locality}` : ""}
+            </>
+          ) : (
+            "A fairly-chosen worker from your local cooperative."
+          )}
+        </div>
       </div>
 
       <section className="stack">
@@ -154,6 +165,7 @@ function BookingForm() {
 
       <section className="stack">
         <div className="label">Your details</div>
+        <div className="tiny muted">From your Ghar account — change them here if this booking is for someone else.</div>
         <label className="field">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" autoComplete="name" required minLength={1} />
         </label>
@@ -164,7 +176,7 @@ function BookingForm() {
 
       {error && <div className="notice error">{error}</div>}
       {lastBooking && (
-        <Link to={`/customer/${lastBooking}`} className="small">
+        <Link to={`/ghar/home/${lastBooking}`} className="small">
           See your last booking (#{lastBooking}) →
         </Link>
       )}
@@ -211,7 +223,7 @@ function BookingStatus({ bookingId }: { bookingId: number }) {
     return (
       <div className="page">
         <div className="notice error">{error}</div>
-        <Link to="/customer" className="btn outline">
+        <Link to="/ghar/home" className="btn outline">
           Back to booking
         </Link>
       </div>
@@ -314,7 +326,7 @@ function BookingStatus({ bookingId }: { bookingId: number }) {
         </section>
       )}
 
-      <Link to="/customer" className="btn outline">
+      <Link to="/ghar/home" className="btn outline">
         Book another service
       </Link>
     </div>

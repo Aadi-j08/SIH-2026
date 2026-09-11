@@ -1,0 +1,118 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&amp;family=Manrope:wght@400..700&amp;family=Noto+Sans+Devanagari:wght@400;600&amp;display=swap">
+  <style>
+    body { margin: 0; background: #FCFAF6; color: #261D17; font-family: Manrope, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #A53E00; } a:hover { color: #C65D26; }
+    .display { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; }
+    .hi { font-family: "Noto Sans Devanagari", "Nirmala UI", Mangal, sans-serif; }
+    svg { display: block; }
+    .wrap { width: 100%; max-width: 1200px; margin: 0 auto; padding: 0 40px; box-sizing: border-box; }
+    .choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+    @media (max-width: 720px) { .wrap { padding: 0 20px; } .choices { grid-template-columns: minmax(0, 1fr); } }
+  </style>
+</helmet>
+<div style="background: #FCFAF6; min-height: 100%; display: flex; flex-direction: column;">
+
+  <!-- top bar: brand + way back only -->
+  <div class="wrap" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 22px; padding-bottom: 22px;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <svg width="32" height="32" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#C65D26"></rect><path d="M96 336c40-96 104-144 160-144s120 48 160 144" fill="none" stroke="#FCFAF6" stroke-width="40" stroke-linecap="round"></path><path d="M144 336v48M256 208v176M368 336v48" stroke="#FCFAF6" stroke-width="32" stroke-linecap="round"></path></svg>
+      <div class="display" style="font-size: 20px; font-weight: 700; letter-spacing: -0.01em;">SahakarSetu</div>
+      <div class="hi" style="font-size: 15px; color: #8C857F;">सहकार सेतु</div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 6px; height: 44px; font-size: 13px; font-weight: 600; color: #5C534D;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"></path></svg>
+      Back to home
+    </div>
+  </div>
+
+  <!-- heading -->
+  <div class="wrap" style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding-top: 48px; padding-bottom: 40px;">
+    <div style="font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #8C857F;">Sign in · Create account</div>
+    <div class="display" style="font-size: 44px; font-weight: 700; line-height: 1.05; letter-spacing: -0.03em;">Who are you signing in as?</div>
+    <div class="hi" style="font-size: 20px; color: #5C534D;">आप किस रूप में आए हैं?</div>
+  </div>
+
+  <!-- three choices -->
+  <div class="wrap" style="padding-bottom: 32px;">
+    <div class="choices">
+
+      <div style="display: flex; flex-direction: column; gap: 16px; padding: 20px; border-radius: 22px; background: #FFFFFF; border: 1.5px solid #E2DDD5; border-top: 6px solid #C65D26;">
+        <img src="customer.jpg" alt="" style="display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 14px; background: #F7F3EC;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: baseline; gap: 8px;"><div class="display" style="font-size: 26px; font-weight: 700;">Ghar</div><div class="hi" style="font-size: 18px; color: #8C857F;">घर</div></div>
+          <div style="display: flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 999px; background: #FFE4D6; color: #A53E00; font-size: 12px; font-weight: 700;">Home</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div style="font-size: 16px; font-weight: 700;">I need a worker</div>
+          <div style="font-size: 14px; line-height: 1.5; color: #5C534D;">For households booking a plumber, electrician or cleaner.</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div class="display" style="display: flex; align-items: center; justify-content: center; gap: 8px; height: 50px; border-radius: 14px; background: #C65D26; color: #FFFFFF; font-size: 15px; font-weight: 700;">Sign in to Ghar
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: center; height: 44px; border-radius: 14px; border: 1.5px solid #E2DDD5; background: #FFFFFF; color: #5C534D; font-size: 14px; font-weight: 700;">New here? Create a Ghar account</div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 16px; padding: 20px; border-radius: 22px; background: #FFFFFF; border: 1.5px solid #E2DDD5; border-top: 6px solid #25984D;">
+        <img src="worker.jpg" alt="" style="display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 14px; background: #F7F3EC;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: baseline; gap: 8px;"><div class="display" style="font-size: 26px; font-weight: 700;">Kaam</div><div class="hi" style="font-size: 18px; color: #8C857F;">काम</div></div>
+          <div style="display: flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 999px; background: #D9F3DD; color: #00792F; font-size: 12px; font-weight: 700;">Work</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div style="font-size: 16px; font-weight: 700;">I am a worker</div>
+          <div style="font-size: 14px; line-height: 1.5; color: #5C534D;">For members of the cooperative who do the work.</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div class="display" style="display: flex; align-items: center; justify-content: center; gap: 8px; height: 50px; border-radius: 14px; background: #00792F; color: #FFFFFF; font-size: 15px; font-weight: 700;">Sign in to Kaam
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: center; height: 44px; border-radius: 14px; border: 1.5px solid #E2DDD5; background: #FFFFFF; color: #5C534D; font-size: 14px; font-weight: 700;">New here? Join as a worker</div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 16px; padding: 20px; border-radius: 22px; background: #FFFFFF; border: 1.5px solid #E2DDD5; border-top: 6px solid #5E78D9;">
+        <img src="cooperative.jpg" alt="" style="display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 14px; background: #F7F3EC;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: baseline; gap: 8px;"><div class="display" style="font-size: 26px; font-weight: 700;">Sabha</div><div class="hi" style="font-size: 18px; color: #8C857F;">सभा</div></div>
+          <div style="display: flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 999px; background: #E0EBFF; color: #435AB8; font-size: 12px; font-weight: 700;">Council</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div style="font-size: 16px; font-weight: 700;">I run the cooperative</div>
+          <div style="font-size: 14px; line-height: 1.5; color: #5C534D;">For council members. Creating an account needs the council code.</div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div class="display" style="display: flex; align-items: center; justify-content: center; gap: 8px; height: 50px; border-radius: 14px; background: #435AB8; color: #FFFFFF; font-size: 15px; font-weight: 700;">Sign in to Sabha
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: center; gap: 6px; height: 44px; border-radius: 14px; border: 1.5px solid #E2DDD5; background: #FFFFFF; color: #5C534D; font-size: 14px; font-weight: 700;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            I have a council code
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- privacy line -->
+  <div class="wrap" style="display: flex; justify-content: center; padding-bottom: 64px;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 12px; background: #F7F3EC; color: #5C534D; font-size: 13px; line-height: 1.45; max-width: 640px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8C857F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+      Each portal keeps its own accounts. A Ghar sign-in cannot open Kaam or Sabha, and the other way round. The same phone number can hold one account in each.
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
