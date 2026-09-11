@@ -11,7 +11,7 @@ import {
   ArrowLeft, ArrowRight, Bill, CalendarIcon, Check, ListOrdered, Lock, Mic, Receipt, Star, TrendingUp, Users,
 } from "../components/Icons";
 import { Photo } from "../components/Photo";
-import { BrandMark, PORTALS, PortalTag, useThemeColor } from "../components/PortalShell";
+import { BrandMark, PORTALS, PortalTag, useThemeColor, Wordmark } from "../components/PortalShell";
 import { useAuth } from "../lib/auth";
 
 type IconFn = (p: { size?: number }) => ReactElement;
@@ -128,18 +128,17 @@ export default function PortalLanding({ portal }: { portal: PortalId }) {
         <div className="wrap row between" style={{ gap: 12, flexWrap: "wrap" }}>
           <Link to={p.landing} className="brand">
             <BrandMark color={p.accent} />
-            <span className="wordmark">
-              SahakarSetu
+            <Wordmark>
               <small>
                 {p.name} · {p.tag}
               </small>
-            </span>
+            </Wordmark>
             <PortalTag portal={portal} style={{ marginLeft: 6 }} />
           </Link>
           <nav className="nav-links" aria-label="This portal">
             <Link to="/" aria-label="SahakarSetu home">
               <ArrowLeft size={16} />
-              <span className="hide-narrow">SahakarSetu home</span>
+              <span className="hide-narrow">Home</span>
             </Link>
             <a href="#what" className="hide-narrow">What you get</a>
             <a href="#how" className="hide-narrow">How it works</a>
@@ -238,7 +237,7 @@ export default function PortalLanding({ portal }: { portal: PortalId }) {
         <div className="wrap">
           <div className="row" style={{ gap: 8 }}>
             <span className="display" style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)" }}>
-              SahakarSetu
+              Sahakar<span className="hi">सेतु</span>
             </span>
             <span>
               · {p.name} · {p.tag}
