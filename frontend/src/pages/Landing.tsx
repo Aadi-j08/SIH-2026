@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ReactElement } from "react";
 import { Link } from "react-router-dom";
 
-import { api, formatRupees, type Dashboard, type PortalId } from "../api";
+import { api, formatRupees, type PortalId, type PublicStats } from "../api";
 import { ArrowDown, ArrowRight, Check, Home, LogIn, Users, Wrench } from "../components/Icons";
 import { img, Photo, useImageExists } from "../components/Photo";
 import { BrandMark, PORTALS, PORTAL_ORDER } from "../components/PortalShell";
@@ -337,12 +337,10 @@ function HeroExplanation() {
 }
 
 function LiveNumbers() {
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
-  const [workerCount, setWorkerCount] = useState<number | null>(null);
+  const [stats, setStats] = useState<PublicStats | null>(null);
 
   useEffect(() => {
-    api.admin.dashboard().then(setDashboard).catch(() => setDashboard(null));
-    api.workers.list().then((w) => setWorkerCount(w.length)).catch(() => setWorkerCount(null));
+    api.stats().then(setStats).catch(() => setStats(null));
   }, []);
 
   const value = (n: number | null | undefined, format: (v: number) => string = String) => (n === null || n === undefined ? "—" : format(n));
@@ -353,24 +351,24 @@ function LiveNumbers() {
           <h2 className="display" style={{ fontSize: 30 }}>
             The cooperative today
           </h2>
-          <span className="small muted">{dashboard ? "live from the platform" : "connecting…"}</span>
+          <span className="small muted">{stats ? "live from the platform" : "connecting…"}</span>
         </div>
         <div className="cols-4 nums">
           <div className="number">
-            <div className="value num">{value(workerCount)}</div>
+            <div className="value num">{value(stats?.workers)}</div>
             <div className="small" style={{ color: "var(--ink-2)" }}>
               workers in the cooperative
             </div>
           </div>
           <div className="number">
-            <div className="value num">{value(dashboard?.bookings.completed)}</div>
+            <div className="value num">{value(stats?.bookings_completed)}</div>
             <div className="small" style={{ color: "var(--ink-2)" }}>
               jobs completed
             </div>
           </div>
           <div className="number">
             <div className="value num" style={{ color: "var(--green-d)" }}>
-              {value(dashboard?.money.welfare_fund_rupees, formatRupees)}
+              {value(stats?.welfare_fund_rupees, formatRupees)}
             </div>
             <div className="small" style={{ color: "var(--ink-2)" }}>
               in the welfare fund
@@ -378,7 +376,7 @@ function LiveNumbers() {
           </div>
           <div className="number">
             <div className="value num">
-              {dashboard?.ratings.average == null ? "—" : dashboard.ratings.average.toFixed(1)}
+              {stats?.average_rating == null ? "—" : stats.average_rating.toFixed(1)}
               <span style={{ fontSize: 18, color: "var(--ink-3)" }}> / 5</span>
             </div>
             <div className="small" style={{ color: "var(--ink-2)" }}>

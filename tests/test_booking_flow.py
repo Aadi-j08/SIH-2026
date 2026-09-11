@@ -40,13 +40,9 @@ SITE = (23.1800, 77.4200)  # booking location used throughout
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
-    db_file = tmp_path / "sahakarsetu_test.db"
-    monkeypatch.setattr(database, DB_PATH_ATTRIBUTE, db_file, raising=False)
-    monkeypatch.setenv(DB_PATH_ENV_VAR, str(db_file))
-    getattr(database, INIT_DB_FUNCTION)()
-    with TestClient(app) as test_client:
-        yield test_client
+def client(tmp_path, monkeypatch, make_client):
+    # Endpoints need a signed-in user; the council role may do everything this suite exercises.
+    yield make_client("council")
 
 
 def query(sql: str, params: tuple = ()) -> list[dict]:
@@ -161,7 +157,7 @@ def test_assign_rolls_back_everything_if_last_step_fails(client, crew, monkeypat
         raise RuntimeError("simulated crash while updating jobs_this_week")
 
     monkeypatch.setattr(booking_flow, "_increment_worker_jobs", fail)
-    with TestClient(app, raise_server_exceptions=False) as failing_client:
+    with TestClient(app, raise_server_exceptions=False, cookies=client.cookies) as failing_client:
         response = assign(failing_client, booking_id)
 
     assert response.status_code == 500

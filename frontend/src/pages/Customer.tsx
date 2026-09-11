@@ -12,7 +12,6 @@ import {
   storageGet,
   storageSet,
   type BookingDetail,
-  type Recommendation,
 } from "../api";
 import { useAuth } from "../lib/auth";
 import { ArrowRight, Check, Clock, Locate, Pin, Star, TRADE_ICONS } from "../components/Icons";
@@ -198,7 +197,6 @@ function BookingForm() {
 
 function BookingStatus({ bookingId }: { bookingId: number }) {
   const [detail, setDetail] = useState<BookingDetail | null>(null);
-  const [preview, setPreview] = useState<Recommendation[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
@@ -206,7 +204,6 @@ function BookingStatus({ bookingId }: { bookingId: number }) {
       const next = await api.bookings.detail(bookingId);
       setDetail(next);
       setError(null);
-      if (next.booking.status === "pending") setPreview(await api.bookings.recommendations(bookingId, 3));
     } catch (e) {
       setError(errorMessage(e));
     }
@@ -255,21 +252,7 @@ function BookingStatus({ bookingId }: { bookingId: number }) {
             <div style={{ fontWeight: 700 }}>The cooperative is choosing your worker</div>
             <div className="small muted">Workers are ranked on distance, who has had the fewest jobs this week, rating and availability — not just who's nearest.</div>
           </div>
-          {preview.length > 0 ? (
-            <>
-              <div className="label">Likely match</div>
-              {preview.slice(0, 1).map((r) => (
-                <WorkerCard key={r.worker_id} name={r.worker_name} meta={`${r.distance_km.toFixed(1)} km away`} score={r.score} breakdown={r.score_breakdown} explanation={r.explanation} />
-              ))}
-              {preview.length > 1 && (
-                <div className="tiny muted">
-                  Also considered: {preview.slice(1).map((r) => `${r.worker_name} (${r.score.toFixed(2)})`).join(", ")}
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="notice info">No eligible worker yet — the cooperative will be notified.</div>
-          )}
+          <div className="tiny muted">You will see who is coming, and why they were chosen, as soon as the cooperative assigns the job.</div>
         </section>
       )}
 

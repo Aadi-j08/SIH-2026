@@ -1,7 +1,7 @@
 """Per-portal accounts: sign-up, sign-in, sessions, and the walls between portals."""
 from __future__ import annotations
 
-from app import auth
+from app import auth, repository
 
 
 def ghar(phone="98765 43210", **extra) -> dict:
@@ -43,7 +43,7 @@ def test_kaam_signup_creates_the_worker_record(client):
 
 def test_kaam_signup_needs_a_trade(client):
     assert client.post("/auth/signup", json=kaam(trade="")).status_code == 422
-    assert client.get("/workers").json() == []
+    assert repository.list_workers() == []          # nothing was created (the /workers directory is council-only)
 
 
 def test_sabha_signup_is_gated_by_the_council_code(client, monkeypatch):

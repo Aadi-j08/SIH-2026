@@ -31,10 +31,23 @@ http://127.0.0.1:5173/app/ — it hot-reloads and proxies API calls to :8000.
 The SQLite file is `sahakarsetu.db` in the project root (override with the
 `SAHAKARSETU_DB` environment variable). It is created on first start.
 
+## Accounts and roles
+
+Everyone signs up inside a portal (`POST /auth/signup`); the portal is the role:
+
+| Portal | Role | May |
+|---|---|---|
+| Ghar | customer | place bookings, see and rate **their own** bookings |
+| Kaam | worker | update **their own** availability, see and complete jobs **assigned to them** |
+| Sabha (needs the council code, default `SABHA-2026`) | council | everything: assign work, dashboard, worker directory, forecasts |
+
+The session is an httpOnly cookie; API clients may instead send
+`Authorization: Bearer <session_token>` from the sign-up/sign-in response.
+
 ## Tests
 
 ```bash
-.venv\Scripts\python -m pytest -q        # backend: 78 tests
+.venv\Scripts\python -m pytest -q        # backend: 145 tests
 cd frontend && npm run typecheck          # frontend: TypeScript
 ```
 
@@ -42,7 +55,9 @@ cd frontend && npm run typecheck          # frontend: TypeScript
 
 ```
 app/
-  main.py                  FastAPI app: workers, bookings, voice, forecast, serves /app
+  main.py                  FastAPI app: workers, bookings, voice, forecast, staffing, serves /app
+  auth.py / ownership.py   accounts, sessions, access roles; who may see or act on a booking
+  trades.py                canonical trade names (plumber / pipe repair -> plumbing)
   database.py              SQLite setup (workers, bookings, assignments)
   repository.py            DB access functions
   schemas.py               Pydantic contracts
@@ -50,6 +65,7 @@ app/
     allocation.py          fair allocation engine (proximity · fairness · rating · availability)
     voice.py               voice availability parser (offline, rule-based)
     forecast.py            weekday-seasonal demand forecast
+    staffing.py            forecast vs. available workers -> shortage
     booking_flow.py        assign → complete (85/10/5 ledger) → rating; admin dashboard
     allocation_bridge.py   SQLite rows → allocation engine
     ledger.py              mock payment split, in paise
