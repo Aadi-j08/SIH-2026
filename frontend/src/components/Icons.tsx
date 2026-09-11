@@ -163,6 +163,61 @@ export const Users = (p: IconProps) => (
   </Icon>
 );
 
+export const LogOut = (p: IconProps) => (
+  <Icon {...p} strokeWidth={2.25}>
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+  </Icon>
+);
+export const LogIn = (p: IconProps) => (
+  <Icon {...p} strokeWidth={2.25}>
+    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3" />
+  </Icon>
+);
+export const Eye = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+    <circle cx="12" cy="12" r="3" />
+  </Icon>
+);
+export const EyeOff = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a20.3 20.3 0 0 1 5.06-5.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a20.3 20.3 0 0 1-4.13 5.19M14.12 14.12a3 3 0 1 1-4.24-4.24M1 1l22 22" />
+  </Icon>
+);
+export const Lock = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="11" width="18" height="11" rx="2" />
+    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </Icon>
+);
+export const Shield = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+  </Icon>
+);
+export const Info = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 16v-4M12 8h.01" />
+  </Icon>
+);
+export const Home = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 11l9-8 9 8M5 10v10h14V10M10 20v-6h4v6" />
+  </Icon>
+);
+export const ChevronDown = (p: IconProps) => (
+  <Icon {...p} strokeWidth={2.25}>
+    <path d="M6 9l6 6 6-6" />
+  </Icon>
+);
+export const Bill = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1z" />
+    <path d="M8 8h8M8 12h8M8 16h5" />
+  </Icon>
+);
+
 export const TRADE_ICONS: Record<string, (p: IconProps) => ReactElement> = {
   plumbing: Wrench,
   electrical: Zap,

@@ -1,0 +1,119 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&amp;family=Manrope:wght@400..700&amp;family=Noto+Sans+Devanagari:wght@400;600&amp;display=swap">
+  <style>
+    body { margin: 0; background: #FCFAF6; color: #261D17; font-family: Manrope, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #A53E00; } a:hover { color: #C65D26; }
+    .display { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; }
+    .hi { font-family: "Noto Sans Devanagari", "Nirmala UI", Mangal, sans-serif; }
+    svg { display: block; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #FCFAF6; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box;">
+
+  <!-- top bar -->
+  <div style="display: flex; align-items: center; justify-content: space-between; padding: 22px 20px 0 20px;">
+    <div style="display: flex; align-items: center; gap: 8px;"><div class="display" style="font-size: 20px; font-weight: 700; letter-spacing: -0.01em; color: #261D17;">SahakarSetu</div><div style="display: flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 999px; background: #FFE4D6; color: #A53E00; font-size: 12px; font-weight: 700;">Ghar · Home</div></div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="display: flex; align-items: center; gap: 2px; border: 1px solid #E2DDD5; border-radius: 999px; padding: 3px;">
+        <div style="font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 999px; background: #261D17; color: #FCFAF6;">EN</div>
+        <div class="hi" style="font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 999px; color: #5C534D;">हिं</div>
+      </div>
+      <div class="display" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 999px; background: #FFE4D6; color: #A53E00; font-size: 13px; font-weight: 700;">PS</div>
+    </div>
+  </div>
+
+  <!-- heading -->
+  <div style="display: flex; flex-direction: column; gap: 6px; padding: 26px 20px 0 20px;">
+    <div class="display" style="font-size: 30px; font-weight: 700; line-height: 1.05; letter-spacing: -0.02em; color: #261D17;">Book a service</div>
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;"><div style="font-size: 14px; line-height: 1.45; color: #5C534D;">Namaste, Priya · Andheri East</div><div style="display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; color: #8C857F;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path></svg>Sign out</div></div>
+  </div>
+
+  <!-- form -->
+  <div style="display: flex; flex-direction: column; gap: 18px; padding: 22px 20px 0 20px; flex-grow: 1;">
+
+    <!-- trade -->
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #8C857F;">What do you need?</div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 8px; border-radius: 14px; background: #FFE4D6; border: 2px solid #C65D26; color: #A53E00;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+          <div style="font-size: 13px; font-weight: 700;">Plumbing</div>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 8px; border-radius: 14px; background: #FFFFFF; border: 2px solid #E2DDD5; color: #261D17;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          <div style="font-size: 13px; font-weight: 600;">Electrical</div>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 8px; border-radius: 14px; background: #FFFFFF; border: 2px solid #E2DDD5; color: #261D17;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 12 6.5 20.5a2.12 2.12 0 0 1-3-3L12 9"></path><path d="M17.64 15 22 10.64"></path><path d="m20.91 11.7-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6A5.56 5.56 0 0 0 12.07 3H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.26 1.91"></path></svg>
+          <div style="font-size: 13px; font-weight: 600;">Carpentry</div>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 8px; border-radius: 14px; background: #FFFFFF; border: 2px solid #E2DDD5; color: #261D17;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"></path></svg>
+          <div style="font-size: 13px; font-weight: 600;">Cleaning</div>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 8px; border-radius: 14px; background: #FFFFFF; border: 2px solid #E2DDD5; color: #261D17;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="6" rx="1.5"></rect><path d="M17 7h3v5h-8v2"></path><rect x="10" y="14" width="4" height="7" rx="1"></rect></svg>
+          <div style="font-size: 13px; font-weight: 600;">Painting</div>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 8px; border-radius: 14px; background: #FFFFFF; border: 2px solid #E2DDD5; color: #5C534D;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle><circle cx="19" cy="12" r="1.5"></circle></svg>
+          <div style="font-size: 13px; font-weight: 600;">More</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- where -->
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #8C857F;">Where?</div>
+      <div style="display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 12px 0 14px; border-radius: 14px; background: #FFFFFF; border: 1.5px solid #E2DDD5; box-sizing: border-box;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C65D26" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+        <div style="flex-grow: 1; font-size: 15px; font-weight: 500; color: #261D17;">12 MP Nagar, Bhopal</div>
+        <div style="display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; border-radius: 999px; background: #F7F3EC; color: #5C534D; font-size: 12px; font-weight: 700;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>
+          <div>GPS</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- when -->
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #8C857F;">When?</div>
+      <div style="display: flex; gap: 8px;">
+        <div style="display: flex; align-items: center; justify-content: center; height: 44px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1.5px solid #E2DDD5; font-size: 13px; font-weight: 600; color: #5C534D;">As soon as possible</div>
+        <div style="display: flex; align-items: center; justify-content: center; gap: 6px; height: 44px; padding: 0 14px; border-radius: 999px; background: #261D17; border: 1.5px solid #261D17; font-size: 13px; font-weight: 700; color: #FCFAF6;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+          <div>Tomorrow, 10:00</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- details -->
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #8C857F;">Your details</div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; align-items: center; height: 48px; padding: 0 14px; border-radius: 14px; background: #FFFFFF; border: 1.5px solid #E2DDD5; font-size: 15px; color: #261D17; box-sizing: border-box;">Priya Sharma</div>
+        <div style="display: flex; align-items: center; height: 48px; padding: 0 14px; border-radius: 14px; background: #FFFFFF; border: 1.5px solid #E2DDD5; font-size: 15px; color: #8C857F; box-sizing: border-box;">Mobile number</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTA -->
+  <div style="display: flex; flex-direction: column; gap: 10px; padding: 16px 20px 24px 20px; background: #FCFAF6; border-top: 1px solid #E2DDD5;">
+    <div style="display: flex; align-items: center; justify-content: center; gap: 10px; height: 56px; border-radius: 16px; background: #C65D26; color: #FFFFFF;">
+      <div class="display" style="font-size: 17px; font-weight: 700; letter-spacing: -0.01em;">Find a worker</div>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+    </div>
+    <div style="font-size: 12px; line-height: 1.4; text-align: center; color: #8C857F;">No advance payment. Pay after the job — 10% goes to the workers' welfare fund.</div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
