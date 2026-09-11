@@ -61,6 +61,27 @@ build` (served by FastAPI from `frontend/dist`). Tests:
 Python is 3.13 (3.12 not installed). Node 24. `.venv` and `node_modules` are
 already set up on this machine.
 
+## Roles and ownership (backend-enforced)
+
+Accounts are per portal and map to an access role: `ghar` → **customer**,
+`kaam` → **worker**, `sabha` → **council** (`User.access_role`; `User.role`
+is a council member's *title*). Session = httpOnly cookie, or
+`Authorization: Bearer <session_token>` (returned by /auth/signup and
+/auth/login) for Swagger/curl/tests. Dependencies in `app/auth.py`:
+`require_customer`, `require_worker`, `require_council`, `require_user`.
+Council may do everything; customers see/rate only their own bookings
+(`bookings.customer_user_id`), workers see/complete only bookings assigned to
+them and edit only their own availability (`app/ownership.py`). Public:
+`/`, `/stats`, `/voice/parse`, `/app/*`, `/auth/*`.
+
+Other backend rules: trades are canonicalised at the pydantic boundary
+(`app/trades.py`, e.g. "pipe repair" → "plumbing"); `app/database.py` has
+CHECK constraints for fresh DBs plus versioned additive migrations
+(`schema_migrations`, triggers) for existing ones — never rebuilds tables or
+drops rows; `GET /forecast/staffing?trade=` compares workers needed with
+workers not declared busy (`app/services/staffing.py`); unexpected errors
+return a generic 500 and are logged (logger `sahakarsetu`).
+
 ## Architecture in one breath
 
 `app/main.py` (routes + serves `/app`) → `app/repository.py` (sqlite) →

@@ -10,7 +10,9 @@ from __future__ import annotations
 import datetime as dt
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.trades import canonical_trade
 
 Weekday = Literal[0, 1, 2, 3, 4, 5, 6]  # 0 = Monday
 
@@ -40,6 +42,11 @@ class WorkerCreate(BaseModel):
     phone: str | None = Field(default=None, max_length=20)
     rating: float | None = Field(default=None, ge=1, le=5)
     availability: list[AvailabilityWindow] = Field(default_factory=list)
+
+    @field_validator("trade")
+    @classmethod
+    def _canonical_trade(cls, value: str) -> str:
+        return canonical_trade(value)
 
 
 class Worker(WorkerCreate):
@@ -73,10 +80,16 @@ class BookingCreate(BaseModel):
     customer_phone: str | None = Field(default=None, max_length=20)
     address: str | None = Field(default=None, max_length=300)
 
+    @field_validator("trade")
+    @classmethod
+    def _canonical_trade(cls, value: str) -> str:
+        return canonical_trade(value)
+
 
 class Booking(BookingCreate):
     id: int
     status: str = "pending"
+    customer_user_id: int | None = None
     created_at: str | None = None
 
 
@@ -92,6 +105,11 @@ class ServiceRequest(BaseModel):
     longitude: float
     scheduled_for: dt.datetime | None = None
     max_distance_km: float = Field(default=15.0, gt=0)
+
+    @field_validator("trade")
+    @classmethod
+    def _canonical_trade(cls, value: str) -> str:
+        return canonical_trade(value)
 
 
 class Recommendation(BaseModel):
@@ -146,3 +164,28 @@ class DemandForecast(BaseModel):
     method: str
     total_expected: float
     points: list[ForecastPoint]
+
+
+# ── staffing (forecast vs. available workers) ────────────────────────────
+
+class StaffingDay(BaseModel):
+    date: dt.date
+    weekday: str
+    expected_bookings: float
+    workers_needed: int
+    available_workers: int
+    shortage: int
+
+
+class StaffingForecast(BaseModel):
+    """Does the cooperative have enough workers of one trade for the coming days?"""
+    trade: str
+    area: str | None
+    horizon_days: int
+    peak_day: dt.date | None
+    expected_bookings: float = Field(description="Expected bookings on the peak day")
+    workers_needed: int = Field(description="Workers to keep on call on the peak day")
+    available_workers: int = Field(description="Eligible workers not declared busy on the peak day")
+    shortage: int
+    recommendation: str
+    days: list[StaffingDay]
