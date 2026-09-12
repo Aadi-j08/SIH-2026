@@ -22,6 +22,8 @@ export type Worker = {
   rating: number | null;
   availability: AvailabilityWindow[];
   jobs_this_week: number;
+  /** pending = signed up, waiting for the council; the engine skips them */
+  status: "pending" | "active";
   created_at: string | null;
 };
 
@@ -65,7 +67,55 @@ export type VoiceParse = {
   confidence: number;
   summary: string;
   unrecognised: string[];
+  /** gaps the parser filled in (no day named, only a start time) — shown before saving */
+  assumptions: string[];
 };
+
+export type WorkerSummary = {
+  worker_id: number;
+  status: "pending" | "active";
+  jobs_this_week: number;
+  completed_jobs: number;
+  share_rupees: number;
+  share_this_month_rupees: number;
+  billed_this_month_rupees: number;
+  rating: number | null;
+  rating_count: number;
+  engagement_days: number;
+  days_to_benefits: number;
+  eligibility_days: number;
+  free_hours_this_week: number;
+  awaiting_reply: number;
+  split_percent: { worker: number; welfare_fund: number; platform_operations: number };
+};
+
+export type JobOutcome = "assigned" | "accepted" | "completed" | "declined";
+
+export type WorkerJob = {
+  booking_id: number;
+  customer_name: string;
+  customer_phone: string | null;
+  trade: string;
+  address: string | null;
+  latitude: number;
+  longitude: number;
+  scheduled_for: string | null;
+  outcome: JobOutcome;
+  assigned_at: string | null;
+  accepted_at: string | null;
+  completed_at: string | null;
+  explanation: string | null;
+  billed_rupees: number | null;
+  share_rupees: number | null;
+  rating: number | null;
+  rating_comment: string | null;
+  decline_reason: DeclineReason | null;
+  declined_at: string | null;
+};
+
+export type DeclineReason = "unwell" | "too_far" | "already_booked" | "not_my_job" | "other";
+
+export type ReplyResult = { booking_id: number; status: string; reassigned_to: string | null };
 
 export type LedgerEntry = {
   party: "worker" | "welfare_fund" | "platform_operations";
@@ -153,6 +203,82 @@ export type Forecast = {
   method: string;
   total_expected: number;
   points: ForecastPoint[];
+};
+
+// ── Sabha: cooperative profile, overview, disputes ─────────────────────
+
+export type Cooperative = {
+  name: string;
+  short_name: string;
+  registration_id: string | null;
+  established: number | null;
+  area: string | null;
+  radius_km: number | null;
+  verified: boolean;
+  worker_kyc: boolean;
+  payments_verified: boolean;
+  secretary: string | null;
+  coordinator: string | null;
+  last_meeting: string | null;
+  weekly_job_limit: number;
+  fund_allocation: Record<string, number>;
+  updated_at: string | null;
+};
+
+export type CooperativeUpdate = Partial<Omit<Cooperative, "updated_at">>;
+
+export type Dispute = {
+  id: number;
+  booking_id: number;
+  kind: "payment" | "quality" | "other";
+  label: string;
+  raised_by: "customer" | "worker" | "council";
+  raised_by_user_id: number | null;
+  raised_by_name: string | null;
+  amount_rupees: number | null;
+  description: string | null;
+  status: "open" | "resolved";
+  resolution: string | null;
+  created_at: string;
+  resolved_at: string | null;
+  trade: string | null;
+  customer_name: string | null;
+  worker_name: string | null;
+};
+
+export type AttentionItem = { level: "red" | "amber" | "green"; kind: "assign" | "disputes" | "workload" | "opportunity"; count: number; text: string; action: string; trade: string | null };
+export type TradeRow = { trade: string; demand: number; unassigned: number; ongoing: number; available_workers: number; status: "good" | "moderate" | "needs_workers" | "idle" };
+export type Suggestion = { worker_id: number; name: string; distance_km: number; rating: number | null; availability: "available" | "unavailable" | "unknown"; jobs_this_week: number; score: number; explanation: string };
+export type MatchingGroup = { trade: string; unassigned: number; booking_id: number; booking_age_minutes: number; suggestions: Suggestion[] };
+export type WorkloadRow = { worker_id: number; name: string; trade: string; jobs_this_week: number; limit: number; pct: number; flag: "overloaded" | "under_utilised" | null };
+
+export type Overview = {
+  generated_at: string;
+  cooperative: { name: string; short_name: string; verified: boolean; members: number; active_workers: number; categories: number };
+  profile: Cooperative;
+  metrics: {
+    demands: { active: number; unassigned: number; ongoing: number; completed_today: number };
+    workers: { active: number; registered: number; available_now: number };
+    earnings: { this_month_rupees: number; last_month_rupees: number; change_pct: number | null };
+    fairness: { index: number; workload: number; pay: number; allocation: number };
+    fund: { total_rupees: number; this_month_rupees: number; allocation: Record<string, number> };
+  };
+  attention: AttentionItem[];
+  trades: TradeRow[];
+  matching: MatchingGroup[];
+  network: { registered: number; active: number; available: number; offline: number; limit: number; workload: WorkloadRow[] };
+  performance: { jobs_completed: number; workers_benefited: number; avg_worker_earnings_month_rupees: number; repeat_customers_pct: number | null; disputes_resolved_pct: number | null; avg_response_minutes: number | null };
+  disputes: { open: number; resolved: number; resolution_rate: number | null; recent: Dispute[] };
+  forecast_insight: { trade: string | null; peak_day: string | null; peak_weekday: string | null; expected_bookings: number; workers_needed: number; available_workers: number; shortage: number; text: string };
+};
+
+export type CustomerRow = { id: number; name: string; phone: string; locality: string | null; bookings: number; completed: number; last_booking_at: string | null; joined_at: string | null };
+
+export type AutoAllocation = {
+  trade: string | null;
+  attempted: number;
+  assigned: { booking_id: number; worker_id: number; worker_name: string | null; score: number; explanation: string }[];
+  skipped: { booking_id: number; reason: string }[];
 };
 
 export type PublicStats = {
@@ -274,6 +400,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 const get = <T>(path: string) => request<T>("GET", path);
 const post = <T>(path: string, body?: unknown) => request<T>("POST", path, body ?? {});
+const put = <T>(path: string, body: unknown) => request<T>("PUT", path, body);
+const patch = <T>(path: string, body: unknown) => request<T>("PATCH", path, body);
+const del = <T>(path: string) => request<T>("DELETE", path);
 
 export const api = {
   auth: {
@@ -314,8 +443,36 @@ export const api = {
     rate: (id: number, rating: number, comment?: string) =>
       post<RatingResult>(`/bookings/${id}/rating`, { rating, comment: comment || null }),
   },
+  kaam: {
+    summary: () => get<WorkerSummary>("/workers/me/summary"),
+    jobs: () => get<WorkerJob[]>("/workers/me/jobs"),
+    accept: (bookingId: number) => post<ReplyResult>(`/bookings/${bookingId}/accept`),
+    decline: (bookingId: number, reason: DeclineReason, markBusyToday = false, note?: string) =>
+      post<ReplyResult>(`/bookings/${bookingId}/decline`, { reason, mark_busy_today: markBusyToday, note: note || null }),
+    replaceAvailability: (workerId: number, windows: AvailabilityWindow[]) =>
+      put<Worker>(`/workers/${workerId}/availability`, { windows }),
+    patchWindow: (workerId: number, index: number, change: Partial<Pick<AvailabilityWindow, "start" | "end" | "available">>) =>
+      patch<Worker>(`/workers/${workerId}/availability/${index}`, change),
+    removeWindow: (workerId: number, index: number) => del<Worker>(`/workers/${workerId}/availability/${index}`),
+    pending: () => get<Worker[]>("/workers/pending"),
+    approve: (workerId: number) => post<Worker>(`/workers/${workerId}/approve`),
+  },
   admin: {
     dashboard: () => get<Dashboard>("/admin/dashboard"),
+    overview: () => get<Overview>("/admin/overview"),
+    customers: () => get<CustomerRow[]>("/admin/customers"),
+  },
+  cooperative: {
+    get: () => get<Cooperative>("/cooperative"),
+    update: (body: CooperativeUpdate) => put<Cooperative>("/cooperative", body),
+  },
+  allocation: {
+    auto: (trade?: string, limit = 20) => post<AutoAllocation>(`/allocation/auto?limit=${limit}${trade ? `&trade=${encodeURIComponent(trade)}` : ""}`),
+  },
+  disputes: {
+    list: (status?: "open" | "resolved") => get<Dispute[]>(`/disputes${status ? `?status=${status}` : ""}`),
+    raise: (body: { booking_id: number; kind: Dispute["kind"]; description?: string | null; amount_rupees?: number | null }) => post<Dispute>("/disputes", body),
+    resolve: (id: number, resolution: string) => post<Dispute>(`/disputes/${id}/resolve`, { resolution }),
   },
   stats: () => get<PublicStats>("/stats"),
   staffing: (trade: string, days = 7, area?: string) =>

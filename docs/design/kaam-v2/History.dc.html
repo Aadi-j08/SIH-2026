@@ -1,0 +1,108 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&amp;family=Manrope:wght@400..700&amp;family=Noto+Sans+Devanagari:wght@400;600&amp;display=swap">
+  <style>
+    body { margin: 0; background: #FCFAF6; color: #261D17; font-family: Manrope, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #00792F; } a:hover { color: #25984D; }
+    .display { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; }
+    .hi { font-family: "Noto Sans Devanagari", "Nirmala UI", Mangal, sans-serif; }
+    svg { display: block; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 900px; background: #FCFAF6; display: flex; flex-direction: column; gap: 14px; padding: 20px; overflow: hidden; box-sizing: border-box;">
+
+  <!-- header -->
+  <div style="display: flex; align-items: center; gap: 12px;">
+    <div style="display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; background: #FFFFFF; border: 1.5px solid #E2DDD5; box-sizing: border-box;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5C534D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"></path></svg>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1;">
+      <div class="display" style="font-size: 20px; font-weight: 700; letter-spacing: -0.01em; color: #261D17;">Jobs & earnings</div>
+      <div style="font-size: 13px; color: #5C534D;">September 2026 · <span class="hi">काम और कमाई</span></div>
+    </div>
+    <div style="display: flex; gap: 2px; padding: 3px; border: 1px solid #E2DDD5; border-radius: 999px;">
+      <div style="display: flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 999px; background: #261D17; color: #FCFAF6; font-size: 12px; font-weight: 600;">Month</div>
+      <div style="display: flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 999px; color: #5C534D; font-size: 12px; font-weight: 600;">All</div>
+    </div>
+  </div>
+
+  <!-- month total + split -->
+  <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 20px; background: #261D17; color: #FCFAF6;">
+    <div style="display: flex; align-items: flex-end; justify-content: space-between;">
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #C9C1B9;">Your share this month</div>
+        <div class="display" style="font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1;">₹4,675</div>
+      </div>
+      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
+        <div style="font-size: 12px; color: #C9C1B9;">from 11 jobs</div>
+        <div style="font-size: 12px; color: #C9C1B9;">₹5,500 billed</div>
+      </div>
+    </div>
+    <div style="display: flex; height: 10px; border-radius: 999px; overflow: hidden; gap: 2px;">
+      <div style="width: 85%; background: #25984D;"></div>
+      <div style="width: 10%; background: #C9C1B9;"></div>
+      <div style="width: 5%; background: #7A6F66;"></div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;">
+      <div style="display: flex; flex-direction: column; gap: 1px;"><div style="display: flex; align-items: center; gap: 5px; font-size: 12px; color: #C9C1B9;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: #25984D;"></span>You · 85%</div><div class="display" style="font-size: 15px; font-weight: 700;">₹4,675</div></div>
+      <div style="display: flex; flex-direction: column; gap: 1px;"><div style="display: flex; align-items: center; gap: 5px; font-size: 12px; color: #C9C1B9;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: #C9C1B9;"></span>Cooperative · 10%</div><div class="display" style="font-size: 15px; font-weight: 700;">₹550</div></div>
+      <div style="display: flex; flex-direction: column; gap: 1px;"><div style="display: flex; align-items: center; gap: 5px; font-size: 12px; color: #C9C1B9;"><span style="display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: #7A6F66;"></span>Member fund · 5%</div><div class="display" style="font-size: 15px; font-weight: 700;">₹275</div></div>
+    </div>
+    <div style="font-size: 12px; line-height: 1.4; color: #C9C1B9;">The member fund pays for your benefits after 90 active days — <a href="#" style="color: #FCFAF6; font-weight: 700; text-decoration: none;">31 down, 59 to go</a>.</div>
+  </div>
+
+  <!-- rating summary -->
+  <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: #F7F3EC;">
+    <div class="display" style="font-size: 24px; font-weight: 700; color: #261D17;">4.8</div>
+    <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1;">
+      <div style="font-size: 14px; font-weight: 700; color: #261D17;">★★★★★ from 9 ratings</div>
+      <div style="font-size: 12px; color: #5C534D;">Ratings are 20% of how the engine picks you. Fairness is 35%.</div>
+    </div>
+  </div>
+
+  <!-- job list -->
+  <div style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #8C857F;">This month</div>
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 14px; border-radius: 14px; background: #FFFFFF; border: 1.5px solid #E2DDD5; box-sizing: border-box;">
+        <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+          <div style="font-size: 14px; font-weight: 700; color: #261D17;">Sharma Residence · Plumbing</div>
+          <div style="font-size: 12px; color: #5C534D;">Thu 10 Sep · ★★★★★ “Fixed it in 20 minutes”</div>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 1px;"><div class="display" style="font-size: 15px; font-weight: 700; color: #00792F;">₹510</div><div style="font-size: 11px; color: #8C857F;">of ₹600</div></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 14px; border-radius: 14px; background: #FFFFFF; border: 1.5px solid #E2DDD5; box-sizing: border-box;">
+        <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+          <div style="font-size: 14px; font-weight: 700; color: #261D17;">Verma Flat 3B · Plumbing</div>
+          <div style="font-size: 12px; color: #5C534D;">Tue 8 Sep · ★★★★☆</div>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 1px;"><div class="display" style="font-size: 15px; font-weight: 700; color: #00792F;">₹340</div><div style="font-size: 11px; color: #8C857F;">of ₹400</div></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 14px; border-radius: 14px; background: #FFFFFF; border: 1.5px solid #E2DDD5; box-sizing: border-box;">
+        <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+          <div style="font-size: 14px; font-weight: 700; color: #261D17;">Khan Household · Plumbing</div>
+          <div style="font-size: 12px; color: #5C534D;">Sun 6 Sep · not rated yet</div>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 1px;"><div class="display" style="font-size: 15px; font-weight: 700; color: #00792F;">₹1,020</div><div style="font-size: 11px; color: #8C857F;">of ₹1,200</div></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 14px; border-radius: 14px; background: #F7F3EC; border: 1.5px solid #F7F3EC; box-sizing: border-box;">
+        <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+          <div style="font-size: 14px; font-weight: 700; color: #5C534D;">Gupta House · Plumbing</div>
+          <div style="font-size: 12px; color: #8C857F;">Fri 4 Sep · passed on (too far) · no penalty</div>
+        </div>
+        <div style="font-size: 13px; font-weight: 700; color: #8C857F;">—</div>
+      </div>
+    </div>
+    <a href="#" style="align-self: center; font-size: 13px; font-weight: 700; color: #00792F; text-decoration: none; padding: 8px;">Show 7 more</a>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
