@@ -120,6 +120,7 @@ class Recommendation(BaseModel):
     score: float
     score_breakdown: dict[str, float]
     explanation: str
+    why_selected: list[str] = Field(default_factory=list)
 
 
 # ── voice availability ───────────────────────────────────────────────────
@@ -128,6 +129,7 @@ class VoiceAvailabilityRequest(BaseModel):
     transcript: str = Field(min_length=1, max_length=500, description="Speech-to-text output, Hindi/English/Hinglish")
     reference_date: dt.date | None = Field(default=None, description="Day 'aaj'/'kal' are relative to; default today")
     replace: bool = Field(default=True, description="Replace the worker's existing windows (False = append)")
+    confirmed: bool = Field(default=False, description="Worker confirmed a low-confidence interpretation")
 
 
 class VoiceAvailabilityResult(BaseModel):
@@ -137,6 +139,9 @@ class VoiceAvailabilityResult(BaseModel):
     confidence: float = Field(ge=0, le=1)
     summary: str
     unrecognised: list[str] = Field(default_factory=list)
+    requires_confirmation: bool = False
+    can_save: bool = False
+    confirmation_message: str | None = None
 
 
 class VoiceAvailabilityResponse(BaseModel):

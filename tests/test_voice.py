@@ -82,6 +82,20 @@ def test_unrecognised_words_lower_confidence_but_do_not_break_parsing():
     assert 0 < result.confidence < 1
 
 
+def test_clear_voice_result_can_be_saved_without_confirmation():
+    result = parse_availability("kal subah free hoon", TODAY)
+    assert result.can_save is True
+    assert result.requires_confirmation is False
+    assert "Save this availability?" in (result.confirmation_message or "")
+
+
+def test_low_confidence_voice_result_requires_confirmation():
+    result = parse_availability("kal subah free hoon foo bar baz qux", TODAY)
+    assert result.windows
+    assert result.can_save is True
+    assert result.requires_confirmation is True
+
+
 @pytest.mark.parametrize("text, language", [
     ("kal subah free hoon", "mixed"),
     ("somvar ko aa sakta hoon", "hi"),
