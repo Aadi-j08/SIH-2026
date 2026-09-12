@@ -46,6 +46,17 @@ def test_fairness_prefers_worker_with_fewest_jobs_when_otherwise_equal():
     assert ranked[0].score_breakdown["fairness"] == 1.0
     assert ranked[1].score_breakdown["fairness"] == 0.0
     assert "fewest in the pool" in ranked[0].explanation
+    assert "fewest jobs this week (0)" in ranked[0].why_selected
+
+
+def test_recommendation_exposes_explainable_selection_reasons():
+    ranked = recommend_workers(request(), [worker(1, "Asha", jobs=0, rating=4.5)])
+    assert ranked[0].why_selected == [
+        "within the 15 km service radius (0.0 km away)",
+        "fewest jobs this week (0)",
+        "rated 4.5/5",
+        "no conflicting availability declared",
+    ]
 
 
 def test_nearer_worker_wins_when_fairness_and_rating_are_equal():

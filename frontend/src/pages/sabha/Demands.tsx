@@ -181,6 +181,11 @@ export function PendingTable({ rows, onChanged }: { rows: PendingRow[]; onChange
                 <div className="tiny ellipsis" style={{ color: "var(--ink-2)" }} title={pick.explanation}>
                   {pick.explanation.split(": ").slice(1).join(": ")}
                 </div>
+                {pick.why_selected?.length > 0 && (
+                  <div className="tiny muted ellipsis" title={pick.why_selected.join(" · ")}>
+                    Why: {pick.why_selected.slice(0, 2).join(" · ")}
+                  </div>
+                )}
               </>
             ) : (
               <div className="tiny" style={{ color: "var(--terracotta-d)" }}>No eligible worker (trade, distance or availability)</div>
