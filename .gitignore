@@ -24,3 +24,5 @@ docs/design/auth/sahakarsetu-login-and-portals.html
 # Original full-size photos (compressed copies live in frontend/public/img)
 docs/design/photos-original/
 frontend/tsconfig.tsbuildinfo
+docs/design/kaam-v2/sahakarsetu-kaam-v2.html
+*.backup-*.db

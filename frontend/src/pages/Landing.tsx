@@ -2,7 +2,7 @@ import { type CSSProperties, type ReactElement } from "react";
 import { Link } from "react-router-dom";
 
 import { type PortalId } from "../api";
-import { ArrowDown, ArrowRight, Check, Home, LogIn, Users, Wrench } from "../components/Icons";
+import { ArrowDown, ArrowRight, CalendarIcon, Check, Home, ListOrdered, LogIn, Star, Users, Wrench } from "../components/Icons";
 import { img, Photo, useImageExists } from "../components/Photo";
 import { BrandMark, PORTALS, PORTAL_ORDER, Wordmark } from "../components/PortalShell";
 import { useAuth } from "../lib/auth";
@@ -144,14 +144,17 @@ export default function Landing() {
 
       <section className="section soft" id="how">
         <div className="wrap">
-          <h2 className="display" style={{ fontSize: 30 }}>How a job flows</h2>
-          <div className="steps">
-            <Step n={1} color="var(--terracotta)" title="Household books" text="Trade, place, time. No advance payment." />
-            <Step n={2} color="var(--terracotta)" title="Engine ranks" text="Eligible workers scored on four factors, reasons attached." />
-            <Step n={3} color="var(--indigo)" title="Cooperative assigns" text="One tap in Sabha. The worker’s week count goes up by one." />
-            <Step n={4} color="var(--green)" title="Worker finishes" text="Enters the bill in Kaam. Ledger writes 85 / 10 / 5." />
-            <Step n={5} color="var(--terracotta)" title="Household rates" text="One to five stars. The worker’s average updates." />
+          <div className="stack" style={{ gap: 6 }}>
+            <h2 className="display" style={{ fontSize: 30 }}>How a job flows</h2>
+            <div className="sub">One job, three portals, and the bridge between them.</div>
           </div>
+          <ol className="flow" aria-label="How a job flows">
+            <FlowStep n={1} portal="ghar" icon={CalendarIcon} title="Household books" text="Trade, place, time. No advance payment." />
+            <FlowStep n={2} icon={ListOrdered} title="Engine ranks" text="Four scores, reasons attached." />
+            <FlowStep n={3} portal="sabha" icon={Check} title="Council assigns" text="One tap. The reason stays on record." />
+            <FlowStep n={4} portal="kaam" icon={Wrench} title="Worker finishes" text="Enters the bill; the ledger splits it." split />
+            <FlowStep n={5} portal="ghar" icon={Star} title="Household rates" text="One to five stars." />
+          </ol>
         </div>
       </section>
 
@@ -228,15 +231,40 @@ function Audience({ id, flip }: { id: PortalId; flip: boolean }) {
   );
 }
 
-function Step({ n, color, title, text }: { n: number; color: string; title: string; text: string }) {
+/** One node on the flow rail: coloured by the portal that acts (the engine step is ink). */
+function FlowStep({ n, portal, icon: IconFor, title, text, split = false }: {
+  n: number;
+  portal?: PortalId;
+  icon: (p: { size?: number }) => ReactElement;
+  title: string;
+  text: string;
+  split?: boolean;
+}) {
   return (
-    <div className="step">
-      <div className="n" style={{ color }}>
-        {n}
+    <li className="flow-step" data-portal={portal} data-engine={portal ? undefined : "true"}>
+      <div className="flow-node" aria-hidden="true">
+        <IconFor size={22} />
+        <span className="flow-n">{n}</span>
       </div>
-      <div style={{ fontWeight: 700 }}>{title}</div>
-      <p>{text}</p>
-    </div>
+      <div className="flow-body">
+        {portal ? (
+          <span className={`portal-tag ${portal}`} style={{ height: 24, fontSize: 12, padding: "0 9px" }}>
+            {PORTALS[portal].name} · {PORTALS[portal].tag}
+          </span>
+        ) : (
+          <span className="pill grey">Allocation engine</span>
+        )}
+        <div className="flow-title">{title}</div>
+        <p>{text}</p>
+        {split && (
+          <ul className="split-legend" aria-label="How every bill is split">
+            <li><i style={{ background: "var(--green)" }} />85% to the worker</li>
+            <li><i style={{ background: "var(--indigo)" }} />10% welfare fund</li>
+            <li><i style={{ background: "var(--ink-3)" }} />5% platform</li>
+          </ul>
+        )}
+      </div>
+    </li>
   );
 }
 

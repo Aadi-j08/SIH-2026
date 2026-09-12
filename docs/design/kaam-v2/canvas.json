@@ -1,0 +1,16 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html",    "title": "Kaam · Home v2",              "x": 0,    "y": 0, "w": 390, "h": 1240 },
+    { "file": "Week.dc.html",    "title": "Kaam · My week",              "x": 480,  "y": 0, "w": 390, "h": 844 },
+    { "file": "Job.dc.html",     "title": "Kaam · Job states",           "x": 960,  "y": 0, "w": 390, "h": 1180 },
+    { "file": "History.dc.html", "title": "Kaam · Jobs & earnings",      "x": 1440, "y": 0, "w": 390, "h": 900 },
+    { "file": "Pending.dc.html", "title": "Kaam · After sign-up (pending)", "x": 1920, "y": 0, "w": 390, "h": 844 }
+  ],
+  "annotations": [
+    { "id": "kaam-v2-brief", "x": 0, "y": -300, "w": 860,
+      "text": "Kaam v2 — what changed and why\n\nToday a worker can speak their availability but never see it; jobs appear without a yes/no; stats read ₹0 because the tiles call a council-only endpoint; finished jobs vanish. These five screens fix that without touching the voice loop.\n\nHome v2 — the job needing a reply comes first (it is the only urgent thing), then a 7-day strip with three slots per day (morning / noon / evening) so the schedule is visible at a glance, then the mic as a shortcut into it, then real numbers and the last two jobs.\nMy week — the source of truth. Green = free, hatched = busy, dark = an accepted job, dashed = not set. Tap a block to remove it, mark busy or change the time; the sheet shows which sentence created it.\nJob states — assigned → accept / can’t do it (with a reason the engine can learn from) → accepted with call, directions, running late → done with the 85/10/5 split.\nJobs & earnings — the cooperative story in numbers: your 85%, the 10% and the 5% fund, ratings and why they matter, passed-on jobs with no penalty.\nAfter sign-up — new workers wait for council approval instead of being instantly matchable; they use the wait to set availability." },
+    { "id": "kaam-v2-backend", "x": 960, "y": -300, "w": 720,
+      "text": "Backend needed\n\n• GET /workers/me/summary — jobs, share, rating, active days (replaces the council-only dashboard call)\n• DELETE /workers/{id}/availability/{index} and PATCH for start/end/available\n• POST /bookings/{id}/accept and /decline {reason} — decline puts the booking back to pending and re-runs allocation excluding that worker\n• GET /bookings?mine=1&status=completed with ledger lines\n• users.status = pending | active — council approves from Sabha; pending workers are skipped by the engine\n• Parser: misspellings (tommorrow, tommorow), no-day → low confidence, ‘at 10’ → 2-hour window" }
+  ],
+  "launch": { "view": "canvas" }
+}
