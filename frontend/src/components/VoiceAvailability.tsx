@@ -69,12 +69,21 @@ export default function VoiceAvailability({ worker, onSaved, compact = false }: 
     if (transcript.trim()) void parse(transcript.trim());
   };
 
+  // Compatibility fallback for a cached API response that predates the
+  // confidence fields. The updated backend still remains authoritative.
+  const canSave = parsed ? (parsed.can_save ?? (parsed.windows.length > 0 && parsed.confidence >= 0.5)) : false;
+  const needsConfirmation = parsed?.requires_confirmation ?? false;
+
   const save = async () => {
-    if (!parsed?.windows.length) return;
+    if (!parsed?.windows.length || !canSave) return;
+    const confirmed = needsConfirmation
+      ? window.confirm(parsed.confirmation_message ?? "Please confirm the interpreted availability.")
+      : true;
+    if (!confirmed) return;
     setBusy(true);
     setMessage(null);
     try {
-      const result = await api.workers.setAvailabilityByVoice(worker.id, parsed.transcript, replace);
+      const result = await api.workers.setAvailabilityByVoice(worker.id, parsed.transcript, replace, undefined, true);
       onSaved(result.worker);
       setParsed(null);
       setTranscript("");
@@ -87,7 +96,7 @@ export default function VoiceAvailability({ worker, onSaved, compact = false }: 
     }
   };
 
-  const guessed = (parsed?.assumptions.length ?? 0) > 0;
+  const guessed = (parsed?.assumptions?.length ?? 0) > 0;
 
   return (
     <section className="stack" id="voice">
@@ -159,6 +168,10 @@ export default function VoiceAvailability({ worker, onSaved, compact = false }: 
               {parsed.language === "hi" ? "Hindi" : parsed.language === "en" ? "English" : parsed.language === "mixed" ? "Hinglish" : ""} · {Math.round(parsed.confidence * 100)}% sure
             </div>
           </div>
+          {needsConfirmation && canSave && (
+            <div className="notice info">This interpretation is uncertain. Check the schedule carefully before confirming.</div>
+          )}
+          {!canSave && <div className="notice error">I could not understand this reliably. Please include a day and time and try again.</div>}
           {parsed.windows.map((w, i) => (
             <div className="card row" key={i} style={{ gap: 12, padding: "6px 12px", minHeight: 48 }}>
               <span className={`dot ${w.available ? "green" : "grey"}`}>{w.available ? <Check size={16} /> : <Cross size={16} />}</span>
@@ -173,7 +186,7 @@ export default function VoiceAvailability({ worker, onSaved, compact = false }: 
           {guessed && (
             <div className="notice warn stack" style={{ gap: 4 }}>
               <div style={{ fontWeight: 700 }}>I had to guess — check before saving</div>
-              {parsed.assumptions.map((a) => (
+              {(parsed.assumptions ?? []).map((a) => (
                 <div key={a} className="small">{a}</div>
               ))}
             </div>
@@ -183,8 +196,8 @@ export default function VoiceAvailability({ worker, onSaved, compact = false }: 
             Replace everything I've saved ({worker.availability.length} window{worker.availability.length === 1 ? "" : "s"}) instead of adding to it
           </label>
           <div className="row" style={{ gap: 8 }}>
-            <button type="button" className={`btn grow ${guessed ? "outline" : "green"}`} onClick={save} disabled={busy}>
-              {busy ? "Saving…" : guessed ? "Save anyway" : "Save availability"}
+            <button type="button" className={`btn grow ${guessed || needsConfirmation ? "outline" : "green"}`} onClick={save} disabled={busy || !canSave}>
+              {busy ? "Saving…" : needsConfirmation ? "Confirm & save" : guessed ? "Save anyway" : "Save availability"}
             </button>
             <button type="button" className={`btn ${guessed ? "green" : "outline"}`} onClick={() => { setParsed(null); setTranscript(""); }} disabled={busy}>
               Say again
