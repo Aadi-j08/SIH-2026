@@ -1,54 +1,104 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
-import {
-  api,
-  describeWindow,
-  errorMessage,
-  formatRupees,
-  formatWhen,
-  storageGet,
-  storageSet,
-  titleCase,
-  type BookingDetail,
-  type DashboardWorker,
-  type VoiceParse,
-  type Worker as WorkerT,
-} from "../api";
-import { Check, Cross, Mic, Waveform } from "../components/Icons";
+import { api, errorMessage, formatRupees, titleCase, type Worker as WorkerT, type WorkerJob, type WorkerSummary } from "../api";
+import JobCard from "../components/JobCard";
+import { Check, Clock, Mic, Star } from "../components/Icons";
+import VoiceAvailability from "../components/VoiceAvailability";
 import { useAuth } from "../lib/auth";
-import { listenOnce, speechSupported, type Listener } from "../lib/speech";
+import { buildWeek, SLOTS, type WeekDay } from "../lib/week";
 
-const LANG_KEY = "sahakarsetu.voiceLang";
-
+/** Kaam home: the job that needs a reply, the week at a glance, the mic, real numbers, recent jobs. */
 export default function Worker() {
   const { user } = useAuth();
   const [worker, setWorker] = useState<WorkerT | null>(null);
+  const [summary, setSummary] = useState<WorkerSummary | null>(null);
+  const [jobs, setJobs] = useState<WorkerJob[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const workerId = user?.worker_id ?? null;
+
+  const refresh = useCallback(async () => {
+    if (workerId === null) return;
+    try {
+      const [w, s, j] = await Promise.all([api.workers.get(workerId), api.kaam.summary(), api.kaam.jobs()]);
+      setWorker(w);
+      setSummary(s);
+      setJobs(j);
+      setError(null);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, [workerId]);
+
   useEffect(() => {
-    if (!user?.worker_id) {
+    if (workerId === null) {
       setError("This Kaam account is not linked to a worker record. Ask the cooperative to fix it.");
       return;
     }
-    api.workers.get(user.worker_id).then(setWorker).catch((e) => setError(errorMessage(e)));
-  }, [user?.worker_id]);
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 8000);
+    return () => window.clearInterval(timer);
+  }, [workerId, refresh]);
 
-  if (error) return <div className="page notice error">{error}</div>;
-  if (!worker) return <div className="page muted">Loading…</div>;
+  if (error && !worker) return <div className="page notice error">{error}</div>;
+  if (!worker || !summary || !jobs) return <div className="page muted">Loading…</div>;
+
+  if (worker.status === "pending") {
+    return (
+      <div className="page">
+        <Greeting worker={worker} summary={summary} pending />
+        <PendingApproval user={user?.locality ?? null} phone={user?.phone ?? null} />
+        <VoiceAvailability worker={worker} onSaved={(w) => { setWorker(w); void refresh(); }} compact />
+        <WeekStrip worker={worker} jobs={jobs} summary={summary} />
+      </div>
+    );
+  }
+
+  const open = jobs.filter((j) => j.outcome === "assigned" || j.outcome === "accepted");
+  const recent = jobs.filter((j) => j.outcome === "completed" || j.outcome === "declined").slice(0, 2);
 
   return (
     <div className="page">
-      <Greeting worker={worker} />
-      <VoiceAvailability worker={worker} onSaved={setWorker} />
-      <TodaysJob worker={worker} />
-      <ThisWeek worker={worker} />
+      {error && <div className="notice error">{error}</div>}
+      <Greeting worker={worker} summary={summary} />
+      {open.length > 0 && (
+        <section className="stack">
+          {open.map((job) => (
+            <JobCard key={job.booking_id} job={job} onChange={refresh} />
+          ))}
+        </section>
+      )}
+      <WeekStrip worker={worker} jobs={jobs} summary={summary} />
+      <VoiceAvailability worker={worker} onSaved={(w) => { setWorker(w); void refresh(); }} compact />
+      <Stats summary={summary} />
+      <section className="stack">
+        <div className="row between">
+          <div className="label">Recent jobs</div>
+          <Link to="/kaam/jobs" className="link">All jobs &amp; earnings →</Link>
+        </div>
+        {recent.length === 0 ? (
+          <div className="card soft small muted">No finished jobs yet. Keep your week green and the engine will send work your way.</div>
+        ) : (
+          recent.map((j) => <RecentJob key={j.booking_id} job={j} />)
+        )}
+      </section>
+      <div className="card soft row" style={{ gap: 12 }}>
+        <span className="avatar small-avatar">{worker.name.slice(0, 1)}</span>
+        <div className="stack grow" style={{ gap: 1 }}>
+          <div style={{ fontWeight: 700 }}>My profile</div>
+          <div className="tiny muted">
+            {titleCase(worker.trade)}{user?.locality ? ` · ${user.locality}` : ""}{user?.languages?.length ? ` · ${user.languages.join(", ")}` : ""}{worker.phone ? ` · ${worker.phone}` : ""}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-// ── greeting ─────────────────────────────────────────────────────────
+// ── pieces ───────────────────────────────────────────────────────────
 
-function Greeting({ worker }: { worker: WorkerT }) {
+function Greeting({ worker, summary, pending = false }: { worker: WorkerT; summary: WorkerSummary; pending?: boolean }) {
   const initials = worker.name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
   return (
     <div className="row between">
@@ -57,310 +107,163 @@ function Greeting({ worker }: { worker: WorkerT }) {
           <span className="hi" style={{ fontSize: 22, fontWeight: 600 }}>नमस्ते,</span>
           <span className="display" style={{ fontSize: 24, fontWeight: 700 }}>{worker.name.split(" ")[0]}</span>
         </div>
-        <div className="small muted">{titleCase(worker.trade)} · Cooperative member</div>
+        <div className="row small muted" style={{ gap: 8 }}>
+          <span>{titleCase(worker.trade)}</span>
+          {pending ? (
+            <span className="pill amber">Awaiting council approval</span>
+          ) : (
+            <>
+              <span>· Cooperative member</span>
+              {summary.rating !== null && (
+                <span className="row" style={{ gap: 3 }}>
+                  · <Star size={13} filled /> {summary.rating.toFixed(1)}
+                </span>
+              )}
+            </>
+          )}
+        </div>
       </div>
-      <span className="avatar">{initials}</span>
+      <span className="avatar" style={pending ? { background: "var(--paper-2)", color: "var(--ink-2)" } : undefined}>{initials}</span>
     </div>
   );
 }
 
-// ── voice availability ───────────────────────────────────────────────
-
-function VoiceAvailability({ worker, onSaved }: { worker: WorkerT; onSaved: (w: WorkerT) => void }) {
-  const supported = speechSupported();
-  const [lang, setLang] = useState<string>(() => storageGet(LANG_KEY) ?? "hi-IN");
-  const [listening, setListening] = useState(false);
-  const [transcript, setTranscript] = useState("");
-  const [parsed, setParsed] = useState<VoiceParse | null>(null);
-  const [replace, setReplace] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<{ kind: "error" | "info"; text: string } | null>(null);
-  const listener = useRef<Listener | null>(null);
-
-  useEffect(() => storageSet(LANG_KEY, lang), [lang]);
-  useEffect(() => () => listener.current?.stop(), []);
-
-  const parse = async (text: string) => {
-    setBusy(true);
-    setMessage(null);
-    try {
-      const result = await api.voice.parse(text);
-      setParsed(result);
-      if (!result.windows.length) setMessage({ kind: "info", text: "Couldn't find a day or time in that — try “kal subah free hoon” or “busy on Sunday”." });
-    } catch (e) {
-      setMessage({ kind: "error", text: errorMessage(e) });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const toggleMic = () => {
-    if (listening) {
-      listener.current?.stop();
-      return;
-    }
-    setParsed(null);
-    setTranscript("");
-    setMessage(null);
-    const started = listenOnce(lang, {
-      onInterim: setTranscript,
-      onFinal: (text) => {
-        setTranscript(text);
-        void parse(text);
-      },
-      onError: (text) => setMessage({ kind: "error", text }),
-      onEnd: () => setListening(false),
-    });
-    if (started) {
-      listener.current = started;
-      setListening(true);
-    }
-  };
-
-  const submitTyped = (event: FormEvent) => {
-    event.preventDefault();
-    if (transcript.trim()) void parse(transcript.trim());
-  };
-
-  const save = async () => {
-    if (!parsed?.windows.length) return;
-    setBusy(true);
-    setMessage(null);
-    try {
-      const result = await api.workers.setAvailabilityByVoice(worker.id, parsed.transcript, replace);
-      onSaved(result.worker);
-      setParsed(null);
-      setTranscript("");
-      setMessage({ kind: "info", text: `Saved. ${result.parsed.summary}` });
-    } catch (e) {
-      setMessage({ kind: "error", text: errorMessage(e) });
-    } finally {
-      setBusy(false);
-    }
-  };
-
+function PendingApproval({ user, phone }: { user: string | null; phone: string | null }) {
   return (
     <section className="stack">
-      <div className="card dark" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "16px 20px 14px", borderRadius: "var(--radius-xl)" }}>
-        <div className="stack" style={{ alignItems: "center", gap: 4 }}>
-          <div className="display" style={{ fontSize: 18, fontWeight: 700 }}>When are you free?</div>
-          <div className="hi" style={{ fontSize: 15, color: "var(--ink-on-dark)" }}>बोलिए — आप कब खाली हैं?</div>
+      <div className="card stack" style={{ gap: 12, padding: 16, borderRadius: "var(--radius-xl)" }}>
+        <div className="stack" style={{ gap: 3 }}>
+          <div className="display" style={{ fontSize: 18, fontWeight: 700 }}>Your profile is with the council</div>
+          <div className="hi small muted">सभा आपकी प्रोफ़ाइल देख रही है — आमतौर पर 1 दिन में</div>
         </div>
-        <div className={`mic-wrap${listening ? " listening" : ""}`}>
-          <div className="mic-pulse" />
-          <button type="button" className="mic" onClick={toggleMic} disabled={!supported || busy} aria-pressed={listening} aria-label={listening ? "Stop listening" : "Start speaking"}>
-            <Mic size={30} />
-          </button>
-        </div>
-        <div className="row" style={{ gap: 8 }}>
-          <div className="seg" style={{ borderColor: "#4a403a" }}>
-            {[
-              ["hi-IN", "हिंदी"],
-              ["en-IN", "English"],
-            ].map(([code, label]) => (
-              <a key={code} href="#" className={lang === code ? "active" : ""} style={{ color: lang === code ? undefined : "var(--ink-on-dark)", height: 28, fontSize: 12 }} onClick={(e) => { e.preventDefault(); setLang(code); }}>
-                {label}
-              </a>
-            ))}
+        <div className="timeline">
+          <div className="tl-step">
+            <div className="tl-rail"><span className="node done"><Check size={13} strokeWidth={3} /></span><span className="line done" /></div>
+            <div className="tl-text"><b style={{ fontSize: 14 }}>Account created</b><span className="tiny muted">Just now</span></div>
           </div>
-          <div className="tiny" style={{ color: "var(--ink-on-dark)", letterSpacing: "0.04em" }}>
-            {supported ? (listening ? "LISTENING… TAP TO STOP" : "TAP AND SPEAK") : "TYPE BELOW — THIS BROWSER CAN'T LISTEN"}
+          <div className="tl-step">
+            <div className="tl-rail"><span className="node now"><Clock size={13} strokeWidth={2.5} /></span><span className="line" /></div>
+            <div className="tl-text"><b style={{ fontSize: 14 }}>Council checks your trade and area</b><span className="tiny muted">A member may call you{phone ? ` on ${phone}` : ""}</span></div>
+          </div>
+          <div className="tl-step">
+            <div className="tl-rail"><span className="node next" /></div>
+            <div className="tl-text"><b style={{ fontSize: 14, color: "var(--ink-3)" }}>You start getting jobs</b><span className="tiny muted">The engine matches you by distance, fairness, rating and your free hours</span></div>
           </div>
         </div>
       </div>
-
-      <form className="field" onSubmit={submitTyped}>
-        <Waveform size={18} style={{ color: "var(--ink-3)" }} />
-        <input value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="…or type it: kal subah free hoon" aria-label="Availability sentence" />
-        <button type="submit" className="adorn" disabled={busy || !transcript.trim()}>
-          Understand
-        </button>
-      </form>
-
-      {message && <div className={`notice ${message.kind}`}>{message.text}</div>}
-
-      {parsed && parsed.windows.length > 0 && (
-        <div className="stack">
-          <div className="row between">
-            <div className="label">Understood as</div>
-            <div className="tiny muted">
-              {parsed.language === "hi" ? "Hindi" : parsed.language === "en" ? "English" : parsed.language === "mixed" ? "Hinglish" : ""} · {Math.round(parsed.confidence * 100)}% sure
-            </div>
-          </div>
-          {parsed.windows.map((w, i) => (
-            <div className="card row" key={i} style={{ gap: 12, padding: "6px 12px", minHeight: 48 }}>
-              <span className={`dot ${w.available ? "green" : "grey"}`}>{w.available ? <Check size={16} /> : <Cross size={16} />}</span>
-              <div className="stack" style={{ gap: 1 }}>
-                <div style={{ fontWeight: 700, color: w.available ? "var(--green-d)" : "var(--ink-2)" }}>{describeWindow(w)}</div>
-                <div className="small muted num">
-                  {w.start} – {w.end}
-                </div>
-              </div>
-            </div>
-          ))}
-          <label className="row tiny muted" style={{ gap: 8 }}>
-            <input type="checkbox" checked={!replace} onChange={(e) => setReplace(!e.target.checked)} />
-            Add to what I've already saved ({worker.availability.length} window{worker.availability.length === 1 ? "" : "s"})
-          </label>
-          <div className="row" style={{ gap: 8 }}>
-            <button type="button" className="btn green grow" onClick={save} disabled={busy}>
-              {busy ? "Saving…" : "Save availability"}
-            </button>
-            <button type="button" className="btn outline" onClick={() => { setParsed(null); setTranscript(""); }} disabled={busy}>
-              Say again
-            </button>
-          </div>
+      <div className="label">Meanwhile — get ready</div>
+      <div className="card row" style={{ gap: 12 }}>
+        <span className="dot green"><Mic size={15} /></span>
+        <div className="stack grow" style={{ gap: 1 }}>
+          <div style={{ fontWeight: 700 }}>1 · Tell us when you’re free</div>
+          <div className="tiny muted">Use the mic below — “somvar se shukravar subah khali hoon”</div>
         </div>
-      )}
-
-      {!parsed && worker.availability.length > 0 && (
-        <details className="card soft small">
-          <summary style={{ cursor: "pointer", fontWeight: 600 }}>Saved availability ({worker.availability.length})</summary>
-          <div className="stack" style={{ gap: 4, marginTop: 8 }}>
-            {worker.availability.map((w, i) => (
-              <div key={i} className="row between">
-                <span>{describeWindow(w)}</span>
-                <span className="num muted">
-                  {w.start} – {w.end}
-                </span>
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
+      </div>
+      <div className="card row" style={{ gap: 12 }}>
+        <span className="dot grey display" style={{ fontWeight: 700, fontSize: 13 }}>2</span>
+        <div className="stack grow" style={{ gap: 1 }}>
+          <div style={{ fontWeight: 700 }}>Check your area is right</div>
+          <div className="tiny muted">{user ?? "No area saved"} · jobs are matched by distance</div>
+        </div>
+      </div>
+      <div className="card row" style={{ gap: 12 }}>
+        <span className="dot grey display" style={{ fontWeight: 700, fontSize: 13 }}>3</span>
+        <div className="stack grow" style={{ gap: 1 }}>
+          <div style={{ fontWeight: 700 }}>How the cooperative pays</div>
+          <div className="tiny muted">85% of every job to you · welfare fund 10% · running costs 5% · benefits after 90 active days</div>
+        </div>
+      </div>
     </section>
   );
 }
 
-// ── today's job ──────────────────────────────────────────────────────
-
-function TodaysJob({ worker }: { worker: WorkerT }) {
-  const [jobs, setJobs] = useState<BookingDetail[] | null>(null);
-  const [amount, setAmount] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = async () => {
-    try {
-      const assigned = await api.bookings.list({ status: "assigned" });
-      const details = await Promise.all(assigned.map((b) => api.bookings.detail(b.id)));
-      setJobs(details.filter((d) => d.assignment?.worker.id === worker.id));
-    } catch (e) {
-      setError(errorMessage(e));
-    }
-  };
-
-  useEffect(() => {
-    void load();
-    const timer = window.setInterval(() => void load(), 6000);
-    return () => window.clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [worker.id]);
-
-  const complete = async (bookingId: number) => {
-    const value = Number(amount);
-    if (!(value > 0)) {
-      setError("Enter the bill amount in rupees.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      await api.bookings.complete(bookingId, value);
-      setAmount("");
-      await load();
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
+export function WeekStrip({ worker, jobs, summary }: { worker: WorkerT; jobs: WorkerJob[]; summary: WorkerSummary }) {
+  const week: WeekDay[] = buildWeek(worker.availability, jobs);
   return (
-    <section className="stack">
-      <div className="label">Your jobs</div>
-      {error && <div className="notice error">{error}</div>}
-      {jobs === null ? (
-        <div className="small muted">Loading…</div>
-      ) : jobs.length === 0 ? (
-        <div className="card soft small muted">Nothing assigned right now. Keep your availability up to date and the engine will send work your way.</div>
-      ) : (
-        jobs.map(({ booking, assignment }) => (
-          <div className="card stack" key={booking.id} style={{ gap: 8 }}>
-            <div className="stack" style={{ gap: 3 }}>
-              <div style={{ fontWeight: 700 }}>
-                {booking.customer_name} · {titleCase(booking.trade)}
-              </div>
-              <div className="small muted">
-                {formatWhen(booking.scheduled_for)}
-                {booking.address ? ` · ${booking.address}` : ""}
-                {booking.customer_phone ? ` · ${booking.customer_phone}` : ""}
-              </div>
-              {assignment?.explanation && <span className="pill green" style={{ alignSelf: "flex-start" }}>Why you: {assignment.explanation.split(";")[1]?.trim().replace(/\s*\(.*\)/, "") ?? "engine's top pick"}</span>}
-            </div>
-            <div className="row" style={{ gap: 8 }}>
-              <label className="field grow" style={{ minHeight: 44 }}>
-                <span className="muted">₹</span>
-                <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Bill amount" aria-label="Bill amount in rupees" style={{ height: 40 }} />
-              </label>
-              <button type="button" className="btn green" style={{ minHeight: 44, fontSize: 14 }} disabled={busy} onClick={() => complete(booking.id)}>
-                Job done
-              </button>
-            </div>
-          </div>
-        ))
+    <section className="stack" style={{ gap: 8 }}>
+      <div className="row between">
+        <div className="label">My week · <span className="hi" style={{ textTransform: "none", letterSpacing: 0 }}>मेरा हफ़्ता</span></div>
+        <Link to="/kaam/week" className="link">Open week →</Link>
+      </div>
+      <div className="week-strip">
+        {week.map((day) => (
+          <Link key={day.date} to={`/kaam/week?day=${day.date}`} className={day.isToday ? "today" : ""} aria-label={`${day.label} ${day.dayNumber}`}>
+            <span className="dow">{day.label}</span>
+            <span className="dnum">{day.dayNumber}</span>
+            <span className="slot-bars">
+              {day.slots.map((s) => (
+                <span key={s.slot} className={s.state} />
+              ))}
+            </span>
+          </Link>
+        ))}
+      </div>
+      <div className="legend">
+        <span><i className="legend-swatch free" />Free</span>
+        <span><i className="legend-swatch" />Not set</span>
+        <span><i className="legend-swatch busy" />Busy / job</span>
+        <span className="muted" style={{ marginLeft: "auto" }}>{SLOTS.map((s) => s.label.toLowerCase()).join(" · ")}</span>
+      </div>
+      {summary.free_hours_this_week === 0 && worker.status === "active" && (
+        <div className="notice warn">You have no free hours this week, so the engine can’t offer you anything. Tap a day above or use the mic.</div>
       )}
     </section>
   );
 }
 
-// ── this week ────────────────────────────────────────────────────────
-
-function ThisWeek({ worker }: { worker: WorkerT }) {
-  const [stats, setStats] = useState<DashboardWorker | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = () =>
-      api.admin
-        .dashboard()
-        .then((d) => {
-          if (!cancelled) setStats(d.workers.find((w) => w.id === worker.id) ?? null);
-        })
-        .catch(() => undefined);
-    void load();
-    const timer = window.setInterval(load, 6000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [worker.id]);
-
-  const days = stats?.engagement_days ?? 0;
+function Stats({ summary }: { summary: WorkerSummary }) {
+  const days = summary.engagement_days;
   return (
     <section className="grid-3" style={{ gap: 8 }}>
       <div className="stat">
-        <div className="value num">{stats?.jobs_this_week ?? worker.jobs_this_week}</div>
+        <div className="value num">{summary.jobs_this_week}</div>
         <div className="caption">jobs this week</div>
       </div>
       <div className="stat">
-        <div className="value num">{formatRupees(stats?.earnings_rupees ?? 0)}</div>
-        <div className="caption">earned</div>
+        <div className="value num">{formatRupees(summary.share_this_month_rupees)}</div>
+        <div className="caption">your share this month</div>
       </div>
       <div className="stat" style={{ gap: 6 }}>
         <div className="value num">
           {days}
-          <small> / 90</small>
+          <small> / {summary.eligibility_days}</small>
         </div>
         <div className="stack" style={{ gap: 4 }}>
           <div className="bar thin">
-            <div style={{ width: `${Math.min(100, Math.round((days / 90) * 100))}%` }} />
+            <div style={{ width: `${Math.min(100, Math.round((days / summary.eligibility_days) * 100))}%` }} />
           </div>
           <div className="caption" style={{ fontSize: 11, lineHeight: 1.2 }}>
-            days to benefits
+            days to benefits · <Link to="/kaam/jobs#benefits" className="link" style={{ fontSize: 11 }}>what’s that?</Link>
           </div>
         </div>
       </div>
     </section>
+  );
+}
+
+export function RecentJob({ job }: { job: WorkerJob }) {
+  const when = job.completed_at ?? job.declined_at ?? job.scheduled_for;
+  const date = when ? new Date(when.includes("T") ? when : when.replace(" ", "T") + "Z").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }) : "";
+  return (
+    <div className="card row" style={{ gap: 12, padding: "10px 12px 10px 14px", background: job.outcome === "declined" ? "var(--paper-2)" : undefined, borderColor: job.outcome === "declined" ? "var(--paper-2)" : undefined }}>
+      <div className="stack grow" style={{ gap: 2 }}>
+        <div style={{ fontWeight: 700, color: job.outcome === "declined" ? "var(--ink-2)" : undefined }}>
+          {job.customer_name} · {titleCase(job.trade)}
+        </div>
+        <div className="tiny muted">
+          {date}
+          {job.outcome === "completed" && (job.rating ? ` · ${"★".repeat(job.rating)}${"☆".repeat(5 - job.rating)}` : " · not rated yet")}
+          {job.outcome === "declined" && ` · passed on (${(job.decline_reason ?? "other").replace(/_/g, " ")}) · no penalty`}
+        </div>
+      </div>
+      {job.outcome === "completed" && job.share_rupees !== null ? (
+        <div className="stack" style={{ alignItems: "flex-end", gap: 1 }}>
+          <div className="display num" style={{ fontSize: 15, fontWeight: 700, color: "var(--green-d)" }}>{formatRupees(job.share_rupees)}</div>
+          {job.billed_rupees !== null && <div className="muted" style={{ fontSize: 11 }}>of {formatRupees(job.billed_rupees)}</div>}
+        </div>
+      ) : (
+        <div className="small muted" style={{ fontWeight: 700 }}>—</div>
+      )}
+    </div>
   );
 }

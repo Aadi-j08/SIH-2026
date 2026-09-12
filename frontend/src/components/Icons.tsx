@@ -218,6 +218,64 @@ export const Bill = (p: IconProps) => (
   </Icon>
 );
 
+export const Bell = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" />
+  </Icon>
+);
+export const Settings = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+  </Icon>
+);
+export const Coins = (p: IconProps) => (
+  <Icon {...p}>
+    <ellipse cx="9" cy="6" rx="6" ry="3" />
+    <path d="M3 6v6c0 1.7 2.7 3 6 3s6-1.3 6-3V6M3 12v6c0 1.7 2.7 3 6 3s6-1.3 6-3v-6" />
+    <path d="M15 9.5c3.3 0 6 1.3 6 3v6c0 1.7-2.7 3-6 3" />
+  </Icon>
+);
+export const Scale = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 3v18M5 21h14M3 7h18M6 7l-3 7a3 3 0 0 0 6 0L6 7zM18 7l-3 7a3 3 0 0 0 6 0l-3-7z" />
+  </Icon>
+);
+export const Megaphone = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 11v2a2 2 0 0 0 2 2h2l5 4V5L7 9H5a2 2 0 0 0-2 2zM16 8.5a4 4 0 0 1 0 7M8 15l1 5h2" />
+  </Icon>
+);
+export const Building = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="4" y="3" width="16" height="18" rx="1.5" />
+    <path d="M9 21v-4h6v4M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2" />
+  </Icon>
+);
+export const ShieldCheck = (p: IconProps) => (
+  <Icon {...p} strokeWidth={2.25}>
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    <path d="M9 12l2 2 4-4" />
+  </Icon>
+);
+export const AlertCircle = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 8v4M12 16h.01" />
+  </Icon>
+);
+export const Sparkle = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16z" />
+  </Icon>
+);
+export const MapPin = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z" />
+    <circle cx="12" cy="10" r="3" />
+  </Icon>
+);
+
 export const TRADE_ICONS: Record<string, (p: IconProps) => ReactElement> = {
   plumbing: Wrench,
   electrical: Zap,

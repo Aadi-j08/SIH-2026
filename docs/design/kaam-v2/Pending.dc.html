@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&amp;family=Manrope:wght@400..700&amp;family=Noto+Sans+Devanagari:wght@400;600&amp;display=swap">
+  <style>
+    body { margin: 0; background: #FCFAF6; color: #261D17; font-family: Manrope, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #00792F; } a:hover { color: #25984D; }
+    .display { font-family: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif; }
+    .hi { font-family: "Noto Sans Devanagari", "Nirmala UI", Mangal, sans-serif; }
+    svg { display: block; }
+  </style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #FCFAF6; display: flex; flex-direction: column; gap: 14px; padding: 20px; overflow: hidden; box-sizing: border-box;">
+
+  <!-- greeting -->
+  <div style="display: flex; align-items: center; justify-content: space-between;">
+    <div style="display: flex; flex-direction: column; gap: 3px;">
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <div class="hi" style="font-size: 22px; font-weight: 600; color: #261D17;">नमस्ते,</div>
+        <div class="display" style="font-size: 24px; font-weight: 700; letter-spacing: -0.01em; color: #261D17;">Ravi</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;"><div style="font-size: 13px; color: #5C534D;">Electrician</div><div style="display: flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 999px; background: #FBEED2; color: #8A5A00; font-size: 12px; font-weight: 700;">Awaiting council approval</div></div>
+    </div>
+    <div class="display" style="display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 999px; background: #F7F3EC; color: #5C534D; font-size: 15px; font-weight: 700;">RK</div>
+  </div>
+
+  <!-- status card -->
+  <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 20px; background: #FFFFFF; border: 1.5px solid #E2DDD5; box-sizing: border-box;">
+    <div style="display: flex; flex-direction: column; gap: 3px;">
+      <div class="display" style="font-size: 18px; font-weight: 700; letter-spacing: -0.01em; color: #261D17;">Your profile is with the council</div>
+      <div class="hi" style="font-size: 14px; color: #5C534D;">सभा आपकी प्रोफ़ाइल देख रही है — आमतौर पर 1 दिन में</div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 0;">
+      <div style="display: flex; gap: 12px;">
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 999px; background: #00792F; color: #FFFFFF;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4L19 6"></path></svg></div>
+          <div style="width: 2px; flex-grow: 1; background: #00792F; min-height: 22px;"></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 1px; padding-bottom: 14px;"><div style="font-size: 14px; font-weight: 700; color: #261D17;">Account created</div><div style="font-size: 12px; color: #5C534D;">Today 11:20</div></div>
+      </div>
+      <div style="display: flex; gap: 12px;">
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 999px; background: #FBEED2; color: #8A5A00;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l3 2"></path></svg></div>
+          <div style="width: 2px; flex-grow: 1; background: #E2DDD5; min-height: 22px;"></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 1px; padding-bottom: 14px;"><div style="font-size: 14px; font-weight: 700; color: #261D17;">Council checks your trade and area</div><div style="font-size: 12px; color: #5C534D;">A member may call you on 98765 43210</div></div>
+      </div>
+      <div style="display: flex; gap: 12px;">
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <div style="width: 24px; height: 24px; border-radius: 999px; border: 2px solid #E2DDD5; box-sizing: border-box;"></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 1px;"><div style="font-size: 14px; font-weight: 700; color: #8C857F;">You start getting jobs</div><div style="font-size: 12px; color: #8C857F;">The engine matches you by distance, fairness, rating and your free hours</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- meanwhile: step 1 -->
+  <div style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #8C857F;">Meanwhile — get ready</div>
+    <div style="display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 20px; background: #261D17; color: #FCFAF6;">
+      <div style="display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 999px; background: #25984D; color: #FFFFFF; flex-shrink: 0; box-shadow: 0 8px 24px rgba(37, 152, 77, 0.35);">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"></path></svg>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1;">
+        <div class="display" style="font-size: 17px; font-weight: 700; letter-spacing: -0.01em;">1 · Tell us when you’re free</div>
+        <div class="hi" style="font-size: 14px; color: #C9C1B9;">बोलिए — “सोमवार से शुक्रवार सुबह खाली हूँ”</div>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: #FFFFFF; border: 1.5px solid #E2DDD5; box-sizing: border-box;">
+      <div class="display" style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 999px; background: #F7F3EC; color: #5C534D; font-size: 14px; font-weight: 700; flex-shrink: 0;">2</div>
+      <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1;">
+        <div style="font-size: 14px; font-weight: 700; color: #261D17;">Check your area is right</div>
+        <div style="font-size: 12px; color: #5C534D;">Kolar Road, Bhopal · jobs are matched by distance</div>
+      </div>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8C857F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: #FFFFFF; border: 1.5px solid #E2DDD5; box-sizing: border-box;">
+      <div class="display" style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 999px; background: #F7F3EC; color: #5C534D; font-size: 14px; font-weight: 700; flex-shrink: 0;">3</div>
+      <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1;">
+        <div style="font-size: 14px; font-weight: 700; color: #261D17;">Read how the cooperative pays</div>
+        <div style="font-size: 12px; color: #5C534D;">85% to you on every job · benefits after 90 active days</div>
+      </div>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8C857F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1;"></div>
+  <div style="font-size: 12px; text-align: center; color: #8C857F;">Questions? Call the council office · <a href="#" style="text-decoration: none; font-weight: 700;">0755 [COUNCIL NUMBER]</a></div>
+</div>
+</x-dc>
+</body>
+</html>

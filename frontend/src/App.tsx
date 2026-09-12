@@ -1,54 +1,37 @@
-import { Link, Navigate, Route, Routes, useParams } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes, useParams } from "react-router-dom";
 
-import { CalendarIcon, LayoutGrid, Receipt, TrendingUp, Users } from "./components/Icons";
-import PortalShell, { BrandMark, PORTALS, PortalTag, UserMenu, Wordmark } from "./components/PortalShell";
+import PortalShell from "./components/PortalShell";
+import SabhaShell from "./components/SabhaShell";
 import { AuthProvider, RequireAuth } from "./lib/auth";
-import Admin from "./pages/Admin";
 import Customer from "./pages/Customer";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import PortalLanding from "./pages/PortalLanding";
+import Announcements from "./pages/sabha/Announcements";
+import Customers from "./pages/sabha/Customers";
+import Demands from "./pages/sabha/Demands";
+import Disputes from "./pages/sabha/Disputes";
+import Fund from "./pages/sabha/Fund";
+import Overview from "./pages/sabha/Overview";
+import Payments from "./pages/sabha/Payments";
+import Profile from "./pages/sabha/Profile";
+import Reports from "./pages/sabha/Reports";
+import Settings from "./pages/sabha/Settings";
+import SabhaWorkers from "./pages/sabha/Workers";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import Worker from "./pages/Worker";
+import WorkerJobs from "./pages/WorkerJobs";
+import WorkerWeek from "./pages/WorkerWeek";
 
-/** Sabha's desktop sidebar: the dashboard sections, and the signed-in person at the bottom. */
-function SabhaSidebar() {
-  const p = PORTALS.sabha;
+/** Every private Sabha page: signed-in council member, inside the Sabha frame. */
+function SabhaArea() {
   return (
-    <aside className="sidebar">
-      <Link to={p.home} className="brand">
-        <BrandMark color={p.accent} />
-        <Wordmark>
-          <small>Cooperative council</small>
-        </Wordmark>
-      </Link>
-      <PortalTag portal="sabha" />
-      <nav aria-label="Dashboard sections">
-        <a href="#top" className="active">
-          <LayoutGrid size={20} />
-          Dashboard
-        </a>
-        <a href="#bookings">
-          <CalendarIcon size={20} />
-          Bookings
-        </a>
-        <a href="#workers">
-          <Users size={20} />
-          Workers
-        </a>
-        <a href="#forecast">
-          <TrendingUp size={20} />
-          Forecast
-        </a>
-        <a href="#money">
-          <Receipt size={20} />
-          Ledger
-        </a>
-      </nav>
-      <div className="grow" />
-      <UserMenu portal="sabha" />
-    </aside>
+    <RequireAuth portal="sabha">
+      <SabhaShell>
+        <Outlet />
+      </SabhaShell>
+    </RequireAuth>
   );
 }
 
@@ -88,21 +71,44 @@ export default function App() {
             </RequireAuth>
           }
         />
+        <Route
+          path="/kaam/week"
+          element={
+            <RequireAuth portal="kaam">
+              <PortalShell portal="kaam">
+                <WorkerWeek />
+              </PortalShell>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/kaam/jobs"
+          element={
+            <RequireAuth portal="kaam">
+              <PortalShell portal="kaam">
+                <WorkerJobs />
+              </PortalShell>
+            </RequireAuth>
+          }
+        />
 
         {/* Sabha · Council */}
         <Route path="/sabha" element={<PortalLanding portal="sabha" />} />
         <Route path="/sabha/login" element={<SignIn portal="sabha" />} />
         <Route path="/sabha/signup" element={<SignUp portal="sabha" />} />
-        <Route
-          path="/sabha/home"
-          element={
-            <RequireAuth portal="sabha">
-              <PortalShell portal="sabha" sidebar={<SabhaSidebar />}>
-                <Admin />
-              </PortalShell>
-            </RequireAuth>
-          }
-        />
+        <Route element={<SabhaArea />}>
+          <Route path="/sabha/home" element={<Overview />} />
+          <Route path="/sabha/demands" element={<Demands />} />
+          <Route path="/sabha/workers" element={<SabhaWorkers />} />
+          <Route path="/sabha/customers" element={<Customers />} />
+          <Route path="/sabha/payments" element={<Payments />} />
+          <Route path="/sabha/fund" element={<Fund />} />
+          <Route path="/sabha/disputes" element={<Disputes />} />
+          <Route path="/sabha/reports" element={<Reports />} />
+          <Route path="/sabha/announcements" element={<Announcements />} />
+          <Route path="/sabha/profile" element={<Profile />} />
+          <Route path="/sabha/settings" element={<Settings />} />
+        </Route>
 
         {/* the pre-login paths */}
         <Route path="/customer" element={<Navigate to="/ghar/home" replace />} />

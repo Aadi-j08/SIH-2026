@@ -57,13 +57,17 @@ def make_client(db_path) -> Callable[..., TestClient]:
     """
     clients: list[TestClient] = []
 
-    def _make(role: str = "council", **kwargs) -> TestClient:
+    def _make(role: str = "council", approved: bool = True, **kwargs) -> TestClient:
         test_client = TestClient(app)
         test_client.__enter__()
         clients.append(test_client)
         response = test_client.post("/auth/signup", json=signup_body(role, **kwargs))
         assert response.status_code == 201, response.text
         body = response.json()
+        if role == "worker" and approved:
+            # New Kaam sign-ups wait for council approval; most tests want a worker the engine can use.
+            with database.connection() as conn:
+                conn.execute("UPDATE workers SET status = 'active' WHERE id = ?", (body["user"]["worker_id"],))
         test_client.user = body["user"]          # type: ignore[attr-defined]
         test_client.token = body["session_token"]  # type: ignore[attr-defined]
         return test_client

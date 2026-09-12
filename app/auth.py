@@ -197,7 +197,7 @@ def signup(data: SignupRequest) -> User:
             phone=phone,
             latitude=data.latitude if data.latitude is not None else DEFAULT_LATITUDE,
             longitude=data.longitude if data.longitude is not None else DEFAULT_LONGITUDE,
-        ))
+        ), status="pending")   # the council approves new members before the engine offers them work
         worker_id = worker.id
 
     with connection() as conn:
