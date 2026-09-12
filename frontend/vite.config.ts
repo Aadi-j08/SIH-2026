@@ -4,7 +4,7 @@ import { VitePWA } from "vite-plugin-pwa";
 
 // The API (FastAPI) owns the root paths; the web app lives under /app so the
 // two never collide, in dev (proxy) and in production (served by FastAPI).
-const API_PREFIXES = ["/auth", "/workers", "/bookings", "/admin", "/forecast", "/voice", "/allocation", "/docs", "/openapi.json"];
+const API_PREFIXES = ["/auth", "/cooperative", "/disputes", "/stats", "/workers", "/bookings", "/admin", "/forecast", "/voice", "/allocation", "/docs", "/openapi.json"];
 
 export default defineConfig({
   base: "/app/",
