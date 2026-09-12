@@ -37,14 +37,38 @@ Done and working locally:
   files + `canvas.json` are the sources; the seeded `sahakarsetu-*.html`
   canvases are generated and git-ignored.
 
+- Sabha dashboard v2 (12 Sep): `app/routers/sabha.py` — `GET /admin/overview`
+  (one call: health metrics, needs-attention, demand vs workforce per trade,
+  engine matching suggestions, worker network + workload %, performance,
+  disputes, forecast insight; `app/services/overview.py`), `GET/PUT
+  /cooperative` (`app/cooperative.py`: profile + weekly job limit + fund
+  allocation policy), `/disputes` (`app/disputes.py`: raise by
+  customer/worker on own booking, council lists/resolves), `POST
+  /allocation/auto?trade=` (assign all pending with the engine), `GET
+  /admin/customers`. New tables `cooperative`, `disputes`. Frontend:
+  `components/SabhaShell.tsx` (sidebar + header + shared overview context),
+  `pages/sabha/{Overview,Demands,Workers,Customers,Payments,Fund,Disputes,
+  Reports,Announcements,Profile,Settings}.tsx`; `pages/Admin.tsx` became
+  `pages/sabha/Demands.tsx` (exports ForecastChart/MoneySplit/WorkersList).
+  Fund pie palette validated (#435ab8 #25984d #e0a028 #8a8fd9).
+- Demo data: `scripts/seed_demo.py [--db demo.db]` — 52 workers, 76
+  households, 14 council, ~430 bookings over 90 days through the real engine
+  and ledger, 21 disputes. All passwords `demo1234`; council 9000000300,
+  customer 9000000100, worker 9000000200. Takes ~90 s (PBKDF2). Refuses to
+  seed twice.
+
 In progress / next:
 1. Landing hero: the user moved the "Why Asha got this job" card on the auth
    canvas (https://claude.ai/code/artifact/30c35ae7-877d-4670-9ede-63ad402ea700)
    but the drag landed oddly (a 250×161 box); waiting on what they intended.
 2. Photos `neighbourhood.jpg`, `money.jpg`, `demand-forecast.jpg` are no
    longer used on the landing (the feature cards became audience sections).
-3. Ideas discussed, not built: protect data endpoints with `require_portal`,
-   forgot-password, one PWA manifest per portal, seed data script, mobile app.
+3. Announcements page is a placeholder (no table yet). Ideas not built:
+   forgot-password, one PWA manifest per portal, mobile app.
+4. A second session is working on Kaam v2 in the same tree (app/kaam.py,
+   routers/kaam.py, pages/WorkerJobs.tsx, WorkerWeek.tsx, JobCard.tsx,
+   PendingWorkers.tsx, api.kaam). Until it lands, `npm run build` fails on
+   tsc; `npx vite build` bundles without type-checking.
 
 ## Run
 
@@ -60,6 +84,41 @@ build` (served by FastAPI from `frontend/dist`). Tests:
 
 Python is 3.13 (3.12 not installed). Node 24. `.venv` and `node_modules` are
 already set up on this machine.
+
+## Kaam v2 (12 Sep): the worker's own portal
+
+Mockups in `docs/design/kaam-v2/` (canvas sources; the seeded html is
+git-ignored). Built as designed:
+- `app/kaam.py` + `app/routers/kaam.py`: `GET /workers/me/summary` and
+  `/workers/me/jobs` (the home-page numbers and history — the old page called
+  the council-only dashboard and always showed ₹0), `PUT/PATCH/DELETE
+  /workers/{id}/availability[/{index}]` (structured edits of what the voice
+  parser wrote), `POST /bookings/{id}/accept` and `/decline {reason,
+  mark_busy_today}` (a decline removes the assignment, records it in
+  `declines`, and re-runs `assign_booking` excluding whoever passed; stays
+  pending if nobody else fits), `GET /workers/pending` + `POST
+  /workers/{id}/approve` (council).
+- Workers have `status` pending|active (migration 3). Kaam sign-ups start
+  **pending** and the engine skips them until the council approves (Sabha →
+  Workers page, "Waiting for approval" panel). Council-created workers are
+  active at once. Test fixture `make_client("worker")` auto-approves; pass
+  `approved=False` to test the queue. `assign_booking` gained
+  `exclude_worker_ids` and the active-only filter — the only edit to the
+  booking-flow files.
+- Voice parser: weekday ranges ("somvar se shukravar", "monday to friday"),
+  common misspellings (tommorrow…), and `assumptions` (no day named → "every
+  day" and confidence capped at 0.5; only a start time). The UI shows them and
+  turns Save into "Save anyway".
+- Frontend: `pages/Worker.tsx` (home v2: job needing a reply → 7-day strip
+  with morning/noon/evening bars → compact mic → stats → recent jobs; pending
+  state with timeline), `pages/WorkerWeek.tsx` (`/kaam/week`: tap a slot →
+  mark free / busy / remove), `pages/WorkerJobs.tsx` (`/kaam/jobs`: 85/10/5
+  split, ratings, history), `components/JobCard.tsx` (accept / decline reason
+  sheet / call / directions / job done), `components/VoiceAvailability.tsx`
+  (extracted, `compact` mode; adds by default, checkbox to replace),
+  `components/PendingWorkers.tsx` (Sabha approval panel), `lib/week.ts`
+  (windows + jobs → 7×3 slot grid).
+- `scripts/seed_demo.py` approves all but the three newest workers.
 
 ## Roles and ownership (backend-enforced)
 

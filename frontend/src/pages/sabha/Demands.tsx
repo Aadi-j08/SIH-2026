@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import {
   api,
@@ -11,35 +12,32 @@ import {
   type Dashboard,
   type Forecast,
   type Recommendation,
-  type StaffingForecast,
-} from "../api";
-import { Refresh } from "../components/Icons";
+} from "../../api";
+import { Check } from "../../components/Icons";
+import { useSabha } from "../../components/SabhaShell";
 
 type PendingRow = { booking: Booking; pick: Recommendation | null };
 
-export default function Admin() {
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+export default function Demands() {
+  const { reload: reloadOverview } = useSabha();
+  const [params, setParams] = useSearchParams();
+  const trade = params.get("trade") ?? "";
   const [pending, setPending] = useState<PendingRow[]>([]);
   const [inProgress, setInProgress] = useState<BookingDetail[]>([]);
-  const [trade, setTrade] = useState<string>("");
   const [trades, setTrades] = useState<string[]>([]);
-  const [forecast, setForecast] = useState<Forecast | null>(null);
-  const [staffing, setStaffing] = useState<StaffingForecast | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [dash, pendingBookings, assignedBookings, workers] = await Promise.all([
-        api.admin.dashboard(),
+      const [pendingBookings, assignedBookings] = await Promise.all([
         api.bookings.list({ status: "pending" }),
         api.bookings.list({ status: "assigned" }),
-        api.workers.list(),
       ]);
-      setDashboard(dash);
-      const distinctTrades = Array.from(new Set(workers.map((w) => w.trade))).sort();
-      setTrades(distinctTrades);
+      setTrades(Array.from(new Set([...pendingBookings, ...assignedBookings].map((b) => b.trade))).sort());
       const rows = await Promise.all(
         pendingBookings.map(async (booking) => ({
           booking,
@@ -56,134 +54,87 @@ export default function Admin() {
     }
   };
 
+  const changed = async () => {
+    await Promise.all([load(), reloadOverview()]);
+  };
+
   useEffect(() => {
     void load();
-    const timer = window.setInterval(() => void load(), 10000);
+    const timer = window.setInterval(() => void load(), 15000);
     return () => window.clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    if (!trade && trades.length) setTrade(trades[0]);
-  }, [trades, trade]);
+  const autoAllocate = async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      const r = await api.allocation.auto(trade || undefined);
+      setNote(`${r.assigned.length} of ${r.attempted} assigned${r.skipped.length ? `; ${r.skipped.length} skipped` : ""}.`);
+      await changed();
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
-  useEffect(() => {
-    if (!trade) return;
-    api.forecast(trade, 7).then(setForecast).catch(() => setForecast(null));
-    api.staffing(trade, 7).then(setStaffing).catch(() => setStaffing(null));
-  }, [trade, dashboard]);
-
-  const today = useMemo(() => new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }), []);
+  const visible = (t: string) => !trade || t === trade;
+  const pendingRows = pending.filter((r) => visible(r.booking.trade));
+  const progressRows = inProgress.filter((d) => visible(String(d.booking.trade)));
 
   return (
-    <div className="page wide">
-      <div id="top" className="row between" style={{ alignItems: "flex-end", flexWrap: "wrap", gap: 12 }}>
+    <div className="page wide sabha-page">
+      <div className="row between" style={{ alignItems: "flex-end", flexWrap: "wrap", gap: 12 }}>
         <div className="stack" style={{ gap: 4 }}>
-          <h1 style={{ fontSize: 28 }}>Dashboard</h1>
-          <div className="sub">{today} · this week</div>
+          <h1 style={{ fontSize: 28 }}>Demands</h1>
+          <div className="sub">Every open request, the engine’s pick for it, and the jobs in progress</div>
         </div>
-        <div className="row">
-          <button type="button" className="btn outline small" onClick={load} disabled={loading}>
-            <Refresh size={16} />
-            {loading ? "Refreshing…" : "Refresh"}
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <select
+            value={trade}
+            onChange={(e) => setParams(e.target.value ? { trade: e.target.value } : {})}
+            className="chip"
+            style={{ minHeight: 36, padding: "0 12px" }}
+            aria-label="Filter by trade"
+          >
+            <option value="">All trades</option>
+            {trades.map((t) => (
+              <option key={t} value={t}>{titleCase(t)}</option>
+            ))}
+          </select>
+          <button type="button" className="btn small primary" onClick={() => void autoAllocate()} disabled={busy || pendingRows.length === 0}>
+            <Check size={14} />
+            {busy ? "Allocating…" : `Auto-allocate${trade ? ` ${trade}` : " all"}`}
           </button>
         </div>
       </div>
 
       {error && <div className="notice error">{error}</div>}
+      {note && <div className="notice info">{note}</div>}
 
-      {dashboard && (
-        <div className="admin">
-          <div className="tiles">
-            <StatTile label="Bookings" value={String(dashboard.bookings.total)} caption={`${dashboard.bookings.pending} pending · ${dashboard.bookings.assigned} assigned · ${dashboard.bookings.completed} completed`} />
-            <StatTile label="Billed" value={formatRupees(dashboard.money.gross_rupees)} caption={`across ${dashboard.bookings.completed} completed jobs`} />
-            <StatTile
-              label="Average rating"
-              value={dashboard.ratings.average === null ? "—" : dashboard.ratings.average.toFixed(1)}
-              suffix={dashboard.ratings.average === null ? undefined : " / 5"}
-              caption={`from ${dashboard.ratings.count} rating${dashboard.ratings.count === 1 ? "" : "s"}`}
-            />
-            <StatTile label="Fairness · Gini" value={dashboard.fairness.jobs_gini.toFixed(2)} caption="0 = jobs shared perfectly evenly" valueColor="var(--green-d)" />
-          </div>
-
-          <div className="panel span-7" id="bookings">
-            <div className="row between">
-              <div className="row" style={{ gap: 8 }}>
-                <h2>Pending bookings</h2>
-                <span className="badge">{pending.length}</span>
-              </div>
-            </div>
-            <PendingTable rows={pending} onChanged={load} />
-            {inProgress.length > 0 && (
-              <>
-                <div className="divider" />
-                <div className="row" style={{ gap: 8 }}>
-                  <h2>In progress</h2>
-                  <span className="badge">{inProgress.length}</span>
-                </div>
-                <InProgressList items={inProgress} onChanged={load} />
-              </>
-            )}
-          </div>
-
-          <div className="panel span-5" id="forecast">
-            <div className="row between" style={{ alignItems: "flex-start" }}>
-              <div className="stack" style={{ gap: 2 }}>
-                <h2>Demand forecast</h2>
-                <div className="small muted">Expected bookings per day, next 7 days</div>
-              </div>
-              <select value={trade} onChange={(e) => setTrade(e.target.value)} className="chip" style={{ minHeight: 36, padding: "0 12px" }} aria-label="Trade">
-                {trades.map((t) => (
-                  <option key={t} value={t}>
-                    {titleCase(t)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {forecast ? <ForecastChart forecast={forecast} /> : <div className="small muted">No forecast yet.</div>}
-            {staffing && staffing.shortage > 0 && (
-              <div className="notice info" style={{ marginTop: 8 }}>
-                Staffing alert: {staffing.recommendation}
-              </div>
-            )}
-          </div>
-
-          <div className="panel span-7" id="workers">
-            <div className="stack" style={{ gap: 2 }}>
-              <h2>Workers · jobs this week</h2>
-              <div className="small muted">The engine favours whoever has had the fewest jobs</div>
-            </div>
-            <WorkersList dashboard={dashboard} />
-          </div>
-
-          <div className="panel span-5" id="money">
-            <div className="stack" style={{ gap: 2 }}>
-              <h2>Where the money went</h2>
-              <div className="small muted">Every completed job is split 85 / 10 / 5, to the paisa</div>
-            </div>
-            <MoneySplit dashboard={dashboard} />
-          </div>
+      <div className="panel">
+        <div className="row" style={{ gap: 8 }}>
+          <h2>Unassigned</h2>
+          <span className="badge">{pendingRows.length}</span>
+          {loading && <span className="tiny muted">refreshing…</span>}
         </div>
-      )}
+        <PendingTable rows={pendingRows} onChanged={changed} />
+      </div>
+
+      <div className="panel">
+        <div className="row" style={{ gap: 8 }}>
+          <h2>In progress</h2>
+          <span className="badge">{progressRows.length}</span>
+        </div>
+        {progressRows.length === 0 ? <div className="small muted">No jobs in progress.</div> : <InProgressList items={progressRows} onChanged={changed} />}
+      </div>
     </div>
   );
 }
 
 // ── pieces ───────────────────────────────────────────────────────────
 
-function StatTile({ label, value, suffix, caption, valueColor }: { label: string; value: string; suffix?: string; caption: string; valueColor?: string }) {
-  return (
-    <div className="tile-stat">
-      <div className="label">{label}</div>
-      <div className="value num" style={{ color: valueColor }}>
-        {value}
-        {suffix && <small>{suffix}</small>}
-      </div>
-      <div className="caption num">{caption}</div>
-    </div>
-  );
-}
-
-function PendingTable({ rows, onChanged }: { rows: PendingRow[]; onChanged: () => Promise<void> }) {
+export function PendingTable({ rows, onChanged }: { rows: PendingRow[]; onChanged: () => Promise<void> }) {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -230,11 +181,6 @@ function PendingTable({ rows, onChanged }: { rows: PendingRow[]; onChanged: () =
                 <div className="tiny ellipsis" style={{ color: "var(--ink-2)" }} title={pick.explanation}>
                   {pick.explanation.split(": ").slice(1).join(": ")}
                 </div>
-                {pick.why_selected?.length > 0 && (
-                  <div className="tiny muted ellipsis" title={pick.why_selected.join(" · ")}>
-                    Why: {pick.why_selected.slice(0, 2).join(" · ")}
-                  </div>
-                )}
               </>
             ) : (
               <div className="tiny" style={{ color: "var(--terracotta-d)" }}>No eligible worker (trade, distance or availability)</div>
@@ -250,7 +196,7 @@ function PendingTable({ rows, onChanged }: { rows: PendingRow[]; onChanged: () =
   );
 }
 
-function InProgressList({ items, onChanged }: { items: BookingDetail[]; onChanged: () => Promise<void> }) {
+export function InProgressList({ items, onChanged }: { items: BookingDetail[]; onChanged: () => Promise<void> }) {
   const [amounts, setAmounts] = useState<Record<number, string>>({});
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -300,7 +246,7 @@ function InProgressList({ items, onChanged }: { items: BookingDetail[]; onChange
   );
 }
 
-function ForecastChart({ forecast }: { forecast: Forecast }) {
+export function ForecastChart({ forecast }: { forecast: Forecast }) {
   const W = 410;
   const PLOT_TOP = 10;
   const BASE = 150;
@@ -388,7 +334,7 @@ function ForecastChart({ forecast }: { forecast: Forecast }) {
   );
 }
 
-function WorkersList({ dashboard }: { dashboard: Dashboard }) {
+export function WorkersList({ dashboard }: { dashboard: Dashboard }) {
   const max = Math.max(1, ...dashboard.workers.map((w) => w.jobs_this_week));
   if (dashboard.workers.length === 0) return <div className="small muted">No workers yet.</div>;
   return (
@@ -413,7 +359,7 @@ function WorkersList({ dashboard }: { dashboard: Dashboard }) {
   );
 }
 
-function MoneySplit({ dashboard }: { dashboard: Dashboard }) {
+export function MoneySplit({ dashboard }: { dashboard: Dashboard }) {
   const { money } = dashboard;
   const rows = [
     { label: "Workers", value: money.worker_payouts_rupees, percent: 85, color: "var(--ramp-1)" },

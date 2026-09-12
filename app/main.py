@@ -24,6 +24,8 @@ from app import database, ownership, repository
 from app.auth import User, require_council, require_customer, require_user, require_worker
 from app.routers.auth import router as auth_router
 from app.routers.booking_flow import router as booking_flow_router
+from app.routers.kaam import router as kaam_router
+from app.routers.sabha import router as sabha_router
 from app.schemas import (
     Booking,
     BookingCreate,
@@ -58,6 +60,8 @@ app = FastAPI(
 )
 app.include_router(auth_router)
 app.include_router(booking_flow_router)
+app.include_router(kaam_router)
+app.include_router(sabha_router)
 
 
 # ── errors: clean messages out, details in the log ───────────────────────

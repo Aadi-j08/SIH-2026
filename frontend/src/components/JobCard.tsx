@@ -1,0 +1,188 @@
+import { useState } from "react";
+
+import { api, errorMessage, formatWhen, titleCase, type DeclineReason, type WorkerJob } from "../api";
+import { Check, MapPin } from "./Icons";
+
+const REASONS: { id: DeclineReason; label: string }[] = [
+  { id: "unwell", label: "Not well today" },
+  { id: "too_far", label: "Too far" },
+  { id: "already_booked", label: "Already booked" },
+  { id: "not_my_job", label: "Not my kind of job" },
+];
+
+function whyYou(explanation: string | null): string | null {
+  if (!explanation) return null;
+  const part = explanation.split(";")[1]?.trim().replace(/\s*\(.*\)/, "");
+  return part || "engine’s top pick";
+}
+
+function Phone(p: { size?: number }) {
+  return (
+    <svg width={p.size ?? 20} height={p.size ?? 20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" />
+    </svg>
+  );
+}
+
+/**
+ * One assigned job, in its three states: waiting for a reply (Accept / Can’t do it),
+ * accepted (call, directions, bill + Job done), and the decline reason sheet in between.
+ */
+export default function JobCard({ job, onChange }: { job: WorkerJob; onChange: () => Promise<void> | void }) {
+  const [mode, setMode] = useState<"view" | "decline">("view");
+  const [reason, setReason] = useState<DeclineReason | null>(null);
+  const [busyToday, setBusyToday] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ kind: "error" | "info"; text: string } | null>(null);
+
+  const run = async (fn: () => Promise<unknown>, done?: string) => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await fn();
+      if (done) setMessage({ kind: "info", text: done });
+      await onChange();
+    } catch (e) {
+      setMessage({ kind: "error", text: errorMessage(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const accept = () => run(() => api.kaam.accept(job.booking_id));
+  const decline = () =>
+    reason &&
+    run(async () => {
+      const result = await api.kaam.decline(job.booking_id, reason, busyToday);
+      setMode("view");
+      setMessage({
+        kind: "info",
+        text: result.reassigned_to ? `Passed on to ${result.reassigned_to}. No penalty.` : "Passed back to the council. No penalty.",
+      });
+    });
+  const complete = () => {
+    const value = Number(amount);
+    if (!(value > 0)) {
+      setMessage({ kind: "error", text: "Enter the bill amount in rupees." });
+      return;
+    }
+    return run(async () => {
+      const result = await api.bookings.complete(job.booking_id, value);
+      const mine = result.ledger.find((l) => l.party === "worker");
+      setMessage({ kind: "info", text: `₹${result.amount_rupees} billed · ₹${mine?.amount_rupees ?? "—"} is yours. Rating comes when the customer replies.` });
+      setAmount("");
+    });
+  };
+
+  const isNew = job.outcome === "assigned";
+  const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${job.latitude},${job.longitude}`;
+
+  if (mode === "decline") {
+    return (
+      <div className="sheet">
+        <div className="stack" style={{ gap: 2 }}>
+          <div className="display" style={{ fontSize: 18, fontWeight: 700 }}>Why not this one?</div>
+          <div className="hi small muted">क्यों नहीं? — इससे इंजन को अगली बार बेहतर चुनने में मदद मिलती है</div>
+        </div>
+        <div className="reason-grid">
+          {REASONS.map((r) => (
+            <button key={r.id} type="button" className={reason === r.id ? "active" : ""} onClick={() => setReason(r.id)}>
+              {r.label}
+            </button>
+          ))}
+        </div>
+        <label className="row small muted" style={{ gap: 8 }}>
+          <input type="checkbox" checked={busyToday} onChange={(e) => setBusyToday(e.target.checked)} />
+          Also mark me busy for the rest of today
+        </label>
+        {message && <div className={`notice ${message.kind}`}>{message.text}</div>}
+        <div className="row" style={{ gap: 8 }}>
+          <button type="button" className="btn dark grow" onClick={decline} disabled={busy || !reason}>
+            {busy ? "Passing on…" : "Pass it on"}
+          </button>
+          <button type="button" className="btn outline" onClick={() => setMode("view")} disabled={busy}>
+            Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`job-card${isNew ? " new" : ""}`}>
+      <div className="row between" style={{ alignItems: "flex-start", gap: 10 }}>
+        {isNew ? (
+          <div className="row" style={{ gap: 8 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 999, background: "var(--green-d)", display: "inline-block" }} />
+            <span className="label" style={{ color: "var(--green-d)" }}>New job · reply please</span>
+          </div>
+        ) : (
+          <span className="label">Today’s job</span>
+        )}
+        {isNew ? (
+          <span className="hi small muted">नया काम</span>
+        ) : (
+          <span className="pill green"><Check size={12} strokeWidth={3} />Accepted</span>
+        )}
+      </div>
+      <div className="stack" style={{ gap: 3 }}>
+        <div className="display" style={{ fontSize: 17, fontWeight: 700 }}>
+          {job.customer_name} · {titleCase(job.trade)}
+        </div>
+        <div className="small muted">
+          {formatWhen(job.scheduled_for)}
+          {job.address ? ` · ${job.address}` : ""}
+        </div>
+        {whyYou(job.explanation) && <span className="pill green" style={{ alignSelf: "flex-start" }}>Why you: {whyYou(job.explanation)}</span>}
+      </div>
+
+      {message && <div className={`notice ${message.kind}`}>{message.text}</div>}
+
+      {isNew ? (
+        <>
+          <div className="row" style={{ gap: 8 }}>
+            <button type="button" className="btn green grow" onClick={accept} disabled={busy}>
+              Accept · हाँ
+            </button>
+            <button type="button" className="btn outline" onClick={() => setMode("decline")} disabled={busy}>
+              Can’t do it
+            </button>
+          </div>
+          <div className="tiny muted">If you can’t, the job goes to the next worker at once. Passing on never counts against you.</div>
+        </>
+      ) : (
+        <>
+          <div className="job-actions">
+            <a href={job.customer_phone ? `tel:${job.customer_phone}` : undefined} className={job.customer_phone ? "" : "disabled"}>
+              <Phone />
+              {job.customer_phone ? `Call ${job.customer_name.split(" ")[0]}` : "No number"}
+            </a>
+            <a href={mapsUrl} target="_blank" rel="noreferrer">
+              <MapPin size={20} />
+              Directions
+            </a>
+            <button type="button" onClick={() => setMode("decline")} disabled={busy}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              Can’t make it
+            </button>
+          </div>
+          <div className="divider" />
+          <div className="stack" style={{ gap: 6 }}>
+            <div className="label">When finished</div>
+            <div className="row" style={{ gap: 8 }}>
+              <label className="field grow" style={{ minHeight: 50 }}>
+                <span className="muted">₹</span>
+                <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Bill amount" aria-label="Bill amount in rupees" style={{ height: 46 }} />
+              </label>
+              <button type="button" className="btn green" style={{ minHeight: 50 }} disabled={busy} onClick={complete}>
+                Job done
+              </button>
+            </div>
+            <div className="tiny muted">You keep 85% · welfare fund 10% · running costs 5%. Shown in your history after.</div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
