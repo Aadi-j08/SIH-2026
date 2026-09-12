@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS workers (
     jobs_this_week  INTEGER NOT NULL DEFAULT 0 CHECK (jobs_this_week >= 0),
     rating          REAL    CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),  -- NULL until first rating
     availability    TEXT    NOT NULL DEFAULT '[]', -- JSON list of AvailabilityWindow
+    status          TEXT    NOT NULL DEFAULT 'active' CHECK (status IN ('pending', 'active')),  -- pending = awaiting council approval
     created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -58,6 +59,18 @@ CREATE TABLE IF NOT EXISTS assignments (
     booking_id      INTEGER NOT NULL UNIQUE REFERENCES bookings(id),   -- one assignment per booking
     worker_id       INTEGER NOT NULL REFERENCES workers(id),
     score           REAL,                          -- allocation engine score, 0..1
+    accepted_at     TEXT,                          -- when the worker tapped Accept (NULL = not yet)
+    created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- A worker passing a job on. The assignment row is removed and the booking goes
+-- back to pending (then straight to the next-best worker); this keeps the record.
+CREATE TABLE IF NOT EXISTS declines (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_id      INTEGER NOT NULL REFERENCES bookings(id),
+    worker_id       INTEGER NOT NULL REFERENCES workers(id),
+    reason          TEXT    NOT NULL CHECK (reason IN ('unwell', 'too_far', 'already_booked', 'not_my_job', 'other')),
+    note            TEXT,
     created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -84,6 +97,41 @@ CREATE TABLE IF NOT EXISTS sessions (
     expires_at      TEXT    NOT NULL
 );
 
+-- The cooperative itself: one row, edited from the Sabha profile page.
+CREATE TABLE IF NOT EXISTS cooperative (
+    id                INTEGER PRIMARY KEY CHECK (id = 1),
+    name              TEXT    NOT NULL,
+    short_name        TEXT    NOT NULL,
+    registration_id   TEXT,
+    established       INTEGER,
+    area              TEXT,
+    radius_km         REAL,
+    verified          INTEGER NOT NULL DEFAULT 0,
+    worker_kyc        INTEGER NOT NULL DEFAULT 0,
+    payments_verified INTEGER NOT NULL DEFAULT 0,
+    secretary         TEXT,
+    coordinator       TEXT,
+    last_meeting      TEXT,                            -- ISO date
+    weekly_job_limit  INTEGER NOT NULL DEFAULT 6 CHECK (weekly_job_limit > 0),
+    fund_allocation   TEXT    NOT NULL DEFAULT '{}',   -- JSON {category: percent}, sums to 100
+    updated_at        TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Disputes: raised by a customer or worker on a booking, mediated by the council.
+CREATE TABLE IF NOT EXISTS disputes (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_id        INTEGER NOT NULL REFERENCES bookings(id),
+    kind              TEXT    NOT NULL CHECK (kind IN ('payment', 'quality', 'other')),
+    raised_by         TEXT    NOT NULL CHECK (raised_by IN ('customer', 'worker', 'council')),
+    raised_by_user_id INTEGER REFERENCES users(id),
+    amount_paise      INTEGER CHECK (amount_paise IS NULL OR amount_paise >= 0),
+    description       TEXT,
+    status            TEXT    NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
+    resolution        TEXT,
+    created_at        TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at       TEXT
+);
+
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version         INTEGER PRIMARY KEY,
     applied_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -91,10 +139,13 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 CREATE INDEX IF NOT EXISTS idx_workers_trade        ON workers (trade);
 CREATE INDEX IF NOT EXISTS idx_sessions_user        ON sessions (user_id);
+CREATE INDEX IF NOT EXISTS idx_disputes_status      ON disputes (status);
 CREATE INDEX IF NOT EXISTS idx_bookings_status      ON bookings (status);
 CREATE INDEX IF NOT EXISTS idx_bookings_trade       ON bookings (trade);
 CREATE INDEX IF NOT EXISTS idx_assignments_booking  ON assignments (booking_id);
 CREATE INDEX IF NOT EXISTS idx_assignments_worker   ON assignments (worker_id);
+CREATE INDEX IF NOT EXISTS idx_declines_booking     ON declines (booking_id);
+CREATE INDEX IF NOT EXISTS idx_declines_worker      ON declines (worker_id);
 """
 
 
@@ -186,9 +237,25 @@ def _migration_2_integrity_triggers(conn: sqlite3.Connection) -> None:
             log.warning("%s rows with %s (left unchanged, please review): %s", table, what, bad)
 
 
+def _migration_3_worker_status_and_replies(conn: sqlite3.Connection) -> None:
+    """workers.status (existing workers stay active) and assignments.accepted_at for databases
+    created before council approval and job replies existed. The declines table is in SCHEMA."""
+    if "status" not in _columns(conn, "workers"):
+        conn.execute("ALTER TABLE workers ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
+        for event in ("INSERT", "UPDATE"):
+            conn.execute(
+                f"CREATE TRIGGER IF NOT EXISTS trg_workers_status_{event.lower()} BEFORE {event} ON workers "
+                "WHEN NEW.status NOT IN ('pending', 'active') "
+                "BEGIN SELECT RAISE(ABORT, 'worker status must be pending or active'); END"
+            )
+    if "accepted_at" not in _columns(conn, "assignments"):
+        conn.execute("ALTER TABLE assignments ADD COLUMN accepted_at TEXT")
+
+
 MIGRATIONS = (
     (1, _migration_1_customer_owner),
     (2, _migration_2_integrity_triggers),
+    (3, _migration_3_worker_status_and_replies),
 )
 
 

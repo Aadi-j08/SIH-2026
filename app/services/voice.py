@@ -40,12 +40,14 @@ WEEKDAYS: dict[int, tuple[str, ...]] = {
 }
 WEEKDAY_WORDS = {word: weekday for weekday, words in WEEKDAYS.items() for word in words}
 RELATIVE_DAYS: dict[str, int] = {
-    "aaj": 0, "aj": 0, "आज": 0, "today": 0, "tonight": 0,
+    "aaj": 0, "aj": 0, "आज": 0, "today": 0, "tonight": 0, "tody": 0, "todya": 0,
     "kal": 1, "kaal": 1, "कल": 1, "tomorrow": 1, "tmrw": 1,
+    "tommorrow": 1, "tommorow": 1, "tomorow": 1, "tomorro": 1, "tommrow": 1,   # common misspellings
     "parso": 2, "parson": 2, "परसों": 2, "dayaftertomorrow": 2,
 }
 EVERYDAY = {"roz", "roj", "रोज़", "रोज", "daily", "everyday", "hamesha", "हमेशा", "always", "fullweek"}
 WEEKEND = {"weekend", "weekends", "वीकेंड"}
+RANGE_WORDS = {"se", "to", "tak", "till", "until", "through", "से"}
 PERIODS: dict[str, tuple[str, str]] = {
     "morning": ("06:00", "12:00"), "subah": ("06:00", "12:00"), "subha": ("06:00", "12:00"),
     "savere": ("06:00", "12:00"), "सुबह": ("06:00", "12:00"), "सवेरे": ("06:00", "12:00"),
@@ -167,12 +169,20 @@ def _day_specs(tokens: list[str], reference: date) -> list[DaySpec] | None:
     if any(t in EVERYDAY for t in tokens):
         return [(None, None)]
     specs: list[DaySpec] = []
-    for token in tokens:
+    for i, token in enumerate(tokens):
         spec: DaySpec | None = None
         if token in RELATIVE_DAYS:
             spec = (reference + timedelta(days=RELATIVE_DAYS[token]), None)
         elif token in WEEKDAY_WORDS:
             spec = (None, WEEKDAY_WORDS[token])
+            # "somvar se shukravar" / "monday to friday": every weekday from the first to the second
+            if i >= 2 and tokens[i - 1] in RANGE_WORDS and tokens[i - 2] in WEEKDAY_WORDS:
+                first, last = WEEKDAY_WORDS[tokens[i - 2]], WEEKDAY_WORDS[token]
+                span = range(first, last + 1) if first <= last else [*range(first, 7), *range(0, last + 1)]
+                for weekday in span:
+                    if (None, weekday) not in specs:
+                        specs.append((None, weekday))
+                continue
         if spec is not None and spec not in specs:
             specs.append(spec)
     if any(t in WEEKEND for t in tokens):
@@ -182,12 +192,15 @@ def _day_specs(tokens: list[str], reference: date) -> list[DaySpec] | None:
 
 def _parse_clause(
     clause: str, reference: date, inherited_days: list[DaySpec] | None,
-) -> tuple[list[AvailabilityWindow], list[str], int, list[DaySpec] | None]:
+) -> tuple[list[AvailabilityWindow], list[str], int, list[DaySpec] | None, list[str]]:
     """Windows for one clause. A clause that names no day inherits the previous clause's days,
-    so "kal subah free hoon lekin shaam ko nahi" makes tomorrow evening busy, not every evening."""
+    so "kal subah free hoon lekin shaam ko nahi" makes tomorrow evening busy, not every evening.
+    The last item lists what the parser assumed (no day named, only a start time) so the app can
+    say so before the worker saves."""
     tokens = TOKEN.findall(clause)
+    assumptions: list[str] = []
     if not tokens:
-        return [], [], 0, inherited_days
+        return [], [], 0, inherited_days, assumptions
     unrecognised = [t for t in tokens if t not in KNOWN and not t[0].isdigit()]
     negated = any(t in NEGATIVE for t in tokens)
     period_keys = list(dict.fromkeys(t for t in tokens if t in PERIODS))
@@ -195,9 +208,13 @@ def _parse_clause(
     days = _day_specs(tokens, reference)
     has_intent = negated or any(t in AVAILABLE_WORDS for t in tokens)
     if not (days or period_keys or explicit or has_intent):
-        return [], unrecognised, len(tokens), inherited_days   # "theek hai" says nothing about availability
+        return [], unrecognised, len(tokens), inherited_days, assumptions   # "theek hai" says nothing about availability
+    if not days and not inherited_days:
+        assumptions.append("No day was named, so this was taken as every day. Say 'kal', 'somvar' or 'today' to be exact.")
     days = days or inherited_days or [(None, None)]
 
+    if explicit and not TIME_RANGE.search(clause):
+        assumptions.append(f"Only a start time was heard, so it runs until {explicit[1]}. Say 'se ... tak' or 'from ... to' for an end time.")
     if explicit:
         slots = [explicit]
     elif period_keys:
@@ -209,7 +226,7 @@ def _parse_clause(
         for day, weekday in days
         for start, end in slots
     ]
-    return windows, unrecognised, len(tokens), days
+    return windows, unrecognised, len(tokens), days, assumptions
 
 
 def detect_language(text: str) -> str:
@@ -227,18 +244,22 @@ def parse_availability(transcript: str, reference_date: date | None = None) -> V
     reference = reference_date or date.today()
     windows: list[AvailabilityWindow] = []
     unrecognised: list[str] = []
+    assumptions: list[str] = []
     total_tokens = 0
     days: list[DaySpec] | None = None
     for clause in CLAUSE_SPLIT.split(_prepare(transcript)):
-        clause_windows, clause_unknown, count, days = _parse_clause(clause, reference, days)
+        clause_windows, clause_unknown, count, days, assumed = _parse_clause(clause, reference, days)
         windows.extend(w for w in clause_windows if w not in windows)
         unrecognised.extend(clause_unknown)
+        assumptions.extend(a for a in assumed if a not in assumptions)
         total_tokens += count
 
     if not windows or total_tokens == 0:
         confidence = 0.0
     else:
         confidence = round(0.4 + 0.6 * (total_tokens - len(unrecognised)) / total_tokens, 2)
+        if any(a.startswith("No day") for a in assumptions):
+            confidence = min(confidence, 0.5)
     requires_confirmation = bool(windows) and confidence < 0.80
     can_save = bool(windows) and confidence >= 0.50
     confirmation_message = None
@@ -254,6 +275,7 @@ def parse_availability(transcript: str, reference_date: date | None = None) -> V
         requires_confirmation=requires_confirmation,
         can_save=can_save,
         confirmation_message=confirmation_message,
+        assumptions=assumptions,
     )
 
 

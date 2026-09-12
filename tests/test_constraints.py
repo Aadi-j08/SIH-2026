@@ -71,7 +71,7 @@ def test_legacy_database_is_migrated_in_place_and_then_enforces_the_rules(tmp_pa
     database.init_db()          # and is idempotent
 
     with database.connection() as conn:
-        assert [r["version"] for r in conn.execute("SELECT version FROM schema_migrations ORDER BY version")] == [1, 2]
+        assert [r["version"] for r in conn.execute("SELECT version FROM schema_migrations ORDER BY version")] == [v for v, _ in database.MIGRATIONS]
         # nothing was dropped or altered
         assert conn.execute("SELECT COUNT(*) FROM workers").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM bookings").fetchone()[0] == 1

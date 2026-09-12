@@ -107,14 +107,22 @@ def _increment_worker_jobs(conn: sqlite3.Connection, worker_id: int) -> None:
 
 # ── POST /bookings/{id}/assign ───────────────────────────────────────────
 
-def assign_booking(conn: sqlite3.Connection, booking_id: int) -> dict[str, Any]:
+def assign_booking(
+    conn: sqlite3.Connection, booking_id: int, exclude_worker_ids: tuple[int, ...] = ()
+) -> dict[str, Any]:
+    """exclude_worker_ids: workers who already passed on this booking (see app/kaam.py). Workers still
+    awaiting council approval (workers.status = 'pending') are never offered work."""
     with immediate_transaction(conn):
         booking = _get_booking(conn, booking_id)                       # 1. load booking
         if booking["status"] != PENDING:
             raise InvalidBookingState(
                 f"Booking {booking_id} is '{booking['status']}'; only pending bookings can be assigned"
             )
-        workers = [dict(r) for r in conn.execute("SELECT * FROM workers")]  # 2. load workers
+        status_filter = "WHERE COALESCE(status, 'active') = 'active'" if "status" in table_columns(conn, "workers") else ""
+        workers = [                                                     # 2. load workers
+            dict(r) for r in conn.execute(f"SELECT * FROM workers {status_filter}")
+            if r["id"] not in exclude_worker_ids
+        ]
         best = top_recommendation(booking, workers)                    # 3–5. schema, engine, top pick
         if best is None:
             raise NoEligibleWorker(f"No eligible worker found for booking {booking_id}")

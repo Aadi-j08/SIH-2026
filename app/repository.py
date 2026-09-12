@@ -47,13 +47,14 @@ def _normalise_trade(trade: str) -> str:
 
 # ── workers ──────────────────────────────────────────────────────────────
 
-def create_worker(data: WorkerCreate) -> Worker:
+def create_worker(data: WorkerCreate, status: str = "active") -> Worker:
+    """Council-registered workers are active at once; self sign-ups pass status="pending" and wait for approval."""
     with connection() as conn:
         cursor = conn.execute(
-            "INSERT INTO workers (name, phone, trade, latitude, longitude, rating, availability) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO workers (name, phone, trade, latitude, longitude, rating, availability, status) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (data.name.strip(), data.phone, _normalise_trade(data.trade), data.latitude, data.longitude,
-             data.rating, _dump_windows(data.availability)),
+             data.rating, _dump_windows(data.availability), status),
         )
         row = conn.execute("SELECT * FROM workers WHERE id = ?", (cursor.lastrowid,)).fetchone()
     return _worker(row)
@@ -75,8 +76,15 @@ def list_workers(trade: str | None = None) -> list[Worker]:
 
 
 def worker_profiles(trade: str | None = None) -> list[WorkerProfile]:
-    """Workers as the allocation engine wants them."""
-    return [WorkerProfile.model_validate(w.model_dump()) for w in list_workers(trade)]
+    """Workers as the allocation engine wants them. Workers still awaiting council approval are left out."""
+    return [WorkerProfile.model_validate(w.model_dump()) for w in list_workers(trade) if w.status == "active"]
+
+
+def set_worker_status(worker_id: int, status: str) -> Worker | None:
+    with connection() as conn:
+        conn.execute("UPDATE workers SET status = ? WHERE id = ?", (status, worker_id))
+        row = conn.execute("SELECT * FROM workers WHERE id = ?", (worker_id,)).fetchone()
+    return _worker(row) if row else None
 
 
 def set_worker_availability(

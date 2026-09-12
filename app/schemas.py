@@ -49,9 +49,13 @@ class WorkerCreate(BaseModel):
         return canonical_trade(value)
 
 
+WorkerStatus = Literal["pending", "active"]
+
+
 class Worker(WorkerCreate):
     id: int
     jobs_this_week: int = 0
+    status: WorkerStatus = "active"      # pending = signed up, waiting for the council; the engine skips them
     created_at: str | None = None
 
 
@@ -142,6 +146,7 @@ class VoiceAvailabilityResult(BaseModel):
     requires_confirmation: bool = False
     can_save: bool = False
     confirmation_message: str | None = None
+    assumptions: list[str] = Field(default_factory=list, description="Gaps the parser filled in (no day named, only a start time); show them before saving")
 
 
 class VoiceAvailabilityResponse(BaseModel):
