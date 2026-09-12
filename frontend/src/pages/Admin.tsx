@@ -11,6 +11,7 @@ import {
   type Dashboard,
   type Forecast,
   type Recommendation,
+  type StaffingForecast,
 } from "../api";
 import { Refresh } from "../components/Icons";
 
@@ -23,6 +24,7 @@ export default function Admin() {
   const [trade, setTrade] = useState<string>("");
   const [trades, setTrades] = useState<string[]>([]);
   const [forecast, setForecast] = useState<Forecast | null>(null);
+  const [staffing, setStaffing] = useState<StaffingForecast | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -67,6 +69,7 @@ export default function Admin() {
   useEffect(() => {
     if (!trade) return;
     api.forecast(trade, 7).then(setForecast).catch(() => setForecast(null));
+    api.staffing(trade, 7).then(setStaffing).catch(() => setStaffing(null));
   }, [trade, dashboard]);
 
   const today = useMemo(() => new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }), []);
@@ -137,6 +140,11 @@ export default function Admin() {
               </select>
             </div>
             {forecast ? <ForecastChart forecast={forecast} /> : <div className="small muted">No forecast yet.</div>}
+            {staffing && staffing.shortage > 0 && (
+              <div className="notice info" style={{ marginTop: 8 }}>
+                Staffing alert: {staffing.recommendation}
+              </div>
+            )}
           </div>
 
           <div className="panel span-7" id="workers">
@@ -222,6 +230,11 @@ function PendingTable({ rows, onChanged }: { rows: PendingRow[]; onChanged: () =
                 <div className="tiny ellipsis" style={{ color: "var(--ink-2)" }} title={pick.explanation}>
                   {pick.explanation.split(": ").slice(1).join(": ")}
                 </div>
+                {pick.why_selected?.length > 0 && (
+                  <div className="tiny muted ellipsis" title={pick.why_selected.join(" · ")}>
+                    Why: {pick.why_selected.slice(0, 2).join(" · ")}
+                  </div>
+                )}
               </>
             ) : (
               <div className="tiny" style={{ color: "var(--terracotta-d)" }}>No eligible worker (trade, distance or availability)</div>

@@ -122,12 +122,21 @@ function VoiceAvailability({ worker, onSaved }: { worker: WorkerT; onSaved: (w: 
     if (transcript.trim()) void parse(transcript.trim());
   };
 
+  // Keep the UI compatible with a cached bundle or an older API response while
+  // the updated backend is restarting. New responses still use can_save.
+  const canSave = parsed ? (parsed.can_save ?? (parsed.windows.length > 0 && parsed.confidence >= 0.5)) : false;
+  const needsConfirmation = parsed?.requires_confirmation ?? false;
+
   const save = async () => {
-    if (!parsed?.windows.length) return;
+    if (!parsed?.windows.length || !canSave) return;
+    const confirmed = needsConfirmation
+      ? window.confirm(parsed.confirmation_message ?? "Please confirm this availability.")
+      : true;
+    if (!confirmed) return;
     setBusy(true);
     setMessage(null);
     try {
-      const result = await api.workers.setAvailabilityByVoice(worker.id, parsed.transcript, replace);
+      const result = await api.workers.setAvailabilityByVoice(worker.id, parsed.transcript, replace, undefined, true);
       onSaved(result.worker);
       setParsed(null);
       setTranscript("");
@@ -187,6 +196,10 @@ function VoiceAvailability({ worker, onSaved }: { worker: WorkerT; onSaved: (w: 
               {parsed.language === "hi" ? "Hindi" : parsed.language === "en" ? "English" : parsed.language === "mixed" ? "Hinglish" : ""} · {Math.round(parsed.confidence * 100)}% sure
             </div>
           </div>
+          {needsConfirmation && canSave && (
+            <div className="notice info">This interpretation is uncertain. Check the schedule carefully before confirming.</div>
+          )}
+          {!canSave && <div className="notice error">I could not understand this reliably. Please include a day and time and try again.</div>}
           {parsed.windows.map((w, i) => (
             <div className="card row" key={i} style={{ gap: 12, padding: "6px 12px", minHeight: 48 }}>
               <span className={`dot ${w.available ? "green" : "grey"}`}>{w.available ? <Check size={16} /> : <Cross size={16} />}</span>
@@ -203,8 +216,8 @@ function VoiceAvailability({ worker, onSaved }: { worker: WorkerT; onSaved: (w: 
             Add to what I've already saved ({worker.availability.length} window{worker.availability.length === 1 ? "" : "s"})
           </label>
           <div className="row" style={{ gap: 8 }}>
-            <button type="button" className="btn green grow" onClick={save} disabled={busy}>
-              {busy ? "Saving…" : "Save availability"}
+            <button type="button" className="btn green grow" onClick={save} disabled={busy || !canSave}>
+              {busy ? "Saving…" : needsConfirmation ? "Confirm & save" : "Save availability"}
             </button>
             <button type="button" className="btn outline" onClick={() => { setParsed(null); setTranscript(""); }} disabled={busy}>
               Say again

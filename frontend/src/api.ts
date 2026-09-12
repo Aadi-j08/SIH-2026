@@ -56,6 +56,7 @@ export type Recommendation = {
   score: number;
   score_breakdown: Record<string, number>;
   explanation: string;
+  why_selected: string[];
 };
 
 export type VoiceParse = {
@@ -65,6 +66,9 @@ export type VoiceParse = {
   confidence: number;
   summary: string;
   unrecognised: string[];
+  requires_confirmation: boolean;
+  can_save: boolean;
+  confirmation_message: string | null;
 };
 
 export type LedgerEntry = {
@@ -287,11 +291,12 @@ export const api = {
     get: (id: number) => get<Worker>(`/workers/${id}`),
     create: (body: Omit<Worker, "id" | "jobs_this_week" | "created_at" | "availability" | "phone" | "rating"> & Partial<Worker>) =>
       post<Worker>("/workers", body),
-    setAvailabilityByVoice: (id: number, transcript: string, replace = true, referenceDate?: string) =>
+    setAvailabilityByVoice: (id: number, transcript: string, replace = true, referenceDate?: string, confirmed = false) =>
       post<{ parsed: VoiceParse; worker: Worker }>(`/workers/${id}/availability/voice`, {
         transcript,
         replace,
         reference_date: referenceDate ?? null,
+        confirmed,
       }),
   },
   voice: {

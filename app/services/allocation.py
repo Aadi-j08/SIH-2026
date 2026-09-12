@@ -149,6 +149,7 @@ def recommend_workers(
                 score=score,
                 score_breakdown=breakdown,
                 explanation=_explain(worker, distance, status, fewest),
+                why_selected=_why_selected(worker, distance, status, fewest, request.max_distance_km),
             ),
             worker,
         ))
@@ -170,3 +171,22 @@ def _explain(worker: WorkerProfile, distance: float, status: str, fewest_jobs: i
     parts.append(f"rated {worker.rating:.1f}/5" if worker.rating is not None else "no ratings yet")
     parts.append("declared available for this slot" if status == "available" else "availability not declared for this slot")
     return "; ".join(parts) + "."
+
+
+def _why_selected(
+    worker: WorkerProfile,
+    distance: float,
+    status: str,
+    fewest_jobs: int,
+    max_distance_km: float,
+) -> list[str]:
+    """Return short evidence statements suitable for a council dashboard."""
+    reasons = [f"within the {max_distance_km:g} km service radius ({distance:.1f} km away)"]
+    if worker.jobs_this_week == fewest_jobs:
+        reasons.append(f"fewest jobs this week ({worker.jobs_this_week})")
+    if worker.rating is not None:
+        reasons.append(f"rated {worker.rating:.1f}/5")
+    else:
+        reasons.append("new worker with no ratings yet")
+    reasons.append("declared available for the requested slot" if status == "available" else "no conflicting availability declared")
+    return reasons
