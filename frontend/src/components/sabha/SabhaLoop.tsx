@@ -1,7 +1,7 @@
 /** The core story of Sabha, as one line: demand in, impact out. */
 import { ArrowRight } from "../Icons";
 
-const STEPS = ["Demand", "AI matching", "Worker allocation", "Job completion", "Payment", "Cooperative fund", "Worker & community impact"];
+const STEPS = ["Demand", "AI matching", "Worker allocation", "Job completion", "Agreed price", "Cooperative fund", "Worker & community impact"];
 
 export function SabhaLoop() {
   return (
