@@ -9,6 +9,7 @@ import { Link, NavLink, useNavigate } from "react-router-dom";
 
 import { api, errorMessage, type Overview } from "../api";
 import { initials, useAuth } from "../lib/auth";
+import { useLive } from "../lib/live";
 import {
   Bell, Building, CalendarIcon, ChevronDown, Coins, Home, LayoutGrid, LogOut, Megaphone, Receipt, Refresh, Scale, Settings, ShieldCheck, TrendingUp, Users,
 } from "./Icons";
@@ -19,6 +20,8 @@ type SabhaState = {
   error: string | null;
   loading: boolean;
   reload: () => Promise<void>;
+  /** true while the server-sent events stream is connected */
+  live: boolean;
 };
 
 const SabhaContext = createContext<SabhaState | null>(null);
@@ -80,13 +83,15 @@ export default function SabhaShell({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // live: every write anywhere in the cooperative refreshes the overview; the timer is only a safety net
+  const { live } = useLive(() => void reload());
   useEffect(() => {
     void reload();
-    const timer = window.setInterval(() => void reload(), 30000);
+    const timer = window.setInterval(() => void reload(), live ? 120000 : 30000);
     return () => window.clearInterval(timer);
-  }, [reload]);
+  }, [reload, live]);
 
-  const value = useMemo(() => ({ overview, error, loading, reload }), [overview, error, loading, reload]);
+  const value = useMemo(() => ({ overview, error, loading, reload, live }), [overview, error, loading, reload, live]);
   const coop = overview?.cooperative;
   const alerts = overview?.attention.filter((a) => a.level !== "green").length ?? 0;
 
@@ -150,6 +155,10 @@ export default function SabhaShell({ children }: { children: ReactNode }) {
                 </div>
               </div>
               <div className="row" style={{ gap: 6 }}>
+                <span className={`pill hide-narrow ${live ? "green" : "grey"}`} title={live ? "Updates arrive the moment something changes" : "Live stream down; polling every 30 s"} style={{ gap: 6 }}>
+                  <span className="live-dot" aria-hidden="true" />
+                  {live ? "Live" : "Polling"}
+                </span>
                 <button type="button" className="btn outline small hide-narrow" onClick={() => void reload()} disabled={loading}>
                   <Refresh size={16} />
                   {loading ? "Refreshing…" : "Refresh"}
