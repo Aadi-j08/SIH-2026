@@ -6,7 +6,7 @@ FastAPI + SQLite backend, React PWA frontend, local phone+password accounts
 (GitHub `Aadi-j08`); teammate Aman is to be added as a collaborator.
 Windows 10 machine, project at `G:\SIH 2026\SIH-2026`.
 
-## Status (as of 11 Sep 2026, evening)
+## Status (as of 15 Sep 2026)
 
 Done and working locally:
 - Backend: workers, bookings, fair allocation engine, voice availability parser
@@ -120,6 +120,53 @@ git-ignored). Built as designed:
   (windows + jobs → 7×3 slot grid).
 - `scripts/seed_demo.py` approves all but the three newest workers.
 
+## Pricing, agreed settlement and live updates (15 Sep)
+
+No money moves through the platform; a household pays its worker directly
+(cash/UPI) and the system records only what the two agreed.
+- `app/rates.py`: **community rate card** — per trade a visit charge, hourly
+  rate, minimum hours and a fair band (±25%), fixed by the general body.
+  Table `standard_rates` (seeded with defaults on first read; unknown trades
+  get a placeholder row). `GET /rates`, `GET /rates/quote?trade=&hours=&
+  materials=` (any signed-in user), `PUT /rates/{trade}` (council).
+  `typical_hours` = median of the last agreed jobs of that trade.
+- `app/settlements.py` + `app/routers/pricing.py`: **agreed price**. Table
+  `settlements` (one per booking). Worker `POST /bookings/{id}/settlement`
+  {hours_worked, materials_rupees, work_note, amount_rupees?} — the card
+  prices it; a proposal outside the band is 422. Customer `POST
+  …/settlement/respond` {action: agree|counter|dispute, amount_rupees?, note?,
+  paid_via?}; worker responds agree|dispute to a counter. **Agree calls the
+  unchanged `booking_flow.complete_booking`** → 85/10/5 ledger. Dispute opens
+  a `payment` dispute (status `disputed`); council `POST …/settlement/resolve`
+  {amount_rupees, resolution} fixes the amount, completes the job and closes
+  the dispute. `GET /bookings/{id}/settlement` (parties), `GET
+  /settlements?status=open|…` (council). The old `POST /bookings/{id}/complete`
+  still exists for tests/seed; the Kaam UI no longer uses it. Kaam
+  `WorkerJob.settlement` carries a brief; `Dispute` gained `settlement_*`.
+- `app/events.py`: **live updates**. `PublishChanges` middleware publishes an
+  event (topic, action, booking/worker/dispute id, no data) for every 2xx
+  POST/PUT/PATCH/DELETE it recognises; `GET /events/stream` is SSE (async
+  generator, 1 s tick, keep-alive every 20 s), `GET /events?after=seq` polls.
+  In-process ring buffer — one uvicorn worker. Frontend `lib/live.ts`
+  `useLive(onEvents, {filter})` (EventSource, falls back to polling); the
+  Sabha shell (header shows Live/Polling), Kaam home and the Ghar booking
+  page reload on events and slow their timers while connected.
+- Overview: attention kind `settle` (prices unanswered > 24 h → Payments),
+  "Auto-allocate all (n)" button on AI matching; the loop strip says "Agreed
+  price" instead of "Payment".
+- Frontend: `components/Settlement.tsx` (RateHint, ProposePrice sheet,
+  SettlementCard for customer/worker), JobCard "Job done · propose the
+  price" replaces the typed bill, Customer booking page shows the rate card
+  before booking, a **Call worker** button, and the agreement card;
+  `pages/sabha/Payments.tsx` = rate card editor + prices being agreed +
+  split; Disputes page: "Fix the price & close" for `disputed` settlements.
+- Seed: completed jobs are priced from the rate card with an agreed
+  settlement row each; three assigned jobs carry a proposed / countered /
+  disputed price (the disputed one is one of the 3 open disputes).
+  `tests/test_pricing.py` (10 tests). Known pre-existing failure:
+  `test_kaam.py::test_decline_with_nobody_else_leaves_the_booking_pending`
+  hard-codes a 12 Sep booking and "busy for the rest of today".
+
 ## Roles and ownership (backend-enforced)
 
 Accounts are per portal and map to an access role: `ghar` → **customer**,
@@ -131,7 +178,7 @@ is a council member's *title*). Session = httpOnly cookie, or
 Council may do everything; customers see/rate only their own bookings
 (`bookings.customer_user_id`), workers see/complete only bookings assigned to
 them and edit only their own availability (`app/ownership.py`). Public:
-`/`, `/stats`, `/voice/parse`, `/app/*`, `/auth/*`.
+`/`, `/stats`, `/voice/parse`, `/app/*`, `/auth/*`. `/rates*` and `/events*` need any session.
 
 Other backend rules: trades are canonicalised at the pydantic boundary
 (`app/trades.py`, e.g. "pipe repair" → "plumbing"); `app/database.py` has

@@ -548,3 +548,11 @@ button.back { background: transparent; border: 0; padding: 0; }
   .sabha-title { font-size: 15px; }
   .sabha-header > .row:last-child { gap: 0; }
 }
+
+/* live indicator (Sabha header) */
+.live-dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; display: inline-block; }
+.pill.green .live-dot { animation: live-pulse 1.6s ease-in-out infinite; }
+@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+/* rate card rows are buttons (tap to edit) */
+button.rate-row { width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line-soft); font: inherit; color: inherit; text-align: left; cursor: pointer; }
+button.rate-row:hover { background: var(--paper-2); }

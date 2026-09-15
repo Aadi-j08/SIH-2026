@@ -84,6 +84,7 @@ class WorkerJob(BaseModel):
     rating_comment: str | None = None
     decline_reason: str | None = None
     declined_at: str | None = None
+    settlement: dict[str, Any] | None = Field(default=None, description="The price on the table (status, amounts, whose turn) once the worker has proposed one")
 
 
 class AvailabilityUpdate(BaseModel):
@@ -205,6 +206,20 @@ def jobs(worker_id: int) -> list[WorkerJob]:
                     "SELECT COALESCE(SUM(amount_paise), 0) FROM payment_ledger WHERE booking_id = ?", (row["id"],)
                 ).fetchone()[0]
             outcome = "completed" if row["status"] == "completed" else "accepted" if row["accepted_at"] else "assigned"
+            settlement = conn.execute(
+                "SELECT status, hours_worked, materials_paise, standard_paise, proposed_paise, counter_paise, agreed_paise, customer_note, paid_via, dispute_id "
+                "FROM settlements WHERE booking_id = ?", (row["id"],)
+            ).fetchone()
+            settlement_info = None
+            if settlement is not None:
+                s = dict(settlement)
+                settlement_info = {
+                    "status": s["status"], "hours_worked": s["hours_worked"], "customer_note": s["customer_note"], "paid_via": s["paid_via"],
+                    "dispute_id": s["dispute_id"],
+                    "waiting_on": None if s["status"] == "agreed" else "customer" if s["status"] == "proposed" else "worker" if s["status"] == "countered" else "council",
+                    **{k.replace("_paise", "_rupees"): (paise_to_rupees(s[k]) if s[k] is not None else None)
+                       for k in ("materials_paise", "standard_paise", "proposed_paise", "counter_paise", "agreed_paise")},
+                }
             out.append(WorkerJob(
                 booking_id=row["id"], customer_name=row["customer_name"], customer_phone=row.get("customer_phone"),
                 trade=row["trade"], address=row.get("address"), latitude=row["latitude"], longitude=row["longitude"],
@@ -212,7 +227,7 @@ def jobs(worker_id: int) -> list[WorkerJob]:
                 accepted_at=row["accepted_at"], completed_at=row.get("completed_at"), explanation=row.get("explanation"),
                 billed_rupees=paise_to_rupees(billed) if billed is not None else None,
                 share_rupees=paise_to_rupees(row["share_paise"]) if row["share_paise"] is not None else None,
-                rating=row["rating"], rating_comment=row["comment"],
+                rating=row["rating"], rating_comment=row["comment"], settlement=settlement_info,
             ))
         for r in conn.execute(
             """SELECT b.*, d.reason, d.created_at AS declined_at FROM declines d

@@ -52,6 +52,11 @@ class Dispute(BaseModel):
     trade: str | None = None
     customer_name: str | None = None
     worker_name: str | None = None
+    # when the dispute is about the price of a job: what each side put on the table
+    settlement_status: str | None = None
+    settlement_standard_rupees: float | None = None
+    settlement_proposed_rupees: float | None = None
+    settlement_counter_rupees: float | None = None
 
 
 class DisputeStats(BaseModel):
@@ -68,12 +73,15 @@ class DisputeError(Exception):
 
 
 _SELECT = """
-    SELECT d.*, u.name AS raised_by_name, b.trade, b.customer_name, w.name AS worker_name
+    SELECT d.*, u.name AS raised_by_name, b.trade, b.customer_name, w.name AS worker_name,
+           s.status AS settlement_status, s.standard_paise AS settlement_standard_paise,
+           s.proposed_paise AS settlement_proposed_paise, s.counter_paise AS settlement_counter_paise
     FROM disputes d
     JOIN bookings b ON b.id = d.booking_id
     LEFT JOIN users u ON u.id = d.raised_by_user_id
     LEFT JOIN assignments a ON a.booking_id = b.id
     LEFT JOIN workers w ON w.id = a.worker_id
+    LEFT JOIN settlements s ON s.booking_id = b.id
 """
 
 
@@ -82,6 +90,9 @@ def _model(row: sqlite3.Row) -> Dispute:
     paise = data.pop("amount_paise", None)
     data["amount_rupees"] = round(paise / 100, 2) if paise is not None else None
     data["label"] = KIND_LABEL.get(data["kind"], "Dispute")
+    for key in ("settlement_standard_paise", "settlement_proposed_paise", "settlement_counter_paise"):
+        value = data.pop(key, None)
+        data[key.replace("_paise", "_rupees")] = round(value / 100, 2) if value is not None else None
     return Dispute.model_validate(data)
 
 

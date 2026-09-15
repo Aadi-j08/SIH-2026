@@ -16,6 +16,7 @@ export default function Disputes() {
   const [notes, setNotes] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState<number | null>(null);
   const [tab, setTab] = useState<"open" | "resolved">("open");
+  const [amounts, setAmounts] = useState<Record<number, string>>({});
 
   const load = () => api.disputes.list().then(setRows).catch((e) => setError(errorMessage(e)));
   useEffect(() => {
@@ -32,6 +33,26 @@ export default function Disputes() {
     setError(null);
     try {
       await api.disputes.resolve(id, text);
+      await Promise.all([load(), reload()]);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // a price dispute: the council fixes the amount, which completes the job and closes the dispute in one step
+  const decide = async (d: Dispute) => {
+    const text = (notes[d.id] ?? "").trim();
+    const amount = Number(amounts[d.id] ?? d.settlement_standard_rupees ?? 0);
+    if (!text || !(amount > 0)) {
+      setError(`#${d.id}: set the amount and write the resolution first.`);
+      return;
+    }
+    setBusy(d.id);
+    setError(null);
+    try {
+      await api.settlement.resolve(d.booking_id, amount, text);
       await Promise.all([load(), reload()]);
     } catch (e) {
       setError(errorMessage(e));
@@ -76,6 +97,16 @@ export default function Disputes() {
                   {" "}{d.raised_by === "customer" ? "→" : "←"}{" "}{d.worker_name ?? "Worker"} · raised by {d.raised_by === "council" ? "the council" : d.raised_by_name ?? d.raised_by} on {when(d.created_at)}
                 </div>
                 {d.description && <div className="small" style={{ lineHeight: 1.5 }}>“{d.description}”</div>}
+                {d.settlement_status === "agreed" && d.amount_rupees === null && (
+                  <span className="pill grey" style={{ alignSelf: "flex-start" }}>Price agreed {formatRupees(d.settlement_proposed_rupees ?? 0)}</span>
+                )}
+                {d.settlement_status && d.settlement_status !== "agreed" && (
+                  <div className="row small" style={{ gap: 10, flexWrap: "wrap" }}>
+                    <span className="pill grey">Rate card {formatRupees(d.settlement_standard_rupees ?? 0)}</span>
+                    <span className="pill green">Worker proposed {formatRupees(d.settlement_proposed_rupees ?? 0)}</span>
+                    {d.settlement_counter_rupees !== null && <span className="pill terracotta">Customer offered {formatRupees(d.settlement_counter_rupees)}</span>}
+                  </div>
+                )}
               </div>
               {d.status === "resolved" && (
                 <span className="pill green" style={{ gap: 5 }}>
@@ -83,7 +114,20 @@ export default function Disputes() {
                 </span>
               )}
             </div>
-            {d.status === "open" ? (
+            {d.status === "open" && d.settlement_status === "disputed" ? (
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <label className="field" style={{ minHeight: 40, width: 140 }}>
+                  <span className="muted">₹</span>
+                  <input inputMode="decimal" value={amounts[d.id] ?? String(d.settlement_standard_rupees ?? "")} onChange={(e) => setAmounts((a) => ({ ...a, [d.id]: e.target.value }))} aria-label="Amount the Sabha fixes" style={{ height: 36, textAlign: "right" }} />
+                </label>
+                <label className="field grow" style={{ minHeight: 40, minWidth: 240 }}>
+                  <input value={notes[d.id] ?? ""} onChange={(e) => setNotes((n) => ({ ...n, [d.id]: e.target.value }))} placeholder="Why this amount — both sides will read it" aria-label="Resolution" style={{ height: 36 }} />
+                </label>
+                <button type="button" className="btn small primary" disabled={busy === d.id} onClick={() => void decide(d)}>
+                  {busy === d.id ? "Saving…" : "Fix the price & close"}
+                </button>
+              </div>
+            ) : d.status === "open" ? (
               <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
                 <label className="field grow" style={{ minHeight: 40, minWidth: 240 }}>
                   <input value={notes[d.id] ?? ""} onChange={(e) => setNotes((n) => ({ ...n, [d.id]: e.target.value }))} placeholder="Resolution, in one line — e.g. bill corrected to the quoted amount" aria-label="Resolution" style={{ height: 36 }} />
