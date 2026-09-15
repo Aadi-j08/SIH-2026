@@ -28,6 +28,7 @@ ACTIVE_WINDOW_DAYS = 30           # a worker with an assignment in this window c
 IST = dt.timedelta(hours=5, minutes=30)
 REFERENCE_HOUR = 10               # "available today" is judged at this local hour, like the staffing forecast
 STALE_PENDING_HOURS = 2           # a demand unassigned longer than this needs attention
+STALE_SETTLEMENT_HOURS = 24       # a proposed / countered price nobody has answered for this long needs a nudge
 NEAR_LIMIT_MARGIN = 1             # jobs_this_week >= limit - margin → "nearing weekly limit"
 
 
@@ -84,7 +85,7 @@ class Metrics(BaseModel):
 
 class AttentionItem(BaseModel):
     level: str = Field(description="red / amber / green")
-    kind: str = Field(description="assign / disputes / workload / opportunity")
+    kind: str = Field(description="assign / disputes / workload / settle / opportunity")
     count: int
     text: str
     action: str
@@ -359,6 +360,15 @@ def overview(conn: sqlite3.Connection, now: dt.datetime | None = None) -> Overvi
         attention.append(AttentionItem(
             level="amber", kind="workload", count=len(near_limit),
             text=f"{len(near_limit)} worker{'s' if len(near_limit) != 1 else ''} nearing the weekly workload limit ({limit} jobs)", action="Redistribute",
+        ))
+    waiting = conn.execute(
+        "SELECT COUNT(*) FROM settlements WHERE status IN ('proposed', 'countered') "
+        "AND COALESCE(responded_at, created_at) <= datetime('now', ?)", (f"-{STALE_SETTLEMENT_HOURS} hours",)
+    ).fetchone()[0]
+    if waiting:
+        attention.append(AttentionItem(
+            level="amber", kind="settle", count=waiting,
+            text=f"{waiting} job price{'s' if waiting != 1 else ''} waiting on a reply for more than {STALE_SETTLEMENT_HOURS} hours", action="Nudge",
         ))
     busiest = max(trade_rows, key=lambda t: (t.unassigned, t.available_workers), default=None)
     if busiest and busiest.available_workers:

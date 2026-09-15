@@ -6,6 +6,7 @@ import JobCard from "../components/JobCard";
 import { Check, Clock, Mic, Star } from "../components/Icons";
 import VoiceAvailability from "../components/VoiceAvailability";
 import { useAuth } from "../lib/auth";
+import { useLive } from "../lib/live";
 import { buildWeek, SLOTS, type WeekDay } from "../lib/week";
 
 /** Kaam home: the job that needs a reply, the week at a glance, the mic, real numbers, recent jobs. */
@@ -17,6 +18,9 @@ export default function Worker() {
   const [error, setError] = useState<string | null>(null);
 
   const workerId = user?.worker_id ?? null;
+
+  // live: a new assignment, a customer's reply on a price, an approval — the page updates at once
+  const { live } = useLive(() => void refresh(), { filter: (e) => e.topic !== "rates" && e.topic !== "cooperative" });
 
   const refresh = useCallback(async () => {
     if (workerId === null) return;
@@ -37,9 +41,9 @@ export default function Worker() {
       return;
     }
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 8000);
+    const timer = window.setInterval(() => void refresh(), live ? 30000 : 8000);
     return () => window.clearInterval(timer);
-  }, [workerId, refresh]);
+  }, [workerId, refresh, live]);
 
   if (error && !worker) return <div className="page notice error">{error}</div>;
   if (!worker || !summary || !jobs) return <div className="page muted">Loading…</div>;

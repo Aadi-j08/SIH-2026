@@ -84,6 +84,7 @@ const ATTENTION_LINK: Record<AttentionItem["kind"], string> = {
   assign: "/sabha/demands",
   disputes: "/sabha/disputes",
   workload: "/sabha/workers",
+  settle: "/sabha/payments",
   opportunity: "/sabha/demands",
 };
 
@@ -166,14 +167,14 @@ function Matching({ groups, onDone }: { groups: MatchingGroup[]; onDone: () => P
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<{ kind: "info" | "error"; text: string } | null>(null);
 
-  const autoAllocate = async (trade: string) => {
-    setBusy(trade);
+  const autoAllocate = async (trade?: string) => {
+    setBusy(trade ?? "*");
     setNote(null);
     try {
       const r = await api.allocation.auto(trade);
       setNote({
         kind: "info",
-        text: `${r.assigned.length} of ${r.attempted} ${trade} demand${r.attempted === 1 ? "" : "s"} assigned` +
+        text: `${r.assigned.length} of ${r.attempted} ${trade ? `${trade} ` : ""}demand${r.attempted === 1 ? "" : "s"} assigned` +
           (r.skipped.length ? `; ${r.skipped.length} skipped (${r.skipped[0].reason})` : "") + ". Every assignment carries its reason.",
       });
       await onDone();
@@ -194,6 +195,12 @@ function Matching({ groups, onDone }: { groups: MatchingGroup[]; onDone: () => P
           </div>
           <div className="small muted">Skill · distance · availability · rating · this week’s workload · fair share</div>
         </div>
+        {groups.length > 1 && (
+          <button type="button" className="btn small primary" style={{ whiteSpace: "nowrap" }} onClick={() => void autoAllocate()} disabled={busy !== null}>
+            <Check size={14} />
+            {busy === "*" ? "Allocating…" : `Auto-allocate all (${groups.reduce((n, g) => n + g.unassigned, 0)})`}
+          </button>
+        )}
       </div>
       {note && <div className={`notice ${note.kind}`}>{note.text}</div>}
       {groups.length === 0 ? (

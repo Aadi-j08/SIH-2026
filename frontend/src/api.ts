@@ -111,6 +111,87 @@ export type WorkerJob = {
   rating_comment: string | null;
   decline_reason: DeclineReason | null;
   declined_at: string | null;
+  /** The price on the table once the worker has proposed one (status, amounts, whose turn) */
+  settlement: SettlementBrief | null;
+};
+
+// ── Pricing: community rate card and the price agreed at the end of a job ─
+
+export type Rate = {
+  trade: string;
+  visit_charge_rupees: number;
+  hourly_rate_rupees: number;
+  min_hours: number;
+  band_percent: number;
+  note: string | null;
+  updated_at: string | null;
+  typical_hours: number | null;
+};
+
+export type RateUpdate = Partial<Pick<Rate, "visit_charge_rupees" | "hourly_rate_rupees" | "min_hours" | "band_percent" | "note">>;
+
+export type Quote = {
+  trade: string;
+  hours_worked: number;
+  billable_hours: number;
+  visit_charge_rupees: number;
+  hourly_rate_rupees: number;
+  labour_rupees: number;
+  materials_rupees: number;
+  standard_rupees: number;
+  band_percent: number;
+  min_fair_rupees: number;
+  max_fair_rupees: number;
+  typical_hours: number | null;
+  explanation: string;
+};
+
+export type SettlementStatus = "proposed" | "countered" | "agreed" | "disputed";
+export type PaidVia = "cash" | "upi" | "other";
+
+export type SettlementBrief = {
+  status: SettlementStatus;
+  hours_worked: number;
+  materials_rupees: number;
+  standard_rupees: number;
+  proposed_rupees: number;
+  counter_rupees: number | null;
+  agreed_rupees: number | null;
+  customer_note: string | null;
+  paid_via: PaidVia | null;
+  dispute_id: number | null;
+  waiting_on: "customer" | "worker" | "council" | null;
+};
+
+export type Settlement = SettlementBrief & {
+  id: number;
+  booking_id: number;
+  worker_id: number;
+  worker_name: string | null;
+  customer_name: string | null;
+  trade: string;
+  work_note: string | null;
+  min_fair_rupees: number;
+  max_fair_rupees: number;
+  created_at: string;
+  responded_at: string | null;
+  agreed_at: string | null;
+  explanation: string;
+  ledger: LedgerEntry[];
+};
+
+export type SettlementPropose = { hours_worked: number; materials_rupees?: number; work_note?: string | null; amount_rupees?: number | null };
+export type SettlementRespond = { action: "agree" | "counter" | "dispute"; amount_rupees?: number | null; note?: string | null; paid_via?: PaidVia | null };
+
+/** One change on the server, published to every signed-in client (see lib/live.ts). */
+export type LiveEvent = {
+  seq: number;
+  at: string;
+  topic: "bookings" | "settlements" | "disputes" | "workers" | "rates" | "cooperative" | "allocation";
+  action: string;
+  booking_id: number | null;
+  worker_id: number | null;
+  dispute_id: number | null;
 };
 
 export type DeclineReason = "unwell" | "too_far" | "already_booked" | "not_my_job" | "other";
@@ -244,9 +325,13 @@ export type Dispute = {
   trade: string | null;
   customer_name: string | null;
   worker_name: string | null;
+  settlement_status: SettlementStatus | null;
+  settlement_standard_rupees: number | null;
+  settlement_proposed_rupees: number | null;
+  settlement_counter_rupees: number | null;
 };
 
-export type AttentionItem = { level: "red" | "amber" | "green"; kind: "assign" | "disputes" | "workload" | "opportunity"; count: number; text: string; action: string; trade: string | null };
+export type AttentionItem = { level: "red" | "amber" | "green"; kind: "assign" | "disputes" | "workload" | "settle" | "opportunity"; count: number; text: string; action: string; trade: string | null };
 export type TradeRow = { trade: string; demand: number; unassigned: number; ongoing: number; available_workers: number; status: "good" | "moderate" | "needs_workers" | "idle" };
 export type Suggestion = { worker_id: number; name: string; distance_km: number; rating: number | null; availability: "available" | "unavailable" | "unknown"; jobs_this_week: number; score: number; explanation: string };
 export type MatchingGroup = { trade: string; unassigned: number; booking_id: number; booking_age_minutes: number; suggestions: Suggestion[] };
@@ -474,6 +559,21 @@ export const api = {
     raise: (body: { booking_id: number; kind: Dispute["kind"]; description?: string | null; amount_rupees?: number | null }) => post<Dispute>("/disputes", body),
     resolve: (id: number, resolution: string) => post<Dispute>(`/disputes/${id}/resolve`, { resolution }),
   },
+  rates: {
+    list: () => get<Rate[]>("/rates"),
+    quote: (trade: string, hours: number, materials = 0) =>
+      get<Quote>(`/rates/quote?trade=${encodeURIComponent(trade)}&hours=${hours}&materials=${materials}`),
+    update: (trade: string, body: RateUpdate) => put<Rate>(`/rates/${encodeURIComponent(trade)}`, body),
+  },
+  settlement: {
+    get: (bookingId: number) => get<Settlement | null>(`/bookings/${bookingId}/settlement`),
+    propose: (bookingId: number, body: SettlementPropose) => post<Settlement>(`/bookings/${bookingId}/settlement`, body),
+    respond: (bookingId: number, body: SettlementRespond) => post<Settlement>(`/bookings/${bookingId}/settlement/respond`, body),
+    resolve: (bookingId: number, amount_rupees: number, resolution: string) =>
+      post<Settlement>(`/bookings/${bookingId}/settlement/resolve`, { amount_rupees, resolution }),
+    list: (status?: SettlementStatus | "open") => get<Settlement[]>(`/settlements${status ? `?status=${status}` : ""}`),
+  },
+  events: (after = 0) => get<LiveEvent[]>(`/events?after=${after}`),
   stats: () => get<PublicStats>("/stats"),
   staffing: (trade: string, days = 7, area?: string) =>
     get<StaffingForecast>(`/forecast/staffing?trade=${encodeURIComponent(trade)}&days=${days}${area ? `&area=${encodeURIComponent(area)}` : ""}`),
