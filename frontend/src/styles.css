@@ -161,6 +161,7 @@ h2 { font-family: var(--font-display); font-size: 17px; font-weight: 700; letter
 
 .stack { display: flex; flex-direction: column; gap: 10px; }
 .stack-lg { display: flex; flex-direction: column; gap: 18px; }
+.auth-form { gap: 14px; }
 .row { display: flex; align-items: center; gap: 10px; }
 .row.between { justify-content: space-between; }
 .grow { flex-grow: 1; min-width: 0; }
