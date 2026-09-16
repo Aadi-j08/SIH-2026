@@ -83,7 +83,7 @@ export default function SignUp({ portal }: { portal: PortalId }) {
   const nameField = (
     <Field label={portal === "kaam" ? "Your name · आपका नाम" : "Your name"}>
       <label className="field">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" autoComplete="name" required maxLength={100} />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" autoComplete="name" aria-label="Full name" required maxLength={100} />
       </label>
     </Field>
   );
@@ -104,7 +104,7 @@ export default function SignUp({ portal }: { portal: PortalId }) {
     >
       <label className="field">
         <Pin size={20} style={{ color: "var(--accent)" }} />
-        <input value={locality} onChange={(e) => setLocality(e.target.value)} placeholder="Area, city" autoComplete="address-level2" maxLength={120} />
+        <input value={locality} onChange={(e) => setLocality(e.target.value)} placeholder="Area, city" autoComplete="address-level2" aria-label={portal === "kaam" ? "Where you work from" : "Your locality"} maxLength={120} />
         {portal === "kaam" && (
           <button type="button" className="adorn" onClick={useGps} disabled={locating}>
             <Locate size={16} />
@@ -158,7 +158,7 @@ export default function SignUp({ portal }: { portal: PortalId }) {
             </div>
           </aside>
           <main className="auth-main">
-            <form className="stack-lg" style={{ width: "100%", maxWidth: 460 }} onSubmit={submit}>
+            <form className="stack-lg auth-form" style={{ width: "100%", maxWidth: 460 }} onSubmit={submit}>
               <div className="stack" style={{ gap: 8 }}>
                 <div className="label" style={{ color: "var(--accent-d)" }}>Council members only</div>
                 <h1 style={{ fontSize: 32 }}>Create a Sabha account</h1>
@@ -219,7 +219,7 @@ export default function SignUp({ portal }: { portal: PortalId }) {
 
   return (
     <AuthShell portal={portal}>
-      <form className="stack-lg" onSubmit={submit}>
+      <form className="stack-lg auth-form" onSubmit={submit}>
         {heading}
         {nameField}
         {phoneField}
