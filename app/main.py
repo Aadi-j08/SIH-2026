@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from app import database, events, ownership, repository
 from app.auth import User, require_council, require_customer, require_user, require_worker
 from app.routers.auth import router as auth_router
+from app.routers.assistant import router as assistant_router
 from app.routers.booking_flow import router as booking_flow_router
 from app.routers.kaam import router as kaam_router
 from app.routers.pricing import router as pricing_router
@@ -60,6 +61,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(auth_router)
+app.include_router(assistant_router)
 app.include_router(booking_flow_router)
 app.include_router(kaam_router)
 app.include_router(sabha_router)
