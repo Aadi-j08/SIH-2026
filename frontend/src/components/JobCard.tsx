@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { api, errorMessage, formatWhen, titleCase, type DeclineReason, type WorkerJob } from "../api";
+import { api, errorMessage, formatRupees, formatWhen, titleCase, type DeclineReason, type Settlement, type WorkerJob } from "../api";
 import { Check, MapPin } from "./Icons";
+import { ProposePrice, RateHint, SettlementCard } from "./Settlement";
 
 const REASONS: { id: DeclineReason; label: string }[] = [
   { id: "unwell", label: "Not well today" },
@@ -25,16 +26,33 @@ function Phone(p: { size?: number }) {
 }
 
 /**
- * One assigned job, in its three states: waiting for a reply (Accept / Can’t do it),
- * accepted (call, directions, bill + Job done), and the decline reason sheet in between.
+ * One assigned job, in its states: waiting for a reply (Accept / Can’t do it),
+ * accepted (call, directions, Job done → propose the price), the price on the
+ * table (waiting on the customer / their counter to answer), and the decline
+ * reason sheet in between. The price is never typed as a bill: it comes from
+ * the community rate card and both sides agree it.
  */
 export default function JobCard({ job, onChange }: { job: WorkerJob; onChange: () => Promise<void> | void }) {
-  const [mode, setMode] = useState<"view" | "decline">("view");
+  const [mode, setMode] = useState<"view" | "decline" | "price">("view");
   const [reason, setReason] = useState<DeclineReason | null>(null);
   const [busyToday, setBusyToday] = useState(false);
-  const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "error" | "info"; text: string } | null>(null);
+  const [settlement, setSettlement] = useState<Settlement | null>(null);
+
+  // the job list carries a brief; the full record (band, note, ledger) comes from its own endpoint
+  const brief = job.settlement;
+  useEffect(() => {
+    if (!brief) {
+      setSettlement(null);
+      return;
+    }
+    let alive = true;
+    api.settlement.get(job.booking_id).then((s) => alive && setSettlement(s)).catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [job.booking_id, brief?.status, brief?.counter_rupees]);
 
   const run = async (fn: () => Promise<unknown>, done?: string) => {
     setBusy(true);
@@ -61,22 +79,24 @@ export default function JobCard({ job, onChange }: { job: WorkerJob; onChange: (
         text: result.reassigned_to ? `Passed on to ${result.reassigned_to}. No penalty.` : "Passed back to the council. No penalty.",
       });
     });
-  const complete = () => {
-    const value = Number(amount);
-    if (!(value > 0)) {
-      setMessage({ kind: "error", text: "Enter the bill amount in rupees." });
-      return;
-    }
-    return run(async () => {
-      const result = await api.bookings.complete(job.booking_id, value);
-      const mine = result.ledger.find((l) => l.party === "worker");
-      setMessage({ kind: "info", text: `₹${result.amount_rupees} billed · ₹${mine?.amount_rupees ?? "—"} is yours. Rating comes when the customer replies.` });
-      setAmount("");
-    });
-  };
-
   const isNew = job.outcome === "assigned";
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${job.latitude},${job.longitude}`;
+
+  if (mode === "price") {
+    return (
+      <ProposePrice
+        bookingId={job.booking_id}
+        trade={job.trade}
+        onCancel={() => setMode("view")}
+        onDone={async (s) => {
+          setSettlement(s);
+          setMode("view");
+          setMessage({ kind: "info", text: `${formatRupees(s.proposed_rupees)} proposed. ${job.customer_name.split(" ")[0]} will see it now.` });
+          await onChange();
+        }}
+      />
+    );
+  }
 
   if (mode === "decline") {
     return (
@@ -168,19 +188,21 @@ export default function JobCard({ job, onChange }: { job: WorkerJob; onChange: (
             </button>
           </div>
           <div className="divider" />
-          <div className="stack" style={{ gap: 6 }}>
-            <div className="label">When finished</div>
-            <div className="row" style={{ gap: 8 }}>
-              <label className="field grow" style={{ minHeight: 50 }}>
-                <span className="muted">₹</span>
-                <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Bill amount" aria-label="Bill amount in rupees" style={{ height: 46 }} />
-              </label>
-              <button type="button" className="btn green" style={{ minHeight: 50 }} disabled={busy} onClick={complete}>
-                Job done
+          {settlement ? (
+            <SettlementCard settlement={settlement} role="worker" onChange={async () => { setSettlement(await api.settlement.get(job.booking_id)); await onChange(); }} />
+          ) : brief ? (
+            <div className="small muted">Loading the price on the table…</div>
+          ) : (
+            <div className="stack" style={{ gap: 6 }}>
+              <div className="label">When finished</div>
+              <button type="button" className="btn green" style={{ minHeight: 50 }} disabled={busy} onClick={() => setMode("price")}>
+                <Check size={18} />
+                Job done · propose the price
               </button>
+              <RateHint trade={job.trade} compact />
+              <div className="tiny muted">You say the hours and materials; the community rate prices it; the customer agrees. You keep 85%, paid to you directly.</div>
             </div>
-            <div className="tiny muted">You keep 85% · welfare fund 10% · running costs 5%. Shown in your history after.</div>
-          </div>
+          )}
         </>
       )}
     </div>

@@ -26,6 +26,7 @@ def test_no_history_gives_zero_forecast_with_honest_method():
     assert result.total_expected == 0
     assert len(result.points) == 7
     assert all(p.expected_bookings == p.lower == p.upper == 0 and p.workers_needed == 0 for p in result.points)
+    assert all(p.forecast_jobs == 0 and p.confidence == 0.35 and p.explanation for p in result.points)
 
 
 def test_horizon_starts_today_and_has_requested_length():
@@ -68,3 +69,11 @@ def test_accepts_sqlite_style_timestamp_strings():
     result = forecast_demand(demand, horizon_days=3, today=TODAY)
     assert result.history_bookings == 2
     assert all(p.lower <= p.expected_bookings <= p.upper for p in result.points)
+
+
+def test_forecast_explains_trade_and_recent_baseline():
+    result = forecast_demand(history(28, {0: 2}), trade="plumbing", horizon_days=1, today=TODAY)
+    point = result.points[0]
+    assert point.forecast_jobs == point.expected_bookings
+    assert 0.55 <= point.confidence <= 0.9
+    assert "plumbing" in point.explanation and "moving average" in point.explanation

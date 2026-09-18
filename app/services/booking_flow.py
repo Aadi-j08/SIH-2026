@@ -77,7 +77,9 @@ def _latest_assignment(conn: sqlite3.Connection, booking_id: int) -> dict[str, A
 
 
 def _declined_worker_ids(conn: sqlite3.Connection, booking_id: int) -> tuple[int, ...]:
+
     """Workers who already declined this booking should remain excluded from all future reassignments."""
+ main
     rows = conn.execute(
         "SELECT DISTINCT worker_id FROM declines WHERE booking_id = ? ORDER BY worker_id",
         (booking_id,),

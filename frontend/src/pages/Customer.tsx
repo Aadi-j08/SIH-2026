@@ -12,9 +12,13 @@ import {
   storageGet,
   storageSet,
   type BookingDetail,
+  type Settlement,
 } from "../api";
 import { useAuth } from "../lib/auth";
+import { useLive } from "../lib/live";
 import { ArrowRight, Check, Clock, Locate, Pin, Star, TRADE_ICONS } from "../components/Icons";
+import { RateHint, SettlementCard } from "../components/Settlement";
+import AssistantPanel from "../components/AssistantPanel";
 
 const LAST_BOOKING_KEY = "sahakarsetu.lastBooking";
 
@@ -111,6 +115,8 @@ function BookingForm() {
         </div>
       </div>
 
+      <AssistantPanel role="customer" latitude={location.latitude} longitude={location.longitude} onBooking={(id) => navigate(`/ghar/home/${id}`)} />
+
       <section className="stack">
         <div className="label">What do you need?</div>
         <div className="grid-3" role="radiogroup" aria-label="Service">
@@ -124,6 +130,7 @@ function BookingForm() {
             );
           })}
         </div>
+        <RateHint trade={trade} />
       </section>
 
       <section className="stack">
@@ -186,7 +193,7 @@ function BookingForm() {
           {!submitting && <ArrowRight size={20} />}
         </button>
         <div className="tiny muted" style={{ textAlign: "center" }}>
-          No advance payment. Pay after the job — 10% goes to the workers' welfare fund.
+          No advance payment and nothing is charged here. You agree the price with the worker when the job ends and pay them directly — 10% of it is their contribution to the workers' welfare fund.
         </div>
       </div>
     </form>
@@ -197,24 +204,28 @@ function BookingForm() {
 
 function BookingStatus({ bookingId }: { bookingId: number }) {
   const [detail, setDetail] = useState<BookingDetail | null>(null);
+  const [settlement, setSettlement] = useState<Settlement | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
     try {
       const next = await api.bookings.detail(bookingId);
       setDetail(next);
+      if (next.assignment) setSettlement(await api.settlement.get(bookingId));
       setError(null);
     } catch (e) {
       setError(errorMessage(e));
     }
   };
 
+  // live: reload the moment this booking changes; slow poll as a safety net
+  const { live } = useLive(() => void load(), { filter: (e) => e.booking_id === bookingId || e.topic === "allocation" });
   useEffect(() => {
     void load();
-    const timer = window.setInterval(() => void load(), 4000);
+    const timer = window.setInterval(() => void load(), live ? 30000 : 4000);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookingId]);
+  }, [bookingId, live]);
 
   if (error && !detail) {
     return (
@@ -266,10 +277,40 @@ function BookingStatus({ bookingId }: { bookingId: number }) {
             breakdown={assignment.score_breakdown}
             explanation={assignment.explanation}
           />
+          {status === "assigned" && (
+            <div className="job-actions">
+              <a href={assignment.worker.phone ? `tel:${assignment.worker.phone}` : undefined} className={assignment.worker.phone ? "" : "disabled"}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" />
+                </svg>
+                {assignment.worker.phone ? `Call ${assignment.worker.name.split(" ")[0]}` : "No number yet"}
+              </a>
+              <Link to="/ghar/home" className="">
+                <ArrowRight size={20} />
+                Book another
+              </Link>
+            </div>
+          )}
+          {status === "assigned" && !settlement && (
+            <div className="card soft stack" style={{ gap: 4 }}>
+              <div style={{ fontWeight: 700 }}>How the price works</div>
+              <div className="small muted">
+                When the job ends {assignment.worker.name.split(" ")[0]} enters the hours and materials; the community rate card prices it and you'll be asked to agree here. You pay them directly — cash or UPI. Nothing is charged through the app.
+              </div>
+              <RateHint trade={booking.trade} compact />
+            </div>
+          )}
         </section>
       )}
 
-      {status === "completed" && payment_ledger.length > 0 && (
+      {settlement && (
+        <section className="stack">
+          <div className="label">{settlement.status === "agreed" ? "Your payment" : "Price on the table"}</div>
+          <SettlementCard settlement={settlement} role="customer" onChange={load} />
+        </section>
+      )}
+
+      {status === "completed" && !settlement && payment_ledger.length > 0 && (
         <section className="stack">
           <div className="label">Your payment</div>
           <div className="card stack" style={{ gap: 8 }}>
