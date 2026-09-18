@@ -164,6 +164,9 @@ class ForecastPoint(BaseModel):
     lower: float
     upper: float
     workers_needed: int
+    confidence: float = Field(default=0.5, ge=0, le=1)
+    explanation: str = ""
+    forecast_jobs: float | None = None
 
 
 class DemandForecast(BaseModel):
@@ -185,6 +188,9 @@ class StaffingDay(BaseModel):
     workers_needed: int
     available_workers: int
     shortage: int
+    confidence: float = Field(default=0.5, ge=0, le=1)
+    explanation: str = ""
+    forecast_jobs: float | None = None
 
 
 class StaffingForecast(BaseModel):
@@ -199,3 +205,5 @@ class StaffingForecast(BaseModel):
     shortage: int
     recommendation: str
     days: list[StaffingDay]
+    confidence: float = Field(default=0.5, ge=0, le=1)
+    explanation: str = ""
