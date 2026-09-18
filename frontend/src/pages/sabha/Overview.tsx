@@ -10,6 +10,7 @@ import { api, errorMessage, formatRupees, titleCase, type AttentionItem, type Ma
 import { AlertCircle, ArrowRight, Check, Sparkle, Star, TrendingUp } from "../../components/Icons";
 import { FundPie } from "../../components/sabha/FundPie";
 import { SabhaLoop } from "../../components/sabha/SabhaLoop";
+import AssistantPanel from "../../components/AssistantPanel";
 import { useSabha } from "../../components/SabhaShell";
 
 export default function Overview() {
@@ -21,6 +22,7 @@ export default function Overview() {
     <div className="page wide sabha-page">
       {error && <div className="notice error">{error}</div>}
       <Metrics o={o} />
+      <AssistantPanel role="council" />
       <Attention items={o.attention} />
       <div className="sabha-grid">
         <DemandWorkforce rows={o.trades} />
