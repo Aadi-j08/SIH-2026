@@ -326,7 +326,7 @@ def decline(booking_id: int, worker_id: int, body: DeclineRequest) -> ReplyResul
                 ).model_dump(mode="json"))
                 conn.execute("UPDATE workers SET availability = ? WHERE id = ?", (json.dumps(windows), worker_id))
             excluded = tuple(r["worker_id"] for r in conn.execute(
-                "SELECT worker_id FROM declines WHERE booking_id = ?", (booking_id,)
+                "SELECT DISTINCT worker_id FROM declines WHERE booking_id = ? ORDER BY worker_id", (booking_id,)
             ))
         try:
             result = booking_flow.assign_booking(conn, booking_id, exclude_worker_ids=excluded)
