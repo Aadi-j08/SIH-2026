@@ -33,6 +33,8 @@ def test_shortage_is_workers_needed_minus_available_never_negative():
     assert [(d.available_workers, d.shortage) for d in result.days] == [(1, 1), (2, 0)]
     assert (result.peak_day, result.expected_bookings, result.workers_needed, result.available_workers, result.shortage) == (MONDAY, 4.0, 2, 1, 1)
     assert result.recommendation == "Request availability from 1 additional plumbing worker for Monday 2026-09-14"
+    assert result.confidence == result.days[0].confidence
+    assert "active workers" in result.explanation
 
 
 def test_enough_workers_gives_no_shortage_and_says_so():
@@ -102,3 +104,4 @@ def test_staffing_endpoint_is_council_only(customer, worker, client):
     assert client.get("/forecast/staffing", params={"trade": "plumbing"}).status_code == 401
     assert customer.get("/forecast/staffing", params={"trade": "plumbing"}).status_code == 403
     assert worker.get("/forecast/staffing", params={"trade": "plumbing"}).status_code == 403
+    assert client.get("/forecast/staffing").status_code == 401

@@ -76,6 +76,14 @@ def _latest_assignment(conn: sqlite3.Connection, booking_id: int) -> dict[str, A
     ).fetchone())
 
 
+def _declined_worker_ids(conn: sqlite3.Connection, booking_id: int) -> tuple[int, ...]:
+    rows = conn.execute(
+        "SELECT DISTINCT worker_id FROM declines WHERE booking_id = ? ORDER BY worker_id",
+        (booking_id,),
+    ).fetchall()
+    return tuple(int(row["worker_id"]) for row in rows)
+
+
 def _decode_json(value: Any) -> Any:
     if isinstance(value, str):
         try:
@@ -118,10 +126,11 @@ def assign_booking(
             raise InvalidBookingState(
                 f"Booking {booking_id} is '{booking['status']}'; only pending bookings can be assigned"
             )
+        excluded = tuple(dict.fromkeys((*exclude_worker_ids, *_declined_worker_ids(conn, booking_id))))
         status_filter = "WHERE COALESCE(status, 'active') = 'active'" if "status" in table_columns(conn, "workers") else ""
         workers = [                                                     # 2. load workers
             dict(r) for r in conn.execute(f"SELECT * FROM workers {status_filter}")
-            if r["id"] not in exclude_worker_ids
+            if r["id"] not in excluded
         ]
         best = top_recommendation(booking, workers)                    # 3–5. schema, engine, top pick
         if best is None:
