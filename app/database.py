@@ -132,6 +132,43 @@ CREATE TABLE IF NOT EXISTS disputes (
     resolved_at       TEXT
 );
 
+-- Community rate card: the standard price of an hour of each trade, fixed by the general body.
+-- A settlement quotes from it; the agreed amount may sit within a fair band around it.
+CREATE TABLE IF NOT EXISTS standard_rates (
+    trade              TEXT    PRIMARY KEY,
+    visit_charge_paise INTEGER NOT NULL CHECK (visit_charge_paise >= 0),
+    hourly_rate_paise  INTEGER NOT NULL CHECK (hourly_rate_paise > 0),
+    min_hours          REAL    NOT NULL DEFAULT 1 CHECK (min_hours > 0),
+    band_percent       INTEGER NOT NULL DEFAULT 25 CHECK (band_percent BETWEEN 0 AND 100),
+    note               TEXT,
+    updated_at         TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Settlement: the price of a finished job, agreed by the worker and the customer.
+-- The worker proposes hours + materials against the rate card; the customer agrees,
+-- counters, or asks the council. Once agreed the booking completes and the ledger
+-- splits the amount. Money itself is paid customer -> worker directly; nothing here is a payment.
+CREATE TABLE IF NOT EXISTS settlements (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_id        INTEGER NOT NULL UNIQUE REFERENCES bookings(id),
+    worker_id         INTEGER NOT NULL REFERENCES workers(id),
+    hours_worked      REAL    NOT NULL CHECK (hours_worked > 0),
+    materials_paise   INTEGER NOT NULL DEFAULT 0 CHECK (materials_paise >= 0),
+    work_note         TEXT,
+    standard_paise    INTEGER NOT NULL CHECK (standard_paise >= 0),
+    proposed_paise    INTEGER NOT NULL CHECK (proposed_paise > 0),
+    counter_paise     INTEGER CHECK (counter_paise IS NULL OR counter_paise > 0),
+    customer_note     TEXT,
+    agreed_paise      INTEGER CHECK (agreed_paise IS NULL OR agreed_paise > 0),
+    status            TEXT    NOT NULL DEFAULT 'proposed'
+                      CHECK (status IN ('proposed', 'countered', 'agreed', 'disputed')),
+    paid_via          TEXT    CHECK (paid_via IS NULL OR paid_via IN ('cash', 'upi', 'other')),
+    dispute_id        INTEGER REFERENCES disputes(id),
+    created_at        TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    responded_at      TEXT,
+    agreed_at         TEXT
+);
+
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version         INTEGER PRIMARY KEY,
     applied_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
