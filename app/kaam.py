@@ -322,7 +322,7 @@ def decline(booking_id: int, worker_id: int, body: DeclineRequest) -> ReplyResul
                 windows = json.loads(row["availability"] or "[]")
                 now = dt.datetime.now(_IST)
                 windows.append(AvailabilityWindow(
-                    date=now.date(), start=now.strftime("%H:%M"), end="23:59", available=False,
+                    date=now.date().isoformat(), start=now.strftime("%H:%M"), end="23:59", available=False,
                 ).model_dump(mode="json"))
                 conn.execute("UPDATE workers SET availability = ? WHERE id = ?", (json.dumps(windows), worker_id))
             excluded = tuple(r["worker_id"] for r in conn.execute(
