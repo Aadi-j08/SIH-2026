@@ -31,9 +31,11 @@ export default function Worker() {
       setJobs(j);
       setError(null);
     } catch (e) {
-      setError(errorMessage(e));
+      // Only show the error if no valid data has been loaded yet (initial load failure).
+      // Background polling failures should not replace already-displayed data.
+      setError((prev) => prev !== null || worker === null ? errorMessage(e) : prev);
     }
-  }, [workerId]);
+  }, [workerId, worker]);
 
   useEffect(() => {
     if (workerId === null) {
