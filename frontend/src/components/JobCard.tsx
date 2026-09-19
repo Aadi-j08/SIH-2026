@@ -129,7 +129,7 @@ export default function JobCard({ job, onChange }: { job: WorkerJob; onChange: (
         </label>
         {message && <div className={`notice ${message.kind}`}>{message.text}</div>}
         <div className="row" style={{ gap: 8 }}>
-          <button type="button" className="btn dark grow" onClick={decline} disabled={busy || !reason}>
+          <button type="button" className="btn danger grow" onClick={decline} disabled={busy || !reason}>
             {busy ? "Passing on…" : "Pass it on"}
           </button>
           <button type="button" className="btn outline" onClick={() => setMode("view")} disabled={busy}>
