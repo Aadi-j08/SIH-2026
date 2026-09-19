@@ -152,6 +152,7 @@ export default function WorkerWeek() {
                   key={d.date}
                   type="button"
                   className={`slot ${s.state}${isSel ? " selected" : ""}`}
+                  style={{ minHeight: 44 }}
                   onClick={() => setSelected({ date: d.date, slot: slotDef.id })}
                   aria-label={`${d.label} ${d.dayNumber} ${slotDef.label}: ${s.state}`}
                 >
@@ -164,7 +165,9 @@ export default function WorkerWeek() {
                     <span className="num">{s.freeHours < (slotDef.id === "evening" ? 4 : slotDef.id === "noon" ? 5 : 6) ? `${s.freeHours} h` : `${slotDef.start.slice(0, 2)}–${slotDef.end.slice(0, 2)}`}</span>
                   ) : s.state === "busy" ? (
                     <span>busy</span>
-                  ) : null}
+                  ) : (
+                    <span className="muted display">+</span>
+                  )}
                 </button>
               );
             })}

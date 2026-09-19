@@ -196,10 +196,10 @@ export default function VoiceAvailability({ worker, onSaved, compact = false }: 
             Replace everything I've saved ({worker.availability.length} window{worker.availability.length === 1 ? "" : "s"}) instead of adding to it
           </label>
           <div className="row" style={{ gap: 8 }}>
-            <button type="button" className={`btn grow ${guessed || needsConfirmation ? "outline" : "green"}`} onClick={save} disabled={busy || !canSave}>
+            <button type="button" className="btn green grow" onClick={save} disabled={busy || !canSave}>
               {busy ? "Saving…" : needsConfirmation ? "Confirm & save" : guessed ? "Save anyway" : "Save availability"}
             </button>
-            <button type="button" className={`btn ${guessed ? "green" : "outline"}`} onClick={() => { setParsed(null); setTranscript(""); }} disabled={busy}>
+            <button type="button" className="btn outline" onClick={() => { setParsed(null); setTranscript(""); }} disabled={busy}>
               Say again
             </button>
           </div>
