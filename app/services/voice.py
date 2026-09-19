@@ -259,7 +259,12 @@ def parse_availability(transcript: str, reference_date: date | None = None) -> V
     else:
         confidence = round(0.4 + 0.6 * (total_tokens - len(unrecognised)) / total_tokens, 2)
         if any(a.startswith("No day") for a in assumptions):
-            confidence = min(confidence, 0.5)   # a guessed day is never a confident parse
+            confidence = min(confidence, 0.5)
+    requires_confirmation = bool(windows) and confidence < 0.80
+    can_save = bool(windows) and confidence >= 0.50
+    confirmation_message = None
+    if windows:
+        confirmation_message = f"{describe_windows(windows, reference)} Save this availability?"
     return VoiceAvailabilityResult(
         transcript=transcript,
         language=detect_language(transcript),
@@ -267,6 +272,9 @@ def parse_availability(transcript: str, reference_date: date | None = None) -> V
         confidence=confidence,
         summary=describe_windows(windows, reference),
         unrecognised=unrecognised,
+        requires_confirmation=requires_confirmation,
+        can_save=can_save,
+        confirmation_message=confirmation_message,
         assumptions=assumptions,
     )
 
