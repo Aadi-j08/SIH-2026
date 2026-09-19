@@ -451,12 +451,15 @@ export function storageSet(key: string, value: string): void {
   }
 }
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const targetUrl = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
   let response: Response;
   try {
-    response = await fetch(path, {
+    response = await fetch(targetUrl, {
       method,
       headers: body === undefined ? undefined : { "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),

@@ -34,10 +34,12 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { failed: bool
   }
 }
 
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <AppErrorBoundary>
-      <BrowserRouter basename="/app">
+      <BrowserRouter basename={basePath}>
         <App />
       </BrowserRouter>
     </AppErrorBoundary>
