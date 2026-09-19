@@ -93,53 +93,6 @@ export default function JobCard({ job, onChange }: { job: WorkerJob; onChange: (
   const isNew = job.outcome === "assigned";
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${job.latitude},${job.longitude}`;
 
-  if (mode === "price") {
-    return (
-      <ProposePrice
-        bookingId={job.booking_id}
-        trade={job.trade}
-        onCancel={() => setMode("view")}
-        onDone={async (s) => {
-          setSettlement(s);
-          setMode("view");
-          setMessage({ kind: "info", text: `${formatRupees(s.proposed_rupees)} proposed. ${job.customer_name.split(" ")[0]} will see it now.` });
-          await onChange();
-        }}
-      />
-    );
-  }
-
-  if (mode === "decline") {
-    return (
-      <div className="sheet">
-        <div className="stack" style={{ gap: 2 }}>
-          <div className="display" style={{ fontSize: 18, fontWeight: 700 }}>Why not this one?</div>
-          <div className="hi small muted">क्यों नहीं? — इससे इंजन को अगली बार बेहतर चुनने में मदद मिलती है</div>
-        </div>
-        <div className="reason-grid">
-          {REASONS.map((r) => (
-            <button key={r.id} type="button" className={reason === r.id ? "active" : ""} onClick={() => setReason(r.id)}>
-              {r.label}
-            </button>
-          ))}
-        </div>
-        <label className="row small muted" style={{ gap: 8 }}>
-          <input type="checkbox" checked={busyToday} onChange={(e) => setBusyToday(e.target.checked)} />
-          Also mark me busy for the rest of today
-        </label>
-        {message && <div className={`notice ${message.kind}`}>{message.text}</div>}
-        <div className="row" style={{ gap: 8 }}>
-          <button type="button" className="btn danger grow" onClick={decline} disabled={busy || !reason}>
-            {busy ? "Passing on…" : "Pass it on"}
-          </button>
-          <button type="button" className="btn outline" onClick={() => setMode("view")} disabled={busy}>
-            Back
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={`job-card${isNew ? " new" : ""}`}>
       <div className="row between" style={{ alignItems: "flex-start", gap: 10 }}>
@@ -170,7 +123,47 @@ export default function JobCard({ job, onChange }: { job: WorkerJob; onChange: (
 
       {message && <div className={`notice ${message.kind}`}>{message.text}</div>}
 
-      {isNew ? (
+      <div className="divider" />
+
+      {mode === "price" ? (
+        <ProposePrice
+          bookingId={job.booking_id}
+          trade={job.trade}
+          onCancel={() => setMode("view")}
+          onDone={async (s) => {
+            setSettlement(s);
+            setMode("view");
+            setMessage({ kind: "info", text: `${formatRupees(s.proposed_rupees)} proposed. ${job.customer_name.split(" ")[0]} will see it now.` });
+            await onChange();
+          }}
+        />
+      ) : mode === "decline" ? (
+        <div className="stack" style={{ gap: 16 }}>
+          <div className="stack" style={{ gap: 2 }}>
+            <div className="display" style={{ fontSize: 18, fontWeight: 700 }}>Why not this one?</div>
+            <div className="hi small muted">क्यों नहीं? — इससे इंजन को अगली बार बेहतर चुनने में मदद मिलती है</div>
+          </div>
+          <div className="reason-grid">
+            {REASONS.map((r) => (
+              <button key={r.id} type="button" className={reason === r.id ? "active" : ""} onClick={() => setReason(r.id)}>
+                {r.label}
+              </button>
+            ))}
+          </div>
+          <label className="row small muted" style={{ gap: 8 }}>
+            <input type="checkbox" checked={busyToday} onChange={(e) => setBusyToday(e.target.checked)} />
+            Also mark me busy for the rest of today
+          </label>
+          <div className="row" style={{ gap: 8 }}>
+            <button type="button" className="btn danger grow" onClick={decline} disabled={busy || !reason}>
+              {busy ? "Passing on…" : "Pass it on"}
+            </button>
+            <button type="button" className="btn outline" onClick={() => setMode("view")} disabled={busy}>
+              Back
+            </button>
+          </div>
+        </div>
+      ) : isNew ? (
         <>
           <div className="row" style={{ gap: 8 }}>
             <button type="button" className="btn green grow" onClick={accept} disabled={busy}>
