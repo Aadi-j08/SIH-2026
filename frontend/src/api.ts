@@ -58,6 +58,7 @@ export type Recommendation = {
   score: number;
   score_breakdown: Record<string, number>;
   explanation: string;
+  why_selected: string[];
 };
 
 export type VoiceParse = {
@@ -67,8 +68,24 @@ export type VoiceParse = {
   confidence: number;
   summary: string;
   unrecognised: string[];
+  requires_confirmation?: boolean;
+  can_save?: boolean;
+  confirmation_message?: string | null;
   /** gaps the parser filled in (no day named, only a start time) — shown before saving */
   assumptions: string[];
+};
+
+export type AssistantResponse = {
+  transcript: string;
+  language: string;
+  intent: string;
+  entities: Record<string, unknown>;
+  confidence: number;
+  requires_confirmation: boolean;
+  confirmation_message: string | null;
+  action_preview: Record<string, unknown>;
+  reply: string;
+  result: unknown;
 };
 
 export type WorkerSummary = {
@@ -274,6 +291,9 @@ export type ForecastPoint = {
   lower: number;
   upper: number;
   workers_needed: number;
+  forecast_jobs?: number | null;
+  confidence: number;
+  explanation: string;
 };
 
 export type Forecast = {
@@ -380,6 +400,9 @@ export type StaffingDay = {
   workers_needed: number;
   available_workers: number;
   shortage: number;
+  forecast_jobs?: number | null;
+  confidence: number;
+  explanation: string;
 };
 
 export type StaffingForecast = {
@@ -393,6 +416,8 @@ export type StaffingForecast = {
   shortage: number;
   recommendation: string;
   days: StaffingDay[];
+  confidence: number;
+  explanation: string;
 };
 
 export type PortalId = "ghar" | "kaam" | "sabha";
@@ -504,16 +529,24 @@ export const api = {
     get: (id: number) => get<Worker>(`/workers/${id}`),
     create: (body: Omit<Worker, "id" | "jobs_this_week" | "created_at" | "availability" | "phone" | "rating"> & Partial<Worker>) =>
       post<Worker>("/workers", body),
-    setAvailabilityByVoice: (id: number, transcript: string, replace = true, referenceDate?: string) =>
+    setAvailabilityByVoice: (id: number, transcript: string, replace = true, referenceDate?: string, confirmed = false) =>
       post<{ parsed: VoiceParse; worker: Worker }>(`/workers/${id}/availability/voice`, {
         transcript,
         replace,
         reference_date: referenceDate ?? null,
+        confirmed,
       }),
   },
   voice: {
     parse: (transcript: string, referenceDate?: string) =>
       post<VoiceParse>("/voice/parse", { transcript, reference_date: referenceDate ?? null }),
+  },
+  assistant: {
+    message: (body: { transcript: string; confirmed?: boolean; reference_date?: string | null; latitude?: number; longitude?: number }) =>
+      post<AssistantResponse>("/assistant/message", body),
+    voice: (body: { transcript: string; confirmed?: boolean; reference_date?: string | null; latitude?: number; longitude?: number }) =>
+      post<AssistantResponse>("/assistant/voice", body),
+    languages: () => get<{ code: string; name: string }[]>("/assistant/languages"),
   },
   bookings: {
     list: (params: { status?: string; trade?: string } = {}) => {

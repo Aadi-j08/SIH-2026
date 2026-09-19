@@ -18,6 +18,7 @@ import { useAuth } from "../lib/auth";
 import { useLive } from "../lib/live";
 import { ArrowRight, Check, Clock, Locate, Pin, Star, TRADE_ICONS } from "../components/Icons";
 import { RateHint, SettlementCard } from "../components/Settlement";
+import AssistantPanel from "../components/AssistantPanel";
 
 const LAST_BOOKING_KEY = "sahakarsetu.lastBooking";
 
@@ -113,6 +114,8 @@ function BookingForm() {
           )}
         </div>
       </div>
+
+      <AssistantPanel role="customer" latitude={location.latitude} longitude={location.longitude} onBooking={(id) => navigate(`/ghar/home/${id}`)} />
 
       <section className="stack">
         <div className="label">What do you need?</div>

@@ -50,6 +50,12 @@ def staffing_forecast(
             workers_needed=point.workers_needed,
             available_workers=available,
             shortage=max(0, point.workers_needed - available),
+            confidence=point.confidence,
+            forecast_jobs=point.expected_bookings,
+            explanation=(
+                f"Forecast requires {point.workers_needed} worker{'s' if point.workers_needed != 1 else ''}; "
+                f"{available} active worker{'s are' if available != 1 else ' is'} available."
+            ),
         ))
 
     # Headline = the day that needs attention most: biggest shortage, then biggest need.
@@ -79,4 +85,9 @@ def staffing_forecast(
         shortage=peak.shortage if peak else 0,
         recommendation=recommendation,
         days=days,
+        confidence=peak.confidence if peak else 0.35,
+        explanation=(
+            f"{trade_word} staffing compares the explainable demand baseline with active workers "
+            f"who are not declared busy on the peak day."
+        ),
     )

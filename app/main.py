@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from app import database, events, ownership, repository
 from app.auth import User, require_council, require_customer, require_user, require_worker
 from app.routers.auth import router as auth_router
+from app.routers.assistant import router as assistant_router
 from app.routers.booking_flow import router as booking_flow_router
 from app.routers.kaam import router as kaam_router
 from app.routers.pricing import router as pricing_router
@@ -60,6 +61,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(auth_router)
+app.include_router(assistant_router)
 app.include_router(booking_flow_router)
 app.include_router(kaam_router)
 app.include_router(sabha_router)
@@ -159,6 +161,23 @@ def set_availability_by_voice(
             status_code=422,
             detail={"message": "Could not understand any availability in the transcript",
                     "parsed": parsed.model_dump(mode="json")},
+        )
+    if not parsed.can_save:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "The availability was not understood confidently enough. Please say the day and time again.",
+                "parsed": parsed.model_dump(mode="json"),
+            },
+        )
+    if parsed.requires_confirmation and not body.confirmed:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Please confirm the interpreted availability before saving it.",
+                "confirmation_message": parsed.confirmation_message,
+                "parsed": parsed.model_dump(mode="json"),
+            },
         )
     worker = repository.set_worker_availability(worker_id, parsed.windows, replace=body.replace)
     return VoiceAvailabilityResponse(parsed=parsed, worker=worker)

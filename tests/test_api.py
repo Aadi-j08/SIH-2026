@@ -74,6 +74,20 @@ def test_voice_availability_can_append_instead_of_replace(client):
     assert [(w["weekday"], w["start"]) for w in stored] == [(0, "06:00"), (1, "16:00")]
 
 
+def test_voice_availability_requires_confirmation_when_transcript_is_uncertain(client):
+    worker_id = client.post("/workers", json=worker_payload()).json()["id"]
+    transcript = "kal subah free hoon foo bar baz qux"
+    preview = client.post("/voice/parse", json={"transcript": transcript, "reference_date": "2026-09-11"}).json()
+    assert preview["requires_confirmation"] is True and preview["can_save"] is True
+
+    blocked = client.post(f"/workers/{worker_id}/availability/voice", json={"transcript": transcript})
+    assert blocked.status_code == 409
+    assert client.get(f"/workers/{worker_id}").json()["availability"] == []
+
+    saved = client.post(f"/workers/{worker_id}/availability/voice", json={"transcript": transcript, "confirmed": True})
+    assert saved.status_code == 200
+
+
 def test_voice_endpoint_rejects_unintelligible_transcript_and_unknown_worker(client):
     worker_id = client.post("/workers", json=worker_payload()).json()["id"]
     response = client.post(f"/workers/{worker_id}/availability/voice", json={"transcript": "theek hai"})

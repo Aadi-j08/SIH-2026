@@ -124,6 +124,7 @@ class Recommendation(BaseModel):
     score: float
     score_breakdown: dict[str, float]
     explanation: str
+    why_selected: list[str] = Field(default_factory=list)
 
 
 # ── voice availability ───────────────────────────────────────────────────
@@ -132,6 +133,7 @@ class VoiceAvailabilityRequest(BaseModel):
     transcript: str = Field(min_length=1, max_length=500, description="Speech-to-text output, Hindi/English/Hinglish")
     reference_date: dt.date | None = Field(default=None, description="Day 'aaj'/'kal' are relative to; default today")
     replace: bool = Field(default=True, description="Replace the worker's existing windows (False = append)")
+    confirmed: bool = Field(default=False, description="Worker confirmed a low-confidence interpretation")
 
 
 class VoiceAvailabilityResult(BaseModel):
@@ -141,6 +143,9 @@ class VoiceAvailabilityResult(BaseModel):
     confidence: float = Field(ge=0, le=1)
     summary: str
     unrecognised: list[str] = Field(default_factory=list)
+    requires_confirmation: bool = False
+    can_save: bool = False
+    confirmation_message: str | None = None
     assumptions: list[str] = Field(default_factory=list, description="Gaps the parser filled in (no day named, only a start time); show them before saving")
 
 
@@ -159,6 +164,9 @@ class ForecastPoint(BaseModel):
     lower: float
     upper: float
     workers_needed: int
+    confidence: float = Field(default=0.5, ge=0, le=1)
+    explanation: str = ""
+    forecast_jobs: float | None = None
 
 
 class DemandForecast(BaseModel):
@@ -180,6 +188,9 @@ class StaffingDay(BaseModel):
     workers_needed: int
     available_workers: int
     shortage: int
+    confidence: float = Field(default=0.5, ge=0, le=1)
+    explanation: str = ""
+    forecast_jobs: float | None = None
 
 
 class StaffingForecast(BaseModel):
@@ -194,3 +205,5 @@ class StaffingForecast(BaseModel):
     shortage: int
     recommendation: str
     days: list[StaffingDay]
+    confidence: float = Field(default=0.5, ge=0, le=1)
+    explanation: str = ""
