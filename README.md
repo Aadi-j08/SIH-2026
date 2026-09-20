@@ -4,7 +4,7 @@
 
 [![Backend Tests](https://img.shields.io/badge/Pytest-220%20Passed%20(100%25)-brightgreen.svg?style=flat-square)](tests/)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI%200.115-blue.svg?style=flat-square)](https://fastapi.tiangolo.com)
-[![AI/ML](https://img.shields.io/badge/AI%2FML-Gemini%201.5%20Flash%20%2B%20scikit--learn-orange.svg?style=flat-square)](app/services/)
+[![AI/ML](https://img.shields.io/badge/AI%2FML-Gemini%20Flash%20%2B%20scikit--learn-orange.svg?style=flat-square)](app/services/)
 [![Database](https://img.shields.io/badge/Database-Cloud%20PostgreSQL%20%2B%20SQLite-indigo.svg?style=flat-square)](schema.sql)
 [![Hosting](https://img.shields.io/badge/Hosting-100%25%20Free%20Tier%20(₹0)-green.svg?style=flat-square)](render.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
@@ -16,7 +16,7 @@ Urban household service aggregators (commercial gig apps) exploit informal artis
 
 **SahakarSetu** decentralizes municipal household services by empowering local artisan cooperatives:
 * ⚖️ **Fair Work Distribution:** Bipartite matching algorithm ensures idle artisans get equitable opportunities rather than work being monopolized by a few.
-* 🎙️ **Multilingual Voice AI:** Google Gemini 1.5 Flash understands spoken Hindi, Hinglish, and regional queries with zero-setup offline fallback.
+* 🎙️ **Multilingual Voice AI:** Google Gemini understands spoken Hindi, Hinglish, and regional queries with zero-setup offline fallback.
 * 📈 **Machine Learning Demand Forecasting:** `scikit-learn` Ridge regression predicts weekly ward demand and guarantees minimum wage floors without predatory surge pricing.
 * 🤝 **AI Dispute Mediation:** Transparent midpoint settlement calculator & diplomatic bilingual council mediation notes.
 * 💰 **Zero Platform Fees:** 100% direct customer-to-worker payment; transparent community fund ledger allocation (85% artisan · 10% welfare · 5% ops).
@@ -37,37 +37,42 @@ Urban household service aggregators (commercial gig apps) exploit informal artis
 
 ```mermaid
 flowchart TD
-    subgraph Client Layer [Frontend Client - React 18 / Vite / PWA]
-        GHAR[🏡 Ghar Portal - Citizens]
-        KAAM[🔧 Kaam Portal - Workers]
-        SABHA[🏛️ Sabha Portal - Council]
+    subgraph CLIENTS["Frontend Portals (React 18 + Vite PWA)"]
+        GHAR["🏡 Ghar Portal (Citizens)"]
+        KAAM["🔧 Kaam Portal (Workers)"]
+        SABHA["🏛️ Sabha Portal (Council)"]
     end
 
-    subgraph CDN [Edge CDN - 100% Free]
-        CF[Cloudflare Pages / Vercel]
+    subgraph CDN["Edge Distribution"]
+        CF["Cloudflare Pages / Vercel (Global CDN)"]
     end
 
-    subgraph Backend Layer [FastAPI Web Service - Render.com Free Tier]
-        API[FastAPI Gateway & Auth]
-        
-        subgraph AIML [AI / ML & Analytics Services]
-            GEMINI[🤖 Gemini 1.5 Flash Multilingual NLP]
-            SKLEARN[📈 Scikit-Learn Demand Forecaster]
-            ALLOC[⚖️ Fair Bipartite Matching Engine]
-            DISPUTE[🤝 AI Dispute Advisor & Sentiment]
-        end
+    subgraph BACKEND["FastAPI Backend (Render.com Free Tier)"]
+        API["FastAPI Gateway & Auth"]
+        GEMINI["🤖 Gemini Multilingual NLP"]
+        SKLEARN["📈 Scikit-Learn Demand Forecaster"]
+        ALLOC["⚖️ Fair Bipartite Dispatch Engine"]
+        DISPUTE["🤝 AI Dispute Advisor & Sentiment"]
     end
 
-    subgraph Data Layer [Database Layer]
-        PG[(Cloud PostgreSQL - Neon.tech / Supabase)]
-        SQLITE[(SQLite + WAL Mode - Local Fallback)]
+    subgraph STORAGE["Data & Storage Layer"]
+        PG[("Cloud PostgreSQL (Neon.tech)")]
+        SQLITE[("SQLite + WAL (Local / Test Fallback)")]
     end
 
-    Client Layer --> CF
+    GHAR --> CF
+    KAAM --> CF
+    SABHA --> CF
+
     CF --> API
-    API --> AIML
+
+    API --> GEMINI
+    API --> SKLEARN
+    API --> ALLOC
+    API --> DISPUTE
+
     API --> PG
-    API -. Local Dev / Pytest .-> SQLITE
+    API -.->|Local Dev / Pytest| SQLITE
 ```
 
 ---
@@ -77,16 +82,19 @@ flowchart TD
 ### 1. Multilingual Voice NLP Engine (`gemini_nlp.py`)
 * Processes conversational voice queries in **Hindi (Devanagari)**, **Hinglish**, and **English**.
 * Enforces strict JSON extraction: `{ trade, urgency, preferred_time, notes }`.
-* **Offline Resilience:** Embedded keyword & regex heuristic fallback guarantees 100% uptime if internet or API limits expire during demonstrations.
+* **Model fallback chain:** `gemini-flash-lite-latest` → `gemini-flash-latest` → offline regex parser.
+* **Offline Resilience:** Embedded keyword and regex heuristic fallback guarantees 100% uptime even if Gemini API quota is exhausted during demonstrations.
 
-### 2. Tabular Demand & Fair-Wage Forecaster (`demand_forecast.py`)
+### 2. Tabular Demand and Fair-Wage Forecaster (`demand_forecast.py`)
 * Regularized `Ridge` regression trained on day-of-week, weekend trends, and seasonal lag patterns.
-* Calculates guaranteed **Wage Floor Band** + **Fair Recommended Rate** preventing price gouging.
+* Calculates a guaranteed **Wage Floor Band** and **Fair Recommended Rate** to prevent price gouging.
 
 ### 3. Fair Batch Worker Dispatch Engine (`worker_allocation.py`)
-* Computes normalized multi-objective utility scores:
-  $$\text{Utility} = 0.35 \times \text{Proximity} + 0.35 \times \text{Fairness (Idle Rotation)} + 0.20 \times \text{Rating} + 0.10 \times \text{Status}$$
-* Solves global maximum-weight bipartite matching across multiple open bookings.
+* Computes normalized multi-objective utility scores per booking-worker pair:
+  ```
+  Utility = 0.35 × Proximity + 0.35 × Fairness (Idle Rotation) + 0.20 × Rating + 0.10 × Status
+  ```
+* Solves global maximum-weight bipartite matching across all pending bookings in one pass.
 
 ### 4. AI Dispute Resolution Advisor (`dispute_advisor.py`)
 * Computes mathematical material-cost-safe midpoint settlements.
@@ -193,11 +201,11 @@ tests/test_worker_allocation.py ..                                       [100%]
 | **Frontend** | **Cloudflare Pages / Vercel** | SPA Build (`npm run build`) with Global CDN & SSL | **₹0** |
 | **Backend** | **Render.com** | Python Web Service via [`render.yaml`](render.yaml) | **₹0** |
 | **Database** | **Neon.tech / Supabase** | Serverless PostgreSQL via [`schema.sql`](schema.sql) | **₹0** |
-| **AI / NLP** | **Google AI Studio** | Gemini 1.5 Flash Free Tier API | **₹0** |
+| **AI / NLP** | **Google AI Studio** | Gemini Flash Free Tier API | **₹0** |
 
 ---
 
 ## 👥 Team
-* **AI/ML & Backend Lead & Frontend Lead :** Aman Yadav,Aadi Jain,Abhishek Meena
+* **AI/ML & Backend Lead:** Aman Yadav
 * **Project Repository:** [SIH-2026](https://github.com/Aadi-j08/SIH-2026)
 * **Submission Event:** Smart India Hackathon 2026
