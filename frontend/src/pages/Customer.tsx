@@ -6,8 +6,6 @@ import {
   TRADES,
   api,
   errorMessage,
-  formatRupees,
-  formatWhen,
   titleCase,
   storageGet,
   storageSet,
@@ -16,10 +14,11 @@ import {
 } from "../api";
 import { useAuth } from "../lib/auth";
 import { useLive } from "../lib/live";
-import { ArrowRight, Check, Clock, Locate, Pin, Star, TRADE_ICONS } from "../components/Icons";
-import { RateHint, SettlementCard } from "../components/Settlement";
+import { ArrowRight, Clock, Locate, Pin, TRADE_ICONS } from "../components/Icons";
+import { RateHint } from "../components/Settlement";
 import AssistantPanel from "../components/AssistantPanel";
 import { AIVoiceSearchBar } from "../components/AIVoiceSearchBar";
+import { LiveBookingTracker } from "../components/LiveBookingTracker";
 
 const LAST_BOOKING_KEY = "sahakarsetu.lastBooking";
 
@@ -253,230 +252,9 @@ function BookingStatus({ bookingId }: { bookingId: number }) {
   }
   if (!detail) return <div className="page muted">Loading…</div>;
 
-  const { booking, assignment, payment_ledger, rating } = detail;
-  const status = booking.status;
-  const IconFor = TRADE_ICONS[booking.trade] ?? TRADE_ICONS.plumbing;
-
   return (
-    <div className="page">
-      <div className="stack" style={{ gap: 6 }}>
-        <div className="row between">
-          <h1>Booking #{booking.id}</h1>
-          <StatusPill status={status} />
-        </div>
-        <div className="row sub">
-          <IconFor size={18} />
-          {titleCase(booking.trade)} · {formatWhen(booking.scheduled_for)}
-          {booking.address ? ` · ${booking.address}` : ""}
-        </div>
-      </div>
-
-      {status === "pending" && (
-        <section className="stack">
-          <div className="card soft stack" style={{ gap: 4 }}>
-            <div style={{ fontWeight: 700 }}>The cooperative is choosing your worker</div>
-            <div className="small muted">Workers are ranked on distance, who has had the fewest jobs this week, rating and availability — not just who's nearest.</div>
-          </div>
-          <div className="tiny muted">You will see who is coming, and why they were chosen, as soon as the cooperative assigns the job.</div>
-        </section>
-      )}
-
-      {assignment && (
-        <section className="stack">
-          <div className="label">{status === "assigned" ? "Your worker" : "Done by"}</div>
-          <WorkerCard
-            name={assignment.worker.name}
-            meta={`${titleCase(assignment.worker.trade)} · ${assignment.worker.rating ? `rated ${Number(assignment.worker.rating).toFixed(1)}` : "new member"}`}
-            score={assignment.score}
-            breakdown={assignment.score_breakdown}
-            explanation={assignment.explanation}
-          />
-          {status === "assigned" && (
-            <div className="job-actions">
-              <a href={assignment.worker.phone ? `tel:${assignment.worker.phone}` : undefined} className={assignment.worker.phone ? "" : "disabled"}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" />
-                </svg>
-                {assignment.worker.phone ? `Call ${assignment.worker.name.split(" ")[0]}` : "No number yet"}
-              </a>
-              <Link to="/ghar/home" className="">
-                <ArrowRight size={20} />
-                Book another
-              </Link>
-            </div>
-          )}
-          {status === "assigned" && !settlement && (
-            <div className="card soft stack" style={{ gap: 4 }}>
-              <div style={{ fontWeight: 700 }}>How the price works</div>
-              <div className="small muted">
-                When the job ends {assignment.worker.name.split(" ")[0]} enters the hours and materials; the community rate card prices it and you'll be asked to agree here. You pay them directly — cash or UPI. Nothing is charged through the app.
-              </div>
-              <RateHint trade={booking.trade} compact />
-            </div>
-          )}
-        </section>
-      )}
-
-      {settlement && (
-        <section className="stack">
-          <div className="label">{settlement.status === "agreed" ? "Your payment" : "Price on the table"}</div>
-          <SettlementCard settlement={settlement} role="customer" onChange={load} />
-        </section>
-      )}
-
-      {status === "completed" && !settlement && payment_ledger.length > 0 && (
-        <section className="stack">
-          <div className="label">Your payment</div>
-          <div className="card stack" style={{ gap: 8 }}>
-            <div className="row between">
-              <div style={{ fontWeight: 700 }}>Bill</div>
-              <div className="display num" style={{ fontSize: 22, fontWeight: 700 }}>
-                {formatRupees(payment_ledger.reduce((sum, e) => sum + e.amount_rupees, 0))}
-              </div>
-            </div>
-            <div className="split">
-              {payment_ledger.map((e, i) => (
-                <div key={e.party} style={{ width: `${e.share_percent}%`, background: ["var(--ramp-1)", "var(--ramp-2)", "var(--ramp-3)"][i] }} />
-              ))}
-            </div>
-            {payment_ledger.map((e, i) => (
-              <div className="row small" key={e.party}>
-                <span className="swatch" style={{ background: ["var(--ramp-1)", "var(--ramp-2)", "var(--ramp-3)"][i] }} />
-                <span className="grow">{{ worker: "To your worker", welfare_fund: "Workers' welfare fund", platform_operations: "Platform operations" }[e.party]}</span>
-                <span className="num" style={{ fontWeight: 700 }}>{formatRupees(e.amount_rupees)}</span>
-                <span className="num muted" style={{ width: 36, textAlign: "right" }}>{e.share_percent}%</span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {status === "completed" && !rating && <RatingForm bookingId={bookingId} onRated={load} />}
-      {rating && (
-        <section className="card row" style={{ gap: 12 }}>
-          <span className="dot green">
-            <Check size={16} />
-          </span>
-          <div className="stack" style={{ gap: 2 }}>
-            <div style={{ fontWeight: 700 }}>You rated this job {rating.rating}/5</div>
-            {rating.comment && <div className="small muted">“{rating.comment}”</div>}
-          </div>
-        </section>
-      )}
-
-      <Link to="/ghar/home" className="btn outline">
-        Book another service
-      </Link>
+    <div className="page" style={{ maxWidth: 640, margin: "0 auto", paddingBottom: 60 }}>
+      <LiveBookingTracker detail={detail} settlement={settlement} onRefresh={load} />
     </div>
-  );
-}
-
-function StatusPill({ status }: { status: string }) {
-  const kind = status === "completed" ? "green" : status === "assigned" ? "terracotta" : "grey";
-  const text = status === "pending" ? "Finding a worker" : status === "assigned" ? "Worker assigned" : titleCase(status);
-  return <span className={`pill ${kind}`}>{text}</span>;
-}
-
-function WorkerCard({
-  name,
-  meta,
-  score,
-  breakdown,
-  explanation,
-}: {
-  name: string;
-  meta: string;
-  score: number | null;
-  breakdown: Record<string, number> | null;
-  explanation: string | null;
-}) {
-  const initials = name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-  return (
-    <div className="card stack" style={{ gap: 10 }}>
-      <div className="row" style={{ gap: 12 }}>
-        <span className="avatar">{initials}</span>
-        <div className="grow stack" style={{ gap: 1 }}>
-          <div style={{ fontWeight: 700 }}>{name}</div>
-          <div className="small muted">{meta}</div>
-        </div>
-        {score !== null && (
-          <div className="display num" style={{ fontSize: 20, fontWeight: 700, color: "var(--green-d)" }}>
-            {score.toFixed(2)}
-          </div>
-        )}
-      </div>
-      {breakdown && (
-        <div className="grid-2" style={{ gap: 6 }}>
-          {Object.entries(breakdown).map(([factor, value]) => (
-            <div key={factor} className="stack" style={{ gap: 3 }}>
-              <div className="row between tiny">
-                <span className="muted">{titleCase(factor)}</span>
-                <span className="num" style={{ fontWeight: 700 }}>
-                  {Math.round(value * 100)}%
-                </span>
-              </div>
-              <div className="bar thin">
-                <div style={{ width: `${Math.round(value * 100)}%`, background: "var(--accent)" }} />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {explanation && <div className="small" style={{ color: "var(--ink-2)" }}>{explanation}</div>}
-    </div>
-  );
-}
-
-function RatingForm({ bookingId, onRated }: { bookingId: number; onRated: () => void }) {
-  const [stars, setStars] = useState(0);
-  const [comment, setComment] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const submit = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await api.bookings.rate(bookingId, stars, comment.trim() || undefined);
-      onRated();
-    } catch (e) {
-      setError(errorMessage(e));
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className="stack">
-      <div className="label">How did it go?</div>
-      <div className="card stack">
-        <div className="row" style={{ gap: 4 }} role="radiogroup" aria-label="Rating">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button
-              type="button"
-              key={n}
-              onClick={() => setStars(n)}
-              role="radio"
-              aria-checked={stars === n}
-              aria-label={`${n} star${n > 1 ? "s" : ""}`}
-              style={{ background: "none", border: 0, padding: 6, color: n <= stars ? "var(--accent)" : "var(--line)" }}
-            >
-              <Star size={30} filled={n <= stars} />
-            </button>
-          ))}
-        </div>
-        <label className="field">
-          <input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="A word for the cooperative (optional)" maxLength={500} />
-        </label>
-        {error && <div className="notice error">{error}</div>}
-        <button type="button" className="btn green" disabled={stars === 0 || busy} onClick={submit}>
-          {busy ? "Saving…" : "Submit rating"}
-        </button>
-      </div>
-    </section>
   );
 }
