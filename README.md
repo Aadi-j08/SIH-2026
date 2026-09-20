@@ -198,6 +198,6 @@ tests/test_worker_allocation.py ..                                       [100%]
 ---
 
 ## 👥 Team
-* **AI/ML & Backend Lead:** Aman Yadav
+* **AI/ML & Backend Lead:** Aman Yadav,Aadi Jain,Abhishek Meena
 * **Project Repository:** [SIH-2026](https://github.com/Aadi-j08/SIH-2026)
 * **Submission Event:** Smart India Hackathon 2026
