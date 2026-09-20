@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: sahakarsetu-api
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: SAHAKARSETU_COUNCIL_CODE
+        value: SABHA-2026
+      - key: SAHAKARSETU_CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SAHAKARSETU_COOKIE_SECURE
+        value: "1"
+      - key: SAHAKARSETU_COOKIE_SAMESITE
+        value: "none"
