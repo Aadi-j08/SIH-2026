@@ -7,7 +7,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 
-import { api, type LiveEvent } from "../api";
+import { api, API_BASE_URL, type LiveEvent } from "../api";
 
 type Options = {
   /** Only events for which this returns true trigger `onEvent` (default: all). */
@@ -63,7 +63,9 @@ export function useLive(onEvent: (events: LiveEvent[]) => void, { filter, deboun
 
     let source: EventSource | null = null;
     if ("EventSource" in window) {
-      source = new EventSource("/events/stream", { withCredentials: true });
+      // Cross-origin Pages → API needs credentials so the session cookie is sent.
+      // If third-party cookies are blocked, onerror falls back to Bearer polling.
+      source = new EventSource(`${API_BASE_URL}/events/stream`, { withCredentials: true });
       source.onopen = () => {
         setLive(true);
         stopPolling();

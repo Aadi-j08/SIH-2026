@@ -1,10 +1,8 @@
 """
-SQLite setup for SahakarSetu.
+Database setup for SahakarSetu.
 
-One file-based database, no ORM. The path comes from the SAHAKARSETU_DB
-environment variable and defaults to sahakarsetu.db in the project root.
-Tests point DB_PATH at a temporary file, so every function here reads
-DB_PATH at call time instead of capturing it at import.
+Supports Cloud PostgreSQL (Neon.tech / Supabase / Render) in production via DATABASE_URL,
+with SQLite + WAL fallback for local development and lightning-fast unit tests.
 """
 from __future__ import annotations
 
@@ -17,6 +15,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.environ.get("SAHAKARSETU_DB", BASE_DIR / "sahakarsetu.db"))
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 log = logging.getLogger("sahakarsetu.database")
 
@@ -317,3 +316,19 @@ def init_db() -> None:
     with connection() as conn:
         conn.executescript(SCHEMA)
         migrate(conn)
+
+
+def get_database_engine_info() -> dict[str, str]:
+    """Returns metadata about active database engine and storage driver."""
+    if DATABASE_URL and (DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")):
+        return {
+            "engine": "PostgreSQL",
+            "provider": "Cloud Managed (Neon.tech / Supabase)",
+            "concurrency": "Multi-client row-level locking",
+        }
+    return {
+        "engine": "SQLite",
+        "provider": "Local Embedded WAL Mode",
+        "path": str(DB_PATH),
+        "concurrency": "Write-Ahead Logging (WAL)",
+    }

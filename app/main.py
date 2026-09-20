@@ -16,7 +16,10 @@ import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import os
+
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -42,6 +45,8 @@ from app.schemas import (
     WorkerCreate,
 )
 from app.services import allocation, forecast, staffing, voice
+from app.services.demand_forecast import forecaster
+from app.services.worker_allocation import match_batch_jobs
 from app.trades import canonical_trade
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -68,6 +73,18 @@ app.include_router(sabha_router)
 app.include_router(pricing_router)
 app.include_router(events.router)
 app.add_middleware(events.PublishChanges)
+
+# Cross-origin SPA (Cloudflare Pages → this API). Comma-separated origins, e.g.
+# https://sahakarsetu.pages.dev,http://127.0.0.1:5173
+_cors = [o.strip() for o in os.environ.get("SAHAKARSETU_CORS_ORIGINS", "").split(",") if o.strip()]
+if _cors:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 # ── errors: clean messages out, details in the log ───────────────────────
@@ -261,6 +278,26 @@ def recommend(
     return allocation.recommend_workers(request, repository.worker_profiles(), top_k=top_k)
 
 
+@app.post("/allocation/batch-dispatch", tags=["allocation"])
+def batch_dispatch(
+    max_distance_km: float = Query(default=15.0, ge=1.0, le=50.0),
+    _: User = Depends(require_council),
+) -> dict:
+    """Solves optimal fair bipartite matching between all pending bookings and available workers. Council only."""
+    # Fetch pending bookings and active worker profiles
+    with database.connection() as conn:
+        raw_bookings = conn.execute(
+            "SELECT id, customer_name, trade, latitude, longitude, address FROM bookings WHERE status = 'pending'"
+        ).fetchall()
+        raw_workers = conn.execute(
+            "SELECT id, name, trade, latitude, longitude, jobs_this_week, rating, status FROM workers WHERE status = 'active'"
+        ).fetchall()
+
+    bookings_list = [dict(r) for r in raw_bookings]
+    workers_list = [dict(r) for r in raw_workers]
+    return match_batch_jobs(bookings_list, workers_list, max_distance_km=max_distance_km)
+
+
 # ── forecast ─────────────────────────────────────────────────────────────
 
 @app.get("/forecast", response_model=DemandForecast, tags=["forecast"])
@@ -273,6 +310,16 @@ def demand_forecast(
     """Expected bookings per day for the coming days, and how many workers to keep on call. Council only."""
     trade = canonical_trade(trade) if trade else None
     return forecast.forecast_demand(repository.demand_dates(trade), trade=trade, horizon_days=days, today=today)
+
+
+@app.get("/forecast/ml", tags=["forecast"])
+def demand_forecast_ml(
+    trade: str = Query(default="general", description="Trade category"),
+    ward_id: str = Query(default="1", description="Ward identifier or locality name"),
+    _: User = Depends(require_council),
+) -> dict:
+    """ML-powered 7-day demand and fair-price band forecast using scikit-learn Ridge regression. Council only."""
+    return forecaster.predict_7_day_demand(trade=trade, ward_id=ward_id)
 
 
 @app.get("/forecast/staffing", response_model=StaffingForecast, tags=["forecast"])

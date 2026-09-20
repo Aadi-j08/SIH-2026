@@ -113,3 +113,14 @@ def test_invalid_intent_and_fallback_are_safe(customer):
 def test_languages_endpoint_requires_auth(client, customer):
     assert client.get("/assistant/languages").status_code == 401
     assert customer.get("/assistant/languages").json()[0]["code"] == "en"
+
+
+def test_parse_query_endpoint(client):
+    response = client.post("/assistant/parse-query", json={
+        "query": "mujhe bijli theek karne wala chahiye turant",
+        "language": "hi"
+    })
+    assert response.status_code == 200
+    body = response.json()
+    assert body["trade"] == "electrician"
+    assert body["urgency"] in ("urgent", "high")
