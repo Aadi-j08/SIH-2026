@@ -4,11 +4,20 @@ __pycache__/
 .pytest_cache/
 .venv/
 
+# Local secrets (keep .env.example)
+.env
+.env.local
+
 # SQLite databases (created by app/database.py)
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Node / frontend build
+frontend/node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
 
 # IDE / OS
 .vscode/
@@ -20,9 +29,8 @@ Thumbs.db
 docs/design/sahakarsetu-screens.html
 docs/design/portals/sahakarsetu-landing-and-portals.html
 docs/design/auth/sahakarsetu-login-and-portals.html
+docs/design/kaam-v2/sahakarsetu-kaam-v2.html
 
 # Original full-size photos (compressed copies live in frontend/public/img)
 docs/design/photos-original/
-frontend/tsconfig.tsbuildinfo
-docs/design/kaam-v2/sahakarsetu-kaam-v2.html
 *.backup-*.db

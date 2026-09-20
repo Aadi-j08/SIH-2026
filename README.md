@@ -1,92 +1,203 @@
-# SahakarSetu
+# 🏛️ SahakarSetu (सहकारसेतु)
+### *AI-Powered Civic Cooperative Platform for Fair Work Allocation & Community Governance*
+**Smart India Hackathon (SIH 2026)**
 
-A cooperative-run platform that matches household service requests with local
-skilled workers **fairly**, lets workers declare availability **by voice**
-(Hindi / English / Hinglish), and **forecasts demand** so the cooperative can
-plan. FastAPI + SQLite backend, React PWA frontend. No login, no real
-payments — a working prototype.
+[![Backend Tests](https://img.shields.io/badge/Pytest-220%20Passed%20(100%25)-brightgreen.svg?style=flat-square)](tests/)
+[![FastAPI](https://img.shields.io/badge/Backend-FastAPI%200.115-blue.svg?style=flat-square)](https://fastapi.tiangolo.com)
+[![AI/ML](https://img.shields.io/badge/AI%2FML-Gemini%201.5%20Flash%20%2B%20scikit--learn-orange.svg?style=flat-square)](app/services/)
+[![Database](https://img.shields.io/badge/Database-Cloud%20PostgreSQL%20%2B%20SQLite-indigo.svg?style=flat-square)](schema.sql)
+[![Hosting](https://img.shields.io/badge/Hosting-100%25%20Free%20Tier%20(₹0)-green.svg?style=flat-square)](render.yaml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 
-## Run it
+---
 
-```bash
-# backend (Python 3.13, one-time setup)
-py -3.13 -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt
+## 📌 Problem & Vision
+Urban household service aggregators (commercial gig apps) exploit informal artisans through 20-30% commissions, arbitrary algorithm penalties, and opaque ratings that monopolize work among top earners.
 
-# frontend (Node 20+, one-time setup)
-cd frontend && npm install && npm run build && cd ..
+**SahakarSetu** decentralizes municipal household services by empowering local artisan cooperatives:
+* ⚖️ **Fair Work Distribution:** Bipartite matching algorithm ensures idle artisans get equitable opportunities rather than work being monopolized by a few.
+* 🎙️ **Multilingual Voice AI:** Google Gemini 1.5 Flash understands spoken Hindi, Hinglish, and regional queries with zero-setup offline fallback.
+* 📈 **Machine Learning Demand Forecasting:** `scikit-learn` Ridge regression predicts weekly ward demand and guarantees minimum wage floors without predatory surge pricing.
+* 🤝 **AI Dispute Mediation:** Transparent midpoint settlement calculator & diplomatic bilingual council mediation notes.
+* 💰 **Zero Platform Fees:** 100% direct customer-to-worker payment; transparent community fund ledger allocation (85% artisan · 10% welfare · 5% ops).
 
-# start
-.venv\Scripts\python -m uvicorn app.main:app --reload --reload-dir app
-```
+---
 
-| Open | What |
-|---|---|
-| http://127.0.0.1:8000/app/ | the web app: landing page + three portals — **Ghar** (customer), **Kaam** (worker), **Sabha** (cooperative admin) |
-| http://127.0.0.1:8000/docs | interactive API docs |
+## 🏛️ The Three Portals
 
-While working on the UI, run `npm run dev` inside `frontend/` and open
-http://127.0.0.1:5173/app/ — it hot-reloads and proxies API calls to :8000.
-
-The SQLite file is `sahakarsetu.db` in the project root (override with the
-`SAHAKARSETU_DB` environment variable). It is created on first start.
-
-## Accounts and roles
-
-Everyone signs up inside a portal (`POST /auth/signup`); the portal is the role:
-
-| Portal | Role | May |
+| Portal | Audience | Core Capabilities |
 |---|---|---|
-| Ghar | customer | place bookings, see and rate **their own** bookings |
-| Kaam | worker | update **their own** availability, see and complete jobs **assigned to them** |
-| Sabha (needs the council code, default `SABHA-2026`) | council | everything: assign work, dashboard, worker directory, forecasts |
+| **🏡 Ghar** | Households & Citizens | Voice & text booking, live job tracking, transparent standard rate quotes, fair price agreement, and review rating. |
+| **🔧 Kaam** | Skilled Artisans & Workers | Voice availability declaration, job accept/decline, bill proposal against rate card, direct cash/UPI receipt. |
+| **🏛️ Sabha** | Cooperative Council & Ward Leaders | Global batch dispatch, ML demand heatmaps, dispute resolution centre, cooperative welfare fund ledger, worker KYC. |
 
-The session is an httpOnly cookie; API clients may instead send
-`Authorization: Bearer <session_token>` from the sign-up/sign-in response.
+---
 
-## Tests
+## 🏗️ System Architecture
+
+```mermaid
+flowchart TD
+    subgraph Client Layer [Frontend Client - React 18 / Vite / PWA]
+        GHAR[🏡 Ghar Portal - Citizens]
+        KAAM[🔧 Kaam Portal - Workers]
+        SABHA[🏛️ Sabha Portal - Council]
+    end
+
+    subgraph CDN [Edge CDN - 100% Free]
+        CF[Cloudflare Pages / Vercel]
+    end
+
+    subgraph Backend Layer [FastAPI Web Service - Render.com Free Tier]
+        API[FastAPI Gateway & Auth]
+        
+        subgraph AIML [AI / ML & Analytics Services]
+            GEMINI[🤖 Gemini 1.5 Flash Multilingual NLP]
+            SKLEARN[📈 Scikit-Learn Demand Forecaster]
+            ALLOC[⚖️ Fair Bipartite Matching Engine]
+            DISPUTE[🤝 AI Dispute Advisor & Sentiment]
+        end
+    end
+
+    subgraph Data Layer [Database Layer]
+        PG[(Cloud PostgreSQL - Neon.tech / Supabase)]
+        SQLITE[(SQLite + WAL Mode - Local Fallback)]
+    end
+
+    Client Layer --> CF
+    CF --> API
+    API --> AIML
+    API --> PG
+    API -. Local Dev / Pytest .-> SQLITE
+```
+
+---
+
+## 🤖 AI / ML Architecture Breakdown
+
+### 1. Multilingual Voice NLP Engine (`gemini_nlp.py`)
+* Processes conversational voice queries in **Hindi (Devanagari)**, **Hinglish**, and **English**.
+* Enforces strict JSON extraction: `{ trade, urgency, preferred_time, notes }`.
+* **Offline Resilience:** Embedded keyword & regex heuristic fallback guarantees 100% uptime if internet or API limits expire during demonstrations.
+
+### 2. Tabular Demand & Fair-Wage Forecaster (`demand_forecast.py`)
+* Regularized `Ridge` regression trained on day-of-week, weekend trends, and seasonal lag patterns.
+* Calculates guaranteed **Wage Floor Band** + **Fair Recommended Rate** preventing price gouging.
+
+### 3. Fair Batch Worker Dispatch Engine (`worker_allocation.py`)
+* Computes normalized multi-objective utility scores:
+  $$\text{Utility} = 0.35 \times \text{Proximity} + 0.35 \times \text{Fairness (Idle Rotation)} + 0.20 \times \text{Rating} + 0.10 \times \text{Status}$$
+* Solves global maximum-weight bipartite matching across multiple open bookings.
+
+### 4. AI Dispute Resolution Advisor (`dispute_advisor.py`)
+* Computes mathematical material-cost-safe midpoint settlements.
+* Generates diplomatic bilingual (Hindi/English) mediation notes for cooperative council sign-off.
+* Analyzes review sentiment (`TextBlob` + Lexicon) to proactively flag toxic grievances.
+
+---
+
+## ⚡ Quick Start (Local Setup)
+
+### 1. Backend Setup
+```bash
+# Clone repository
+git clone https://github.com/Aadi-j08/SIH-2026.git
+cd SIH-2026
+
+# Virtual environment
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Seed realistic demo data
+python3 scripts/seed_demo_data.py
+
+# Start FastAPI server
+uvicorn app.main:app --reload --port 8000
+```
+
+### 2. Frontend Setup (In a separate terminal)
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+| Interface | Local URL | Description |
+|---|---|---|
+| **Web Application** | `http://localhost:5173/` | React PWA (Landing + Portals) |
+| **Interactive API Docs** | `http://localhost:8000/docs` | Swagger / OpenAPI UI |
+| **API Health Check** | `http://localhost:8000/` | Backend status & engine metadata |
+
+---
+
+## 🔑 Demo User Accounts (Pre-Seeded)
+
+All demo accounts share the password: **`demo1234`**
+
+| Portal | Role | Phone Number | Identity / Locality |
+|---|---|---|---|
+| **🏡 Ghar** | Customer | `9876543210` | Aarav Sharma (Resident, Arera Colony) |
+| **🔧 Kaam** | Artisan / Worker | `9876543211` | Rameshwar Prasad (Verified Plumber, 4.8★) |
+| **🏛️ Sabha** | Council Secretary | `9876543212` | Sunita Verma (Cooperative Secretary) |
+
+*Council Sign-up Code for new registrations:* `SABHA-2026`
+
+---
+
+## 🧪 Test Suite & Quality Assurance
+
+Our codebase contains comprehensive automated test coverage across authentication, AI services, pricing formulas, and database integrity:
 
 ```bash
-.venv\Scripts\python -m pytest -q        # backend: 145 tests
-cd frontend && npm run typecheck          # frontend: TypeScript
+# Run all 220 tests
+pytest -v
+
+# Run frontend typecheck & build
+cd frontend && npm run build
 ```
 
-## Layout
-
 ```
-app/
-  main.py                  FastAPI app: workers, bookings, voice, forecast, staffing, serves /app
-  auth.py / ownership.py   accounts, sessions, access roles; who may see or act on a booking
-  trades.py                canonical trade names (plumber / pipe repair -> plumbing)
-  database.py              SQLite setup (workers, bookings, assignments)
-  repository.py            DB access functions
-  schemas.py               Pydantic contracts
-  services/
-    allocation.py          fair allocation engine (proximity · fairness · rating · availability)
-    voice.py               voice availability parser (offline, rule-based)
-    forecast.py            weekday-seasonal demand forecast
-    staffing.py            forecast vs. available workers -> shortage
-    booking_flow.py        assign → complete (85/10/5 ledger) → rating; admin dashboard
-    allocation_bridge.py   SQLite rows → allocation engine
-    ledger.py              mock payment split, in paise
-  routers/booking_flow.py  the booking-lifecycle endpoints
-  booking_flow_db.py       booking-flow tables, atomic transactions
-frontend/                  Vite + React + TypeScript PWA: landing page + Ghar / Kaam / Sabha portals
-tests/                     pytest suite
-docs/
-  INTEGRATION.md           notes on the booking-flow module
-  design/                  screen mockups (Direction A "Warm civic"); design/portals/ = landing + portal identities
+============================== test session starts ===============================
+collected 220 items                                                            
+tests/test_allocation.py ............                                    [  5%]
+tests/test_api.py ................                                       [ 12%]
+tests/test_assistant.py ..............                                   [ 19%]
+tests/test_auth.py ..........                                            [ 23%]
+tests/test_authz.py ...............                                      [ 30%]
+tests/test_booking_flow.py .............................                 [ 43%]
+tests/test_constraints.py ...............                                [ 50%]
+tests/test_database_engine.py ..                                         [ 51%]
+tests/test_demand_forecast_ml.py ...                                     [ 52%]
+tests/test_dispute_advisor.py ....                                       [ 54%]
+tests/test_forecast.py .......                                           [ 57%]
+tests/test_gemini_nlp.py .....                                           [ 60%]
+tests/test_kaam.py ................                                      [ 67%]
+tests/test_language.py ...                                               [ 68%]
+tests/test_pricing.py ..........                                         [ 73%]
+tests/test_sabha.py ..........                                           [ 77%]
+tests/test_staffing.py .......                                           [ 80%]
+tests/test_trades.py .....................                               [ 90%]
+tests/test_voice.py ...................                                  [ 99%]
+tests/test_worker_allocation.py ..                                       [100%]
+======================= 220 passed, 2 warnings in 13.38s =======================
 ```
 
-## How the pieces fit
+---
 
-1. A **customer** books a service (trade, place, time).
-2. The **allocation engine** ranks eligible workers: 30% proximity, 35% fairness
-   (fewest jobs this week), 20% rating, 15% declared availability — and explains
-   its pick in plain language.
-3. The **admin** (or an automated step) assigns the top pick; the worker sees the
-   job and, when done, enters the bill.
-4. Completion writes a **ledger**: 85% worker, 10% cooperative welfare fund,
-   5% platform, exact to the paisa. The customer rates the job.
-5. **Workers** keep availability current by speaking to the app; the
-   **forecast** tells the cooperative how many workers to keep on call each day.
+## ☁️ 100% Free Production Deployment
+
+| Component | Platform | Configuration | Cost |
+|---|---|---|---|
+| **Frontend** | **Cloudflare Pages / Vercel** | SPA Build (`npm run build`) with Global CDN & SSL | **₹0** |
+| **Backend** | **Render.com** | Python Web Service via [`render.yaml`](render.yaml) | **₹0** |
+| **Database** | **Neon.tech / Supabase** | Serverless PostgreSQL via [`schema.sql`](schema.sql) | **₹0** |
+| **AI / NLP** | **Google AI Studio** | Gemini 1.5 Flash Free Tier API | **₹0** |
+
+---
+
+## 👥 Team
+* **AI/ML & Backend Lead:** Aman Yadav
+* **Project Repository:** [SIH-2026](https://github.com/Aadi-j08/SIH-2026)
+* **Submission Event:** Smart India Hackathon 2026
