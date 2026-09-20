@@ -339,31 +339,6 @@ export function ForecastChart({ forecast }: { forecast: Forecast }) {
   );
 }
 
-export function WorkersList({ dashboard }: { dashboard: Dashboard }) {
-  const max = Math.max(1, ...dashboard.workers.map((w) => w.jobs_this_week));
-  if (dashboard.workers.length === 0) return <div className="small muted">No workers yet.</div>;
-  return (
-    <div className="stack">
-      {dashboard.workers.map((w) => (
-        <div className="wrow" key={w.id}>
-          <div className="small" style={{ fontWeight: 600 }}>
-            {w.name ?? `Worker ${w.id}`}
-          </div>
-          <div className="bar">
-            <div style={{ width: `${Math.round((w.jobs_this_week / max) * 100)}%` }} />
-          </div>
-          <div className="small num" style={{ fontWeight: 700, textAlign: "right" }}>
-            {w.jobs_this_week}
-          </div>
-          <div className="tiny muted num hide-narrow">
-            {w.engagement_days} / 90 eligibility days
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function MoneySplit({ dashboard }: { dashboard: Dashboard }) {
   const { money } = dashboard;
   const rows = [

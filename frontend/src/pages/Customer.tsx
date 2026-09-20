@@ -19,6 +19,7 @@ import { useLive } from "../lib/live";
 import { ArrowRight, Check, Clock, Locate, Pin, Star, TRADE_ICONS } from "../components/Icons";
 import { RateHint, SettlementCard } from "../components/Settlement";
 import AssistantPanel from "../components/AssistantPanel";
+import { AIVoiceSearchBar } from "../components/AIVoiceSearchBar";
 
 const LAST_BOOKING_KEY = "sahakarsetu.lastBooking";
 
@@ -114,6 +115,19 @@ function BookingForm() {
           )}
         </div>
       </div>
+
+      <AIVoiceSearchBar
+        onSelectTrade={(t) => {
+          const map: Record<string, string> = {
+            plumber: "plumbing",
+            electrician: "electrical",
+            carpenter: "carpentry",
+            painter: "painting",
+            mason: "cleaning", // or closest trade
+          };
+          setTrade(map[t] || t);
+        }}
+      />
 
       <AssistantPanel role="customer" latitude={location.latitude} longitude={location.longitude} onBooking={(id) => navigate(`/ghar/home/${id}`)} />
 
