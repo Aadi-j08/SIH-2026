@@ -207,7 +207,8 @@ def export_audit_csv(_: User = Depends(require_council)):
         """).fetchall()
 
         for r in rows:
-            amount = float(r["agreed_amount_rupees"] or r["proposed_amount_rupees"] or 400.0 if r["status"] == "completed" else 0.0)
+            _amount_raw = r["agreed_amount_rupees"] or r["proposed_amount_rupees"] or 400.0
+            amount = float(_amount_raw) if r["status"] == "completed" else 0.0
             worker_cut = round(amount * 0.85, 2)
             welfare_cut = round(amount * 0.10, 2)
             ops_cut = round(amount * 0.05, 2)

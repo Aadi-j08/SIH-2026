@@ -30,6 +30,7 @@ function playNotificationChime() {
 
     osc.start();
     osc.stop(ctx.currentTime + 0.35);
+    osc.onended = () => { ctx.close(); };
   } catch {
     // ignore audio autoplay restriction
   }

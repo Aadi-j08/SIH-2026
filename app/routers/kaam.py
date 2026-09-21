@@ -131,8 +131,10 @@ def verify_repair_ai(
 
     with connection() as conn:
         row = conn.execute("SELECT trade, customer_notes FROM bookings WHERE id = ?", (booking_id,)).fetchone()
-        trade = row["trade"] if row else "general_repair"
-        notes = row["customer_notes"] if row else None
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"Booking {booking_id} not found")
+        trade = row["trade"]
+        notes = row["customer_notes"]
 
     return verify_repair_photos(
         trade=trade,
