@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -22,6 +22,8 @@ import { AsapFindingWorker } from "../components/AsapFindingWorker";
 import AssistantPanel from "../components/AssistantPanel";
 import { AIVoiceSearchBar } from "../components/AIVoiceSearchBar";
 import { LiveBookingTracker } from "../components/LiveBookingTracker";
+import { DiscrepancyModal } from "../components/DiscrepancyModal";
+import type { Dispute } from "../api";
 
 function computeDistanceKm(lat1?: number | null, lon1?: number | null, lat2?: number | null, lon2?: number | null): number | null {
   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return null;
@@ -238,6 +240,8 @@ function BookingStatus({ bookingId }: { bookingId: number }) {
   const [detail, setDetail] = useState<BookingDetail | null>(null);
   const [settlement, setSettlement] = useState<Settlement | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [discrepancyOpen, setDiscrepancyOpen] = useState(false);
+  const [disputeInfo, setDisputeInfo] = useState<Dispute | null>(null);
 
   const load = async () => {
     try {
@@ -317,7 +321,15 @@ function BookingStatus({ bookingId }: { bookingId: number }) {
     sub: assignment ? `Assigned to ${assignment.worker.name} · Confirming assignment` : "Cooperative assigned a worker",
   };
 
-  if (assignment?.started_at) {
+  if (assignment?.end_photo_url) {
+    asapBanner = {
+      badge: "📸 Work Completed",
+      badgeBg: "var(--green-t)",
+      badgeColor: "var(--green-d)",
+      headline: "Work Completed & Verified",
+      sub: `${assignment.worker.name.split(" ")[0]} has finished the job and submitted completion proof`,
+    };
+  } else if (assignment?.started_at) {
     asapBanner = {
       badge: "🟢 In Progress",
       badgeBg: "var(--green-t)",
@@ -327,11 +339,11 @@ function BookingStatus({ bookingId }: { bookingId: number }) {
     };
   } else if (assignment?.start_selfie_url) {
     asapBanner = {
-      badge: "📍 Arrived",
-      badgeBg: "var(--accent-t)",
-      badgeColor: "var(--accent-d)",
-      headline: "Worker Has Arrived",
-      sub: `${assignment.worker.name.split(" ")[0]} has arrived at your address`,
+      badge: "📸 Verified on Site",
+      badgeBg: "var(--green-t)",
+      badgeColor: "var(--green-d)",
+      headline: "Worker Verified on Site",
+      sub: `${assignment.worker.name.split(" ")[0]} arrived and verified on site`,
     };
   } else if (assignment?.accepted_at) {
     asapBanner = {
@@ -366,7 +378,16 @@ function BookingStatus({ bookingId }: { bookingId: number }) {
         </div>
       </div>
 
-      {status === "pending" && (
+      {isAsap && (
+        <StatusTracker
+          status={status}
+          acceptedAt={assignment?.accepted_at ?? null}
+          arrivedAt={assignment?.start_selfie_url ?? null}
+          startedAt={assignment?.started_at ?? null}
+        />
+      )}
+
+      {status === "pending" && !isAsap && (
         <section className="stack">
           <div className="card soft stack" style={{ gap: 4 }}>
             <div style={{ fontWeight: 700 }}>The cooperative is choosing your worker</div>
@@ -424,6 +445,36 @@ function BookingStatus({ bookingId }: { bookingId: number }) {
               <RateHint trade={booking.trade} compact />
             </div>
           )}
+
+          {assignment.start_selfie_url && (
+            <ProofPhoto
+              src={assignment.start_selfie_url}
+              alt={`Arrival proof photo of ${assignment.worker.name}`}
+              title="📸 Worker Verified on Site"
+              badge="Verified on site"
+              timestamp={
+                assignment.started_at
+                  ? `Verified at ${formatTime(assignment.started_at)}`
+                  : "Arrival photo verified on site"
+              }
+            />
+          )}
+
+          {assignment.end_photo_url && (
+            <ProofPhoto
+              src={assignment.end_photo_url}
+              alt={`Work completion proof photo for ${booking.trade}`}
+              title="📸 Work Completion Photo"
+              badge="Work completion verified"
+              timestamp={
+                typeof booking.completed_at === "string"
+                  ? `Completed at ${formatTime(booking.completed_at)}`
+                  : settlement?.created_at
+                    ? `Submitted at ${formatTime(settlement.created_at)}`
+                    : "Work completion verified"
+              }
+            />
+          )}
         </section>
       )}
 
@@ -457,7 +508,43 @@ function BookingStatus({ bookingId }: { bookingId: number }) {
                 <span className="num muted" style={{ width: 36, textAlign: "right" }}>{e.share_percent}%</span>
               </div>
             ))}
+            {disputeInfo ? (
+              <div className="card soft stack" style={{ gap: 4, background: "var(--paper-2)", border: "1px solid var(--line)", marginTop: 8, padding: "10px 12px", borderRadius: 10 }}>
+                <div className="row between" style={{ alignItems: "center" }}>
+                  <span className="badge" style={{ background: "var(--amber-t)", color: "var(--amber-d)", fontWeight: 700, padding: "3px 8px" }}>
+                    Sent for Cooperative Review
+                  </span>
+                  <span className="tiny muted num">Dispute #{disputeInfo.id}</span>
+                </div>
+                <div className="small" style={{ fontWeight: 600 }}>✓ Discrepancy Reported</div>
+                <div className="tiny muted">
+                  The cooperative council is reviewing your reported price discrepancy for this booking.
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="btn outline"
+                style={{ minHeight: 44, width: "100%", marginTop: 8, borderColor: "#f59e0b", color: "#b45309" }}
+                onClick={() => setDiscrepancyOpen(true)}
+              >
+                ⚠️ Report Price Discrepancy
+              </button>
+            )}
           </div>
+          {discrepancyOpen && (
+            <DiscrepancyModal
+              bookingId={bookingId}
+              trade={booking.trade}
+              workerName={assignment?.worker.name}
+              chargedAmount={payment_ledger.reduce((sum, e) => sum + e.amount_rupees, 0)}
+              onClose={() => setDiscrepancyOpen(false)}
+              onSuccess={async (d) => {
+                setDisputeInfo(d);
+                await load();
+              }}
+            />
+          )}
         </section>
       )}
 
@@ -588,5 +675,167 @@ function RatingForm({ bookingId, onRated }: { bookingId: number; onRated: () => 
         </button>
       </div>
     </section>
+  );
+}
+
+// ── ASAP: status tracker ────────────────────────────────────────────
+
+type StepState = "done" | "active" | "future";
+type TrackerStep = { key: string; label: string; state: StepState };
+
+function StatusTracker({
+  status,
+  acceptedAt,
+  arrivedAt,
+  startedAt,
+}: {
+  status: string;
+  acceptedAt: string | null;
+  arrivedAt: string | null;
+  startedAt: string | null;
+}) {
+  const isPending = status === "pending";
+  const isAssigned = status === "assigned";
+  const isCompleted = status === "completed";
+  const isAccepted = Boolean(acceptedAt);
+  const isArrived = Boolean(arrivedAt);
+  const isStarted = Boolean(startedAt);
+
+  const steps: TrackerStep[] = [
+    {
+      key: "finding",
+      label: "Finding Worker",
+      state: isPending ? "active" : "done",
+    },
+    {
+      key: "found",
+      label: "Worker Found",
+      state: isPending ? "future" : isAssigned && !isAccepted ? "active" : "done",
+    },
+    {
+      key: "way",
+      label: "On the Way",
+      state: isPending || (isAssigned && !isAccepted) ? "future" : isAssigned && isAccepted && !isArrived ? "active" : "done",
+    },
+    {
+      key: "arrived",
+      label: "Arrived",
+      state: isCompleted || isStarted ? "done" : isAssigned && isArrived ? "active" : "future",
+    },
+    {
+      key: "progress",
+      label: "In Progress",
+      state: isCompleted ? "done" : isAssigned && isStarted ? "active" : "future",
+    },
+    {
+      key: "completed",
+      label: "Completed",
+      state: isCompleted ? "done" : "future",
+    },
+  ];
+
+  return (
+    <div className="status-tracker" role="list" aria-label="Booking progress">
+      {steps.map((step, i) => (
+        <Fragment key={step.key}>
+          {i > 0 && <div className={`status-line${step.state !== "future" ? " filled" : ""}`} />}
+          <div className={`status-step ${step.state}`} role="listitem" aria-current={step.state === "active" ? "step" : undefined}>
+            <div className="status-dot">
+              {step.state === "done" ? (
+                <Check size={13} strokeWidth={3} />
+              ) : step.state === "active" ? (
+                <span className="status-dot-pulse" />
+              ) : null}
+            </div>
+            <span className="status-label">{step.label}</span>
+          </div>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+// ── Customer: worker verification proof photo ───────────────────────
+
+function formatTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  } catch {
+    return iso;
+  }
+}
+
+function ProofPhoto({
+  src,
+  alt,
+  title,
+  badge,
+  timestamp,
+}: {
+  src: string;
+  alt: string;
+  title: string;
+  badge: string;
+  timestamp?: string;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  return (
+    <div className="card stack proof-photo-card" style={{ gap: 12, padding: "14px 16px" }}>
+      <div className="row between" style={{ alignItems: "center", gap: 8 }}>
+        <div style={{ fontWeight: 700, fontSize: 16 }}>{title}</div>
+        <span
+          className="badge"
+          style={{
+            background: "var(--green-t)",
+            color: "var(--green-d)",
+            fontWeight: 700,
+            padding: "4px 10px",
+            fontSize: 12,
+            whiteSpace: "nowrap",
+          }}
+        >
+          ✓ {badge}
+        </span>
+      </div>
+
+      <div className="proof-photo-wrapper">
+        {error ? (
+          <div className="small muted stack" style={{ alignItems: "center", gap: 4, padding: 20, textAlign: "center" }}>
+            <span style={{ fontSize: 24 }}>📷</span>
+            <span>Photo proof unavailable</span>
+          </div>
+        ) : (
+          <>
+            {loading && (
+              <div className="small muted" style={{ position: "absolute" }}>
+                Loading verification photo…
+              </div>
+            )}
+            <img
+              src={src}
+              alt={alt}
+              onLoad={() => setLoading(false)}
+              onError={() => {
+                setLoading(false);
+                setError(true);
+              }}
+              style={{ display: loading ? "none" : "block" }}
+            />
+          </>
+        )}
+      </div>
+
+      {timestamp && (
+        <div className="row between" style={{ alignItems: "center", fontSize: 13, color: "var(--ink-2)" }}>
+          <span className="small muted">{timestamp}</span>
+          <span className="tiny" style={{ color: "var(--green-d)", fontWeight: 600 }}>Authentic on-site record</span>
+        </div>
+      )}
+    </div>
   );
 }
