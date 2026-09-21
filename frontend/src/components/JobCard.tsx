@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { api, errorMessage, formatRupees, formatWhen, titleCase, type DeclineReason, type Settlement, type WorkerJob } from "../api";
+import { isSpeechSupported, speakJobSummary, stopSpeaking } from "../lib/speech";
 import { Check, MapPin } from "./Icons";
 import { ProposePrice, RateHint, SettlementCard } from "./Settlement";
 
@@ -25,6 +26,16 @@ function Phone(p: { size?: number }) {
   );
 }
 
+function Volume2(p: { size?: number }) {
+  return (
+    <svg width={p.size ?? 18} height={p.size ?? 18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+    </svg>
+  );
+}
+
 /**
  * One assigned job, in its states: waiting for a reply (Accept / Can’t do it),
  * accepted (call, directions, Job done → propose the price), the price on the
@@ -37,9 +48,26 @@ export default function JobCard({ job, onChange }: { job: WorkerJob; onChange: (
   const [reason, setReason] = useState<DeclineReason | null>(null);
   const [busyToday, setBusyToday] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
   const [message, setMessage] = useState<{ kind: "error" | "info"; text: string } | null>(null);
   const [settlement, setSettlement] = useState<Settlement | null>(null);
   const [settlementError, setSettlementError] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      stopSpeaking();
+    };
+  }, []);
+
+  const toggleSpeak = () => {
+    if (speaking) {
+      stopSpeaking();
+      setSpeaking(false);
+    } else {
+      setSpeaking(true);
+      speakJobSummary(job, () => setSpeaking(false), () => setSpeaking(false));
+    }
+  };
 
   // the job list carries a brief; the full record (band, note, ledger) comes from its own endpoint
   const brief = job.settlement;
@@ -157,15 +185,36 @@ export default function JobCard({ job, onChange }: { job: WorkerJob; onChange: (
           <span className="pill green"><Check size={12} strokeWidth={3} />Accepted</span>
         )}
       </div>
-      <div className="stack" style={{ gap: 3 }}>
-        <div className="display" style={{ fontSize: 17, fontWeight: 700 }}>
-          {job.customer_name} · {titleCase(job.trade)}
+      <div className="row between" style={{ alignItems: "flex-start", gap: 10 }}>
+        <div className="stack" style={{ gap: 3, flex: 1 }}>
+          <div className="display" style={{ fontSize: 17, fontWeight: 700 }}>
+            {job.customer_name} · {titleCase(job.trade)}
+          </div>
+          <div className="small muted">
+            {formatWhen(job.scheduled_for)}
+            {job.address ? ` · ${job.address}` : ""}
+          </div>
+          {whyYou(job.explanation) && <span className="pill green" style={{ alignSelf: "flex-start" }}>Why you: {whyYou(job.explanation)}</span>}
         </div>
-        <div className="small muted">
-          {formatWhen(job.scheduled_for)}
-          {job.address ? ` · ${job.address}` : ""}
-        </div>
-        {whyYou(job.explanation) && <span className="pill green" style={{ alignSelf: "flex-start" }}>Why you: {whyYou(job.explanation)}</span>}
+        {isSpeechSupported() && (
+          <button
+            type="button"
+            className={`chip ${speaking ? "on" : ""}`}
+            style={{
+              padding: "4px 10px",
+              gap: 6,
+              background: speaking ? "var(--green-d)" : "var(--sand)",
+              color: speaking ? "#fff" : "inherit",
+              borderColor: speaking ? "transparent" : "var(--border)",
+              cursor: "pointer",
+            }}
+            onClick={toggleSpeak}
+            title="बोलकर सुनें (Listen to job details in Hindi)"
+          >
+            <Volume2 size={16} />
+            <span style={{ fontSize: 12, fontWeight: 600 }}>{speaking ? "रुकें (Stop)" : "सुनें (Suno)"}</span>
+          </button>
+        )}
       </div>
 
       {message && <div className={`notice ${message.kind}`}>{message.text}</div>}

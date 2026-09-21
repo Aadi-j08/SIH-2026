@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { api, errorMessage, formatRupees, titleCase, type Worker as WorkerT, type WorkerJob, type WorkerSummary } from "../api";
 import JobCard from "../components/JobCard";
+import SMSNotificationBanner from "../components/SMSNotificationBanner";
 import { Check, Clock, Mic, Star } from "../components/Icons";
 import VoiceAvailability from "../components/VoiceAvailability";
 import AssistantPanel from "../components/AssistantPanel";
@@ -66,8 +67,21 @@ export default function Worker() {
   const open = jobs.filter((j) => j.outcome === "assigned" || j.outcome === "accepted");
   const recent = jobs.filter((j) => j.outcome === "completed" || j.outcome === "declined").slice(0, 2);
 
+  const newJob = open.find((j) => j.outcome === "assigned");
+
   return (
     <div className="page">
+      {newJob && (
+        <SMSNotificationBanner
+          customerName={newJob.customer_name}
+          trade={titleCase(newJob.trade)}
+          address={newJob.address}
+          ward="वार्ड 4"
+          onAccept={() => {
+            api.kaam.accept(newJob.booking_id).then(() => void refresh());
+          }}
+        />
+      )}
       {error && <div className="notice error">{error}</div>}
       <Greeting worker={worker} summary={summary} />
       <AssistantPanel role="worker" />
