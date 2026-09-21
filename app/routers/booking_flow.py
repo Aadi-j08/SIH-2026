@@ -24,6 +24,9 @@ from app.booking_flow_schemas import (
     AssignmentResult,
     BookingDetail,
     CompleteBookingRequest,
+    VerifyArrivalRequest,
+    StartWorkRequest,
+    VerifyCompletionRequest,
     CompletionResult,
     RatingRequest,
     RatingResult,
@@ -80,6 +83,41 @@ def assign_booking(booking_id: int, user: User = Depends(require_council)):
 def get_booking(booking_id: int, user: User = Depends(require_user)):
     """Booking with its assignment, payment ledger and rating — for its customer, its worker, or the council."""
     return _detail_for(user, booking_id, ownership.ensure_can_view)
+
+
+@router.post("/bookings/{booking_id}/cancel")
+def cancel_booking(booking_id: int, user: User = Depends(require_user)):
+    """Cancel a pending or assigned booking. Allowed for the customer who placed it or the council."""
+    detail = _detail_for(user, booking_id, ownership.ensure_can_view)
+    if user.access_role not in ("customer", "council"):
+        raise HTTPException(status_code=403, detail="Only the customer or council can cancel a booking")
+    result = _run(booking_flow.cancel_booking, booking_id)
+    log.info("booking %s cancelled by %s #%s", booking_id, user.access_role, user.id)
+    return result
+
+
+@router.post("/bookings/{booking_id}/verify-arrival")
+def verify_arrival(booking_id: int, body: VerifyArrivalRequest, user: User = Depends(require_worker)):
+    """Worker submits proof to verify arrival."""
+    _detail_for(user, booking_id, ownership.ensure_worker_assigned)
+    _run(booking_flow.verify_arrival, booking_id, user.worker_id, body.photo_data_uri)
+    return {"status": "ok"}
+
+
+@router.post("/bookings/{booking_id}/start-work")
+def start_work(booking_id: int, body: StartWorkRequest, user: User = Depends(require_worker)):
+    """Worker submits timestamp to start work."""
+    _detail_for(user, booking_id, ownership.ensure_worker_assigned)
+    _run(booking_flow.start_work, booking_id, user.worker_id, body.timestamp)
+    return {"status": "ok"}
+
+
+@router.post("/bookings/{booking_id}/verify-completion")
+def verify_completion(booking_id: int, body: VerifyCompletionRequest, user: User = Depends(require_worker)):
+    """Worker submits proof to verify completion."""
+    _detail_for(user, booking_id, ownership.ensure_worker_assigned)
+    _run(booking_flow.verify_completion, booking_id, user.worker_id, body.photo_data_uri)
+    return {"status": "ok"}
 
 
 @router.post("/bookings/{booking_id}/complete", response_model=CompletionResult)

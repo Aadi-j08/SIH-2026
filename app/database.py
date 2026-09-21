@@ -289,10 +289,22 @@ def _migration_3_worker_status_and_replies(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE assignments ADD COLUMN accepted_at TEXT")
 
 
+def _migration_4_proof_columns(conn: sqlite3.Connection) -> None:
+    """Start and end photo proof for worker verification (Person 2)."""
+    cols = _columns(conn, "assignments")
+    if "start_selfie_url" not in cols:
+        conn.execute("ALTER TABLE assignments ADD COLUMN start_selfie_url TEXT")
+    if "started_at" not in cols:
+        conn.execute("ALTER TABLE assignments ADD COLUMN started_at TEXT")
+    if "end_photo_url" not in cols:
+        conn.execute("ALTER TABLE assignments ADD COLUMN end_photo_url TEXT")
+
+
 MIGRATIONS = (
     (1, _migration_1_customer_owner),
     (2, _migration_2_integrity_triggers),
     (3, _migration_3_worker_status_and_replies),
+    (4, _migration_4_proof_columns),
 )
 
 

@@ -173,6 +173,41 @@ def assign_booking(
 
 # ── GET /bookings/{id} ───────────────────────────────────────────────────
 
+def verify_arrival(conn: sqlite3.Connection, booking_id: int, worker_id: int, photo_uri: str) -> None:
+    with immediate_transaction(conn):
+        assignment = _latest_assignment(conn, booking_id)
+        if not assignment or assignment["worker_id"] != worker_id:
+            raise BookingFlowError(403, "You are not assigned to this booking.")
+        conn.execute(
+            "UPDATE assignments SET start_selfie_url = ? WHERE booking_id = ?",
+            (photo_uri, booking_id)
+        )
+
+def start_work(conn: sqlite3.Connection, booking_id: int, worker_id: int, timestamp: str) -> None:
+    with immediate_transaction(conn):
+        assignment = _latest_assignment(conn, booking_id)
+        if not assignment or assignment["worker_id"] != worker_id:
+            raise BookingFlowError(403, "You are not assigned to this booking.")
+        if "start_selfie_url" in assignment and not assignment["start_selfie_url"]:
+            raise BookingFlowError(400, "You must verify arrival before starting work.")
+        conn.execute(
+            "UPDATE assignments SET started_at = ? WHERE booking_id = ?",
+            (timestamp, booking_id)
+        )
+
+def verify_completion(conn: sqlite3.Connection, booking_id: int, worker_id: int, photo_uri: str) -> None:
+    with immediate_transaction(conn):
+        assignment = _latest_assignment(conn, booking_id)
+        if not assignment or assignment["worker_id"] != worker_id:
+            raise BookingFlowError(403, "You are not assigned to this booking.")
+        if "started_at" in assignment and not assignment["started_at"]:
+            raise BookingFlowError(400, "You must start the job before submitting completion proof.")
+        conn.execute(
+            "UPDATE assignments SET end_photo_url = ? WHERE booking_id = ?",
+            (photo_uri, booking_id)
+        )
+
+
 def get_booking_detail(conn: sqlite3.Connection, booking_id: int) -> dict[str, Any]:
     booking = _get_booking(conn, booking_id)
     assignment = _latest_assignment(conn, booking_id)
@@ -186,6 +221,10 @@ def get_booking_detail(conn: sqlite3.Connection, booking_id: int) -> dict[str, A
             "score_breakdown": _decode_json(assignment.get("score_breakdown")),
             "explanation": assignment.get("explanation"),
             "assigned_at": assignment.get("created_at"),
+            "accepted_at": assignment.get("accepted_at"),
+            "start_selfie_url": assignment.get("start_selfie_url"),
+            "started_at": assignment.get("started_at"),
+            "end_photo_url": assignment.get("end_photo_url"),
         }
     rating = _row(conn.execute(
         "SELECT rating, comment, created_at FROM booking_ratings WHERE booking_id = ?", (booking_id,)
@@ -196,6 +235,17 @@ def get_booking_detail(conn: sqlite3.Connection, booking_id: int) -> dict[str, A
         "payment_ledger": _ledger_entries(conn, booking_id),
         "rating": rating,
     }
+
+
+def cancel_booking(conn: sqlite3.Connection, booking_id: int) -> dict[str, Any]:
+    with immediate_transaction(conn):
+        booking = _get_booking(conn, booking_id)
+        if booking["status"] == COMPLETED:
+            raise InvalidBookingState(f"Booking {booking_id} is already completed and cannot be cancelled")
+        if booking["status"] == "cancelled":
+            return {"booking_id": booking_id, "status": "cancelled"}
+        conn.execute("UPDATE bookings SET status = 'cancelled' WHERE id = ?", (booking_id,))
+        return {"booking_id": booking_id, "status": "cancelled"}
 
 
 # ── POST /bookings/{id}/complete ─────────────────────────────────────────
