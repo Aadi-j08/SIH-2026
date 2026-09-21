@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 
 import { api, errorMessage, formatRupees, formatWhen, titleCase, type DeclineReason, type Settlement, type WorkerJob } from "../api";
-import { Check, MapPin } from "./Icons";
+import { AlertCircle, Camera, Check, MapPin } from "./Icons";
 import { ProposePrice, RateHint, SettlementCard } from "./Settlement";
+import { PhotoProofModal, type PhotoProofMode } from "./PhotoProofModal";
 
 const REASONS: { id: DeclineReason; label: string }[] = [
   { id: "unwell", label: "Not well today" },
@@ -40,6 +41,7 @@ export default function JobCard({ job, onChange }: { job: WorkerJob; onChange: (
   const [message, setMessage] = useState<{ kind: "error" | "info"; text: string } | null>(null);
   const [settlement, setSettlement] = useState<Settlement | null>(null);
   const [settlementError, setSettlementError] = useState(false);
+  const [proofMode, setProofMode] = useState<PhotoProofMode | null>(null);
 
   // the job list carries a brief; the full record (band, note, ledger) comes from its own endpoint
   const brief = job.settlement;
@@ -93,53 +95,6 @@ export default function JobCard({ job, onChange }: { job: WorkerJob; onChange: (
   const isNew = job.outcome === "assigned";
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${job.latitude},${job.longitude}`;
 
-  if (mode === "price") {
-    return (
-      <ProposePrice
-        bookingId={job.booking_id}
-        trade={job.trade}
-        onCancel={() => setMode("view")}
-        onDone={async (s) => {
-          setSettlement(s);
-          setMode("view");
-          setMessage({ kind: "info", text: `${formatRupees(s.proposed_rupees)} proposed. ${job.customer_name.split(" ")[0]} will see it now.` });
-          await onChange();
-        }}
-      />
-    );
-  }
-
-  if (mode === "decline") {
-    return (
-      <div className="sheet">
-        <div className="stack" style={{ gap: 2 }}>
-          <div className="display" style={{ fontSize: 18, fontWeight: 700 }}>Why not this one?</div>
-          <div className="hi small muted">क्यों नहीं? — इससे इंजन को अगली बार बेहतर चुनने में मदद मिलती है</div>
-        </div>
-        <div className="reason-grid">
-          {REASONS.map((r) => (
-            <button key={r.id} type="button" className={reason === r.id ? "active" : ""} onClick={() => setReason(r.id)}>
-              {r.label}
-            </button>
-          ))}
-        </div>
-        <label className="row small muted" style={{ gap: 8 }}>
-          <input type="checkbox" checked={busyToday} onChange={(e) => setBusyToday(e.target.checked)} />
-          Also mark me busy for the rest of today
-        </label>
-        {message && <div className={`notice ${message.kind}`}>{message.text}</div>}
-        <div className="row" style={{ gap: 8 }}>
-          <button type="button" className="btn dark grow" onClick={decline} disabled={busy || !reason}>
-            {busy ? "Passing on…" : "Pass it on"}
-          </button>
-          <button type="button" className="btn outline" onClick={() => setMode("view")} disabled={busy}>
-            Back
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={`job-card${isNew ? " new" : ""}`}>
       <div className="row between" style={{ alignItems: "flex-start", gap: 10 }}>
@@ -147,6 +102,11 @@ export default function JobCard({ job, onChange }: { job: WorkerJob; onChange: (
           <div className="row" style={{ gap: 8 }}>
             <span style={{ width: 8, height: 8, borderRadius: 999, background: "var(--green-d)", display: "inline-block" }} />
             <span className="label" style={{ color: "var(--green-d)" }}>New job · reply please</span>
+          </div>
+        ) : !job.scheduled_for ? (
+          <div className="row pulse" style={{ gap: 4, color: "var(--red)" }}>
+            <AlertCircle size={14} />
+            <span className="label" style={{ color: "inherit" }}>🚨 URGENT Emergency Job</span>
           </div>
         ) : (
           <span className="label">Today’s job</span>
@@ -170,7 +130,47 @@ export default function JobCard({ job, onChange }: { job: WorkerJob; onChange: (
 
       {message && <div className={`notice ${message.kind}`}>{message.text}</div>}
 
-      {isNew ? (
+      <div className="divider" />
+
+      {mode === "price" ? (
+        <ProposePrice
+          bookingId={job.booking_id}
+          trade={job.trade}
+          onCancel={() => setMode("view")}
+          onDone={async (s) => {
+            setSettlement(s);
+            setMode("view");
+            setMessage({ kind: "info", text: `${formatRupees(s.proposed_rupees)} proposed. ${job.customer_name.split(" ")[0]} will see it now.` });
+            await onChange();
+          }}
+        />
+      ) : mode === "decline" ? (
+        <div className="stack" style={{ gap: 16 }}>
+          <div className="stack" style={{ gap: 2 }}>
+            <div className="display" style={{ fontSize: 18, fontWeight: 700 }}>Why not this one?</div>
+            <div className="hi small muted">क्यों नहीं? — इससे इंजन को अगली बार बेहतर चुनने में मदद मिलती है</div>
+          </div>
+          <div className="reason-grid">
+            {REASONS.map((r) => (
+              <button key={r.id} type="button" className={reason === r.id ? "active" : ""} onClick={() => setReason(r.id)}>
+                {r.label}
+              </button>
+            ))}
+          </div>
+          <label className="row small muted" style={{ gap: 8 }}>
+            <input type="checkbox" checked={busyToday} onChange={(e) => setBusyToday(e.target.checked)} />
+            Also mark me busy for the rest of today
+          </label>
+          <div className="row" style={{ gap: 8 }}>
+            <button type="button" className="btn danger grow" onClick={decline} disabled={busy || !reason}>
+              {busy ? "Passing on…" : "Pass it on"}
+            </button>
+            <button type="button" className="btn outline" onClick={() => setMode("view")} disabled={busy}>
+              Back
+            </button>
+          </div>
+        </div>
+      ) : isNew ? (
         <>
           <div className="row" style={{ gap: 8 }}>
             <button type="button" className="btn green grow" onClick={accept} disabled={busy}>
@@ -191,25 +191,79 @@ export default function JobCard({ job, onChange }: { job: WorkerJob; onChange: (
             </a>
             <a href={mapsUrl} target="_blank" rel="noreferrer">
               <MapPin size={20} />
-              Directions
+              📍 Open Google Maps Directions
             </a>
-            <button type="button" onClick={() => setMode("decline")} disabled={busy}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
-              Can’t make it
-            </button>
+            {(!job.started_at && !job.end_photo_url) && (
+              <button type="button" onClick={() => setMode("decline")} disabled={busy}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                Can’t make it
+              </button>
+            )}
           </div>
           <div className="divider" />
+          
+          {proofMode && (
+            <PhotoProofModal 
+              mode={proofMode}
+              onClose={() => setProofMode(null)}
+              onSubmit={async (uri, lat, lng, ts) => {
+                await run(async () => {
+                  if (proofMode === "start") {
+                    await api.kaam.verifyArrival(job.booking_id, uri, lat, lng, ts);
+                  } else {
+                    await api.kaam.verifyCompletion(job.booking_id, uri, lat, lng, ts);
+                  }
+                }, proofMode === "start" ? "Arrival verified!" : "Work marked as complete!");
+              }}
+            />
+          )}
+
           {settlement ? (
             <SettlementCard settlement={settlement} role="worker" onChange={async () => { setSettlement(await api.settlement.get(job.booking_id)); await onChange(); }} />
           ) : brief && !settlementError ? (
             <div className="small muted">Loading the price on the table…</div>
+          ) : !job.start_selfie_url ? (
+            <div className="stack" style={{ gap: 6 }}>
+              <button type="button" className="btn outline" style={{ minHeight: 50, borderColor: "var(--green-d)", color: "var(--green-d)" }} disabled={busy} onClick={() => setProofMode("start")}>
+                <Camera size={18} />
+                📸 Verify Arrival
+              </button>
+              <button type="button" className="btn green" style={{ minHeight: 50 }} disabled={true}>
+                Start Work
+              </button>
+            </div>
+          ) : !job.started_at ? (
+            <div className="stack" style={{ gap: 6 }}>
+              <div className="row" style={{ gap: 6, color: "var(--green-d)" }}>
+                <Check size={18} />
+                <span className="label" style={{ color: "inherit" }}>✓ Arrival Verified</span>
+              </div>
+              <button type="button" className="btn green" style={{ minHeight: 50 }} disabled={busy} onClick={() => run(() => api.kaam.startWork(job.booking_id, new Date().toISOString()))}>
+                Start Work
+              </button>
+            </div>
+          ) : !job.end_photo_url ? (
+            <div className="stack" style={{ gap: 6 }}>
+              <div className="row pulse" style={{ gap: 6, color: "var(--green-d)" }}>
+                <span style={{ width: 12, height: 12, borderRadius: 999, background: "currentColor", display: "inline-block" }} />
+                <span className="label" style={{ color: "inherit" }}>🟢 IN PROGRESS</span>
+              </div>
+              <button type="button" className="btn outline" style={{ minHeight: 50, borderColor: "var(--green-d)", color: "var(--green-d)" }} disabled={busy} onClick={() => setProofMode("end")}>
+                <Camera size={18} />
+                📸 Work Completion Verification
+              </button>
+            </div>
           ) : (
             <div className="stack" style={{ gap: 6 }}>
+              <div className="row" style={{ gap: 6, color: "var(--green-d)" }}>
+                <Check size={18} />
+                <span className="label" style={{ color: "inherit" }}>✓ Work Completion Verified</span>
+              </div>
               {settlementError && <div className="notice error">Could not load the settlement details. You can try proposing the price again.</div>}
               <div className="label">When finished</div>
               <button type="button" className="btn green" style={{ minHeight: 50 }} disabled={busy} onClick={() => setMode("price")}>
                 <Check size={18} />
-                Job done · propose the price
+                Generate Bill / Propose Price
               </button>
               <RateHint trade={job.trade} compact />
               <div className="tiny muted">You say the hours and materials; the community rate prices it; the customer agrees. You keep 85%, paid to you directly.</div>

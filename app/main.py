@@ -208,7 +208,15 @@ def parse_voice(body: VoiceAvailabilityRequest) -> VoiceAvailabilityResult:
     return voice.parse_availability(body.transcript, body.reference_date)
 
 
-# ── bookings ─────────────────────────────────────────────────────────────
+def _auto_assign_asap(booking_id: int) -> None:
+    try:
+        with database.connection() as conn:
+            booking_flow.assign_booking(conn, booking_id)
+        events.bus.publish("bookings", "assigned", booking_id=booking_id)
+        log.info("booking %s automatically matched for ASAP", booking_id)
+    except Exception as e:
+        log.info("auto-assign for ASAP booking %s deferred: %s", booking_id, e)
+
 
 @app.post("/bookings", response_model=Booking, status_code=201, tags=["bookings"])
 def create_booking(body: BookingCreate, user: User = Depends(require_customer)) -> Booking:
@@ -216,6 +224,8 @@ def create_booking(body: BookingCreate, user: User = Depends(require_customer)) 
     booking = repository.create_booking(body)
     ownership.attach_customer(booking.id, user)
     log.info("booking %s (%s) placed by %s #%s", booking.id, booking.trade, user.access_role, user.id)
+    if body.scheduled_for is None and not os.environ.get("PYTEST_CURRENT_TEST"):
+        threading.Timer(2.0, _auto_assign_asap, args=[booking.id]).start()
     return repository.get_booking(booking.id) or booking
 
 

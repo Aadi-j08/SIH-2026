@@ -20,6 +20,22 @@ class AssignmentResult(BaseModel):
     explanation: str
 
 
+class VerifyArrivalRequest(BaseModel):
+    photo_data_uri: str
+    latitude: float
+    longitude: float
+    timestamp: str
+
+class StartWorkRequest(BaseModel):
+    timestamp: str
+
+class VerifyCompletionRequest(BaseModel):
+    photo_data_uri: str
+    latitude: float
+    longitude: float
+    timestamp: str
+
+
 class CompleteBookingRequest(BaseModel):
     amount: Decimal = Field(
         gt=0, max_digits=9, decimal_places=2,

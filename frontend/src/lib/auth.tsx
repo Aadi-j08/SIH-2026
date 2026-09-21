@@ -25,8 +25,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     try {
       setUser((await api.auth.me()).user);
-    } catch {
-      setUser(null);
+    } catch (err: any) {
+      // Don't log out if it's just a network error or server timeout. Only log out on actual 401.
+      if (err?.status === 401) {
+        setUser(null);
+      }
     } finally {
       setReady(true);
     }
@@ -42,6 +45,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refresh();
+    const handleFocus = () => void refresh();
+    const handleVisibility = () => { if (document.visibilityState === "visible") void refresh(); };
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [refresh]);
 
   const value = useMemo(() => ({ user, ready, setUser, refresh, logout }), [user, ready, refresh, logout]);
