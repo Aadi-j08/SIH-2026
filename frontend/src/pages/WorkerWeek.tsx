@@ -28,7 +28,9 @@ export default function WorkerWeek() {
       setWorker(w);
       setJobs(j);
     } catch (e) {
-      setMessage({ kind: "error", text: errorMessage(e) });
+      // Only show the error when no valid data is loaded yet (initial load).
+      // Once the week grid is visible, transient failures should not destroy it.
+      if (!worker) setMessage({ kind: "error", text: errorMessage(e) });
     }
   }, [workerId]);
 
@@ -61,9 +63,37 @@ export default function WorkerWeek() {
     }
   };
 
+  /**
+   * When removing day-specific windows that touch a slot, trim or split windows
+   * that extend beyond the slot boundaries instead of deleting them entirely.
+   * This preserves availability in adjacent slots (e.g. a 08:00–16:00 window
+   * edited at the morning slot keeps the 12:00–16:00 portion for noon).
+   */
+  const trimWindowsForSlot = (slot: DaySlot) => {
+    const slotDef = SLOTS.find((s) => s.id === slot.slot)!;
+    const result: typeof worker.availability = [];
+    worker.availability.forEach((w, i) => {
+      if (!(slot.windows.includes(i) && w.date === slot.date)) {
+        result.push(w);
+        return;
+      }
+      // This day-specific window touches this slot — trim/split it.
+      // Keep any portion before the slot starts.
+      if (w.start < slotDef.start) {
+        result.push({ ...w, end: slotDef.start });
+      }
+      // Keep any portion after the slot ends.
+      if (w.end > slotDef.end) {
+        result.push({ ...w, start: slotDef.end });
+      }
+      // The portion inside the slot is discarded.
+    });
+    return result;
+  };
+
   /** Everything the worker said that touches this slot, replaced by one window for the slot. */
   const setSlot = (slot: DaySlot, available: boolean) => {
-    const keep = worker.availability.filter((w, i) => !(slot.windows.includes(i) && w.date === slot.date));
+    const keep = trimWindowsForSlot(slot);
     return apply(
       () => api.kaam.replaceAvailability(worker.id, [...keep, windowForSlot(slot.date, slot.slot, available)]),
       `${formatDateLong(slot.date)} ${slotLabel(slot.slot).toLowerCase()} marked ${available ? "free" : "busy"}.`,
@@ -72,7 +102,7 @@ export default function WorkerWeek() {
 
   /** Drop the day-specific windows for this slot; a recurring window stays (the sheet says so). */
   const clearSlot = (slot: DaySlot) => {
-    const keep = worker.availability.filter((w, i) => !(slot.windows.includes(i) && w.date === slot.date));
+    const keep = trimWindowsForSlot(slot);
     return apply(() => api.kaam.replaceAvailability(worker.id, keep), "Removed.");
   };
 

@@ -190,17 +190,19 @@ def signup(data: SignupRequest) -> User:
         raise AuthError(403, "That council code is not right. Ask your cooperative's secretary for it.")
 
     worker_id: int | None = None
-    if data.portal == "kaam":
-        worker = repository.create_worker(WorkerCreate(
-            name=data.name.strip(),
-            trade=(data.trade or "").strip(),
-            phone=phone,
-            latitude=data.latitude if data.latitude is not None else DEFAULT_LATITUDE,
-            longitude=data.longitude if data.longitude is not None else DEFAULT_LONGITUDE,
-        ), status="pending")   # the council approves new members before the engine offers them work
-        worker_id = worker.id
-
     with connection() as conn:
+        if data.portal == "kaam":
+            from app.repository import _normalise_trade, _dump_windows
+            cursor = conn.execute(
+                "INSERT INTO workers (name, phone, trade, latitude, longitude, rating, availability, status) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (data.name.strip(), phone, _normalise_trade((data.trade or "").strip()),
+                 data.latitude if data.latitude is not None else DEFAULT_LATITUDE,
+                 data.longitude if data.longitude is not None else DEFAULT_LONGITUDE,
+                 None, "[]", "pending"),
+            )
+            worker_id = cursor.lastrowid
+
         try:
             cursor = conn.execute(
                 "INSERT INTO users (portal, phone, name, password_hash, locality, role, worker_id, languages) "

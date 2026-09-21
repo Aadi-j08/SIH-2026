@@ -39,16 +39,27 @@ export default function JobCard({ job, onChange }: { job: WorkerJob; onChange: (
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "error" | "info"; text: string } | null>(null);
   const [settlement, setSettlement] = useState<Settlement | null>(null);
+  const [settlementError, setSettlementError] = useState(false);
 
   // the job list carries a brief; the full record (band, note, ledger) comes from its own endpoint
   const brief = job.settlement;
   useEffect(() => {
     if (!brief) {
       setSettlement(null);
+      setSettlementError(false);
       return;
     }
     let alive = true;
-    api.settlement.get(job.booking_id).then((s) => alive && setSettlement(s)).catch(() => undefined);
+    setSettlementError(false);
+    api.settlement.get(job.booking_id).then((s) => {
+      if (!alive) return;
+      if (s) {
+        setSettlement(s);
+      } else {
+        // API returned null — the settlement record is missing or invalid
+        setSettlementError(true);
+      }
+    }).catch(() => { if (alive) setSettlementError(true); });
     return () => {
       alive = false;
     };
@@ -190,10 +201,11 @@ export default function JobCard({ job, onChange }: { job: WorkerJob; onChange: (
           <div className="divider" />
           {settlement ? (
             <SettlementCard settlement={settlement} role="worker" onChange={async () => { setSettlement(await api.settlement.get(job.booking_id)); await onChange(); }} />
-          ) : brief ? (
+          ) : brief && !settlementError ? (
             <div className="small muted">Loading the price on the table…</div>
           ) : (
             <div className="stack" style={{ gap: 6 }}>
+              {settlementError && <div className="notice error">Could not load the settlement details. You can try proposing the price again.</div>}
               <div className="label">When finished</div>
               <button type="button" className="btn green" style={{ minHeight: 50 }} disabled={busy} onClick={() => setMode("price")}>
                 <Check size={18} />
