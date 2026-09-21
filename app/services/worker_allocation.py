@@ -41,10 +41,8 @@ def calculate_match_score(
 ) -> float:
     """
     Computes normalized utility score (0.0 to 1.0):
-    - Proximity (35%)
-    - Fairness / Idle Rotation (35%)
-    - Rating (20%)
-    - Verification / Status (10%)
+    - Standard Dispatch: Proximity (35%), Fairness (35%), Rating (20%), Verification (10%)
+    - Urgent Emergency Dispatch: Proximity (70%), Rating (20%), Fairness (10%)
     """
     # Proximity
     dist = haversine_km(worker.get("latitude", 0.0), worker.get("longitude", 0.0),
@@ -64,7 +62,14 @@ def calculate_match_score(
     # Verification bonus
     status_score = 1.0 if worker.get("status") == "active" else 0.5
 
-    composite = (0.35 * proximity_score) + (0.35 * fairness_score) + (0.20 * rating_score) + (0.10 * status_score)
+    urgency = str(booking.get("urgency_level") or booking.get("urgency") or "medium").lower()
+    if urgency in ("urgent", "high", "emergency"):
+        # High-urgency weight shift: 70% proximity, 20% rating, 10% fairness
+        composite = (0.70 * proximity_score) + (0.20 * rating_score) + (0.10 * fairness_score)
+    else:
+        # Standard balanced cooperative fair distribution
+        composite = (0.35 * proximity_score) + (0.35 * fairness_score) + (0.20 * rating_score) + (0.10 * status_score)
+
     return round(composite, 4)
 
 

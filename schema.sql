@@ -52,7 +52,9 @@ CREATE TABLE IF NOT EXISTS bookings (
     address         TEXT,
     scheduled_for   VARCHAR(100),
     status          VARCHAR(20) NOT NULL DEFAULT 'pending'
-                    CHECK (status IN ('pending', 'assigned', 'completed', 'cancelled')),
+                    CHECK (status IN ('pending', 'assigned', 'in_progress', 'completed', 'cancelled')),
+    urgency_level   VARCHAR(20) NOT NULL DEFAULT 'medium'
+                    CHECK (urgency_level IN ('low', 'medium', 'high', 'urgent')),
     customer_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -64,6 +66,9 @@ CREATE TABLE IF NOT EXISTS assignments (
     worker_id       INTEGER NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
     score           REAL,
     accepted_at     TIMESTAMP WITH TIME ZONE,
+    started_at      TIMESTAMP WITH TIME ZONE,
+    start_selfie_url TEXT,
+    end_photo_url   TEXT,
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

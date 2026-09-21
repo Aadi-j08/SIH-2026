@@ -92,6 +92,33 @@ def accept_job(booking_id: int, user: User = Depends(require_worker)) -> kaam.Re
     return _call(kaam.accept, booking_id, _acting_worker_id(user, booking_id))
 
 
+@router.post("/bookings/{booking_id}/start", response_model=kaam.ReplyResult)
+def start_job(
+    booking_id: int,
+    body: kaam.StartWorkRequest | None = None,
+    user: User = Depends(require_worker),
+) -> kaam.ReplyResult:
+    """Worker uploads on-site arrival selfie and transitions booking to 'in_progress'."""
+    selfie = body.start_selfie_url if body else None
+    return _call(kaam.start_work, booking_id, _acting_worker_id(user, booking_id), selfie)
+
+
+@router.post("/bookings/{booking_id}/photo-proof")
+def save_photo_proof(
+    booking_id: int,
+    body: kaam.ProofOfWorkRequest,
+    user: User = Depends(require_worker),
+) -> dict:
+    """Records start arrival selfie or completion proof photo."""
+    return _call(
+        kaam.record_proof_of_work,
+        booking_id,
+        _acting_worker_id(user, booking_id),
+        body.start_selfie_url,
+        body.end_photo_url,
+    )
+
+
 @router.post("/bookings/{booking_id}/decline", response_model=kaam.ReplyResult)
 def decline_job(booking_id: int, body: kaam.DeclineRequest, user: User = Depends(require_worker)) -> kaam.ReplyResult:
     worker_id = _acting_worker_id(user, booking_id)
