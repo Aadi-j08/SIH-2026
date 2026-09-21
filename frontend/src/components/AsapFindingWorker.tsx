@@ -8,6 +8,7 @@ interface AsapFindingWorkerProps {
 }
 
 const CYCLING_STATUSES = [
+  "Searching available workers...",
   "Searching nearby workers",
   "Checking worker availability",
   "Matching the best available worker",
@@ -188,7 +189,7 @@ export function AsapFindingWorker({ booking, onCancel }: AsapFindingWorkerProps)
         <div className="row between" style={{ alignItems: "center" }}>
           <div className="row" style={{ gap: 8, alignItems: "center" }}>
             <span className="badge" style={{ background: "var(--accent-t)", color: "var(--accent-d)", fontWeight: 800 }}>
-              ⚡ ASAP
+              🚨 Emergency / Urgent
             </span>
             <span style={{ fontWeight: 700, fontSize: 16 }}>{titleCase(booking.trade)}</span>
           </div>
