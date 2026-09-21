@@ -18,6 +18,20 @@ import { useAuth } from "../lib/auth";
 import { useLive } from "../lib/live";
 import { ArrowRight, Check, Clock, Locate, Pin, Star, TRADE_ICONS } from "../components/Icons";
 import { RateHint, SettlementCard } from "../components/Settlement";
+import { AsapFindingWorker } from "../components/AsapFindingWorker";
+
+function computeDistanceKm(lat1?: number | null, lon1?: number | null, lat2?: number | null, lon2?: number | null): number | null {
+  if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return null;
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const km = Math.round(R * c * 10) / 10;
+  return isNaN(km) ? null : km;
+}
 
 const LAST_BOOKING_KEY = "sahakarsetu.lastBooking";
 
@@ -238,7 +252,83 @@ function BookingStatus({ bookingId }: { bookingId: number }) {
 
   const { booking, assignment, payment_ledger, rating } = detail;
   const status = booking.status;
+  const isAsap = booking.scheduled_for === null;
   const IconFor = TRADE_ICONS[booking.trade] ?? TRADE_ICONS.plumbing;
+
+  if (isAsap && status === "pending") {
+    return (
+      <div className="page">
+        <AsapFindingWorker
+          booking={booking}
+          onCancel={async () => {
+            await api.bookings.cancel(booking.id);
+            await load();
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (status === "cancelled") {
+    return (
+      <div className="page">
+        <section className="stack" style={{ gap: 16, textAlign: "center", padding: "40px 16px" }}>
+          <div className="badge" style={{ background: "#fee2e2", color: "#991b1b", padding: "6px 14px", alignSelf: "center", fontSize: 13, fontWeight: 700 }}>
+            Cancelled
+          </div>
+          <h2 style={{ margin: 0 }}>Booking #{booking.id} Cancelled</h2>
+          <p className="small muted" style={{ margin: 0, maxWidth: 380, alignSelf: "center", lineHeight: 1.5 }}>
+            Your request for {titleCase(booking.trade)} was cancelled. You can place a new booking whenever you are ready.
+          </p>
+          <Link to="/ghar/home" className="btn primary" style={{ alignSelf: "center", minHeight: 44, padding: "0 24px", marginTop: 8 }}>
+            Book another service
+          </Link>
+        </section>
+      </div>
+    );
+  }
+
+  let asapBanner = {
+    badge: "✓ Worker Found",
+    badgeBg: "var(--green-t)",
+    badgeColor: "var(--green-d)",
+    headline: "✓ Worker Found",
+    sub: assignment ? `Assigned to ${assignment.worker.name} · Confirming assignment` : "Cooperative assigned a worker",
+  };
+
+  if (assignment?.started_at) {
+    asapBanner = {
+      badge: "🟢 In Progress",
+      badgeBg: "var(--green-t)",
+      badgeColor: "var(--green-d)",
+      headline: "Work in Progress",
+      sub: `${assignment.worker.name.split(" ")[0]} is currently working on your request`,
+    };
+  } else if (assignment?.start_selfie_url) {
+    asapBanner = {
+      badge: "📍 Arrived",
+      badgeBg: "var(--accent-t)",
+      badgeColor: "var(--accent-d)",
+      headline: "Worker Has Arrived",
+      sub: `${assignment.worker.name.split(" ")[0]} has arrived at your address`,
+    };
+  } else if (assignment?.accepted_at) {
+    asapBanner = {
+      badge: "🚗 On The Way",
+      badgeBg: "var(--indigo-t)",
+      badgeColor: "var(--indigo-d)",
+      headline: "Worker is On The Way",
+      sub: `${assignment.worker.name.split(" ")[0]} accepted and is en route to you`,
+    };
+  }
+
+  const workerDist = assignment
+    ? computeDistanceKm(booking.latitude, booking.longitude, assignment.worker.latitude, assignment.worker.longitude)
+    : null;
+  const workerDistanceText = workerDist !== null ? ` · ${workerDist} km away` : "";
+  const workerMeta = assignment
+    ? `${titleCase(assignment.worker.trade)} · ${assignment.worker.rating ? `rated ${Number(assignment.worker.rating).toFixed(1)}` : "new member"}${workerDistanceText}`
+    : "";
 
   return (
     <div className="page">
@@ -266,10 +356,25 @@ function BookingStatus({ bookingId }: { bookingId: number }) {
 
       {assignment && (
         <section className="stack">
+          {isAsap && (
+            <div className="card" style={{ background: "var(--paper-2)", border: "1.5px solid var(--line)", padding: "14px 16px" }}>
+              <div className="row between" style={{ alignItems: "center" }}>
+                <span className="badge" style={{ background: asapBanner.badgeBg, color: asapBanner.badgeColor, fontWeight: 700, padding: "4px 10px" }}>
+                  {asapBanner.badge}
+                </span>
+                <span className="badge" style={{ background: "var(--accent-t)", color: "var(--accent-d)", fontWeight: 800 }}>
+                  ⚡ ASAP
+                </span>
+              </div>
+              <div style={{ fontWeight: 700, fontSize: 17, marginTop: 8 }}>{asapBanner.headline}</div>
+              <div className="small muted" style={{ marginTop: 2 }}>{asapBanner.sub}</div>
+            </div>
+          )}
+
           <div className="label">{status === "assigned" ? "Your worker" : "Done by"}</div>
           <WorkerCard
             name={assignment.worker.name}
-            meta={`${titleCase(assignment.worker.trade)} · ${assignment.worker.rating ? `rated ${Number(assignment.worker.rating).toFixed(1)}` : "new member"}`}
+            meta={isAsap ? workerMeta : `${titleCase(assignment.worker.trade)} · ${assignment.worker.rating ? `rated ${Number(assignment.worker.rating).toFixed(1)}` : "new member"}`}
             score={assignment.score}
             breakdown={assignment.score_breakdown}
             explanation={assignment.explanation}
@@ -356,7 +461,7 @@ function BookingStatus({ bookingId }: { bookingId: number }) {
 
 function StatusPill({ status }: { status: string }) {
   const kind = status === "completed" ? "green" : status === "assigned" ? "terracotta" : "grey";
-  const text = status === "pending" ? "Finding a worker" : status === "assigned" ? "Worker assigned" : titleCase(status);
+  const text = status === "pending" ? "Finding a worker" : status === "assigned" ? "Worker assigned" : status === "cancelled" ? "Cancelled" : titleCase(status);
   return <span className={`pill ${kind}`}>{text}</span>;
 }
 
