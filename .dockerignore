@@ -1,0 +1,14 @@
+.git
+.venv
+__pycache__
+*.pyc
+*.db
+*.db-*
+.env
+.env.*
+!.env.example
+frontend/node_modules
+frontend/dist
+.pytest_cache
+.DS_Store
+docs/design/**/sahakarsetu-*.html

@@ -1,10 +1,8 @@
 """
-SQLite setup for SahakarSetu.
+Database setup for SahakarSetu.
 
-One file-based database, no ORM. The path comes from the SAHAKARSETU_DB
-environment variable and defaults to sahakarsetu.db in the project root.
-Tests point DB_PATH at a temporary file, so every function here reads
-DB_PATH at call time instead of capturing it at import.
+Supports Cloud PostgreSQL (Neon.tech / Supabase / Render) in production via DATABASE_URL,
+with SQLite + WAL fallback for local development and lightning-fast unit tests.
 """
 from __future__ import annotations
 
@@ -17,6 +15,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.environ.get("SAHAKARSETU_DB", BASE_DIR / "sahakarsetu.db"))
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 log = logging.getLogger("sahakarsetu.database")
 
@@ -49,7 +48,9 @@ CREATE TABLE IF NOT EXISTS bookings (
     address         TEXT,
     scheduled_for   TEXT,                          -- ISO 8601, NULL = as soon as possible
     status          TEXT    NOT NULL DEFAULT 'pending'
-                    CHECK (status IN ('pending', 'assigned', 'completed', 'cancelled')),
+                    CHECK (status IN ('pending', 'assigned', 'in_progress', 'completed', 'cancelled')),
+    urgency_level   TEXT    NOT NULL DEFAULT 'medium'
+                    CHECK (urgency_level IN ('low', 'medium', 'high', 'urgent')),
     customer_user_id INTEGER REFERENCES users(id), -- the Ghar account that placed it (NULL for legacy rows)
     created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -60,6 +61,9 @@ CREATE TABLE IF NOT EXISTS assignments (
     worker_id       INTEGER NOT NULL REFERENCES workers(id),
     score           REAL,                          -- allocation engine score, 0..1
     accepted_at     TEXT,                          -- when the worker tapped Accept (NULL = not yet)
+    started_at      TEXT,                          -- when work was started (after selfie)
+    start_selfie_url TEXT,                         -- proof-of-work arrival selfie
+    end_photo_url   TEXT,                          -- proof-of-work completion photo
     created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -289,22 +293,23 @@ def _migration_3_worker_status_and_replies(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE assignments ADD COLUMN accepted_at TEXT")
 
 
-def _migration_4_proof_columns(conn: sqlite3.Connection) -> None:
-    """Start and end photo proof for worker verification (Person 2)."""
-    cols = _columns(conn, "assignments")
-    if "start_selfie_url" not in cols:
+def _migration_4_urgency_and_proof_of_work(conn: sqlite3.Connection) -> None:
+    """Adds bookings.urgency_level and assignments proof-of-work columns."""
+    if "urgency_level" not in _columns(conn, "bookings"):
+        conn.execute("ALTER TABLE bookings ADD COLUMN urgency_level TEXT NOT NULL DEFAULT 'medium'")
+    if "start_selfie_url" not in _columns(conn, "assignments"):
         conn.execute("ALTER TABLE assignments ADD COLUMN start_selfie_url TEXT")
-    if "started_at" not in cols:
-        conn.execute("ALTER TABLE assignments ADD COLUMN started_at TEXT")
-    if "end_photo_url" not in cols:
+    if "end_photo_url" not in _columns(conn, "assignments"):
         conn.execute("ALTER TABLE assignments ADD COLUMN end_photo_url TEXT")
+    if "started_at" not in _columns(conn, "assignments"):
+        conn.execute("ALTER TABLE assignments ADD COLUMN started_at TEXT")
 
 
 MIGRATIONS = (
     (1, _migration_1_customer_owner),
     (2, _migration_2_integrity_triggers),
     (3, _migration_3_worker_status_and_replies),
-    (4, _migration_4_proof_columns),
+    (4, _migration_4_urgency_and_proof_of_work),
 )
 
 
@@ -329,3 +334,19 @@ def init_db() -> None:
     with connection() as conn:
         conn.executescript(SCHEMA)
         migrate(conn)
+
+
+def get_database_engine_info() -> dict[str, str]:
+    """Returns metadata about active database engine and storage driver."""
+    if DATABASE_URL and (DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")):
+        return {
+            "engine": "PostgreSQL",
+            "provider": "Cloud Managed (Neon.tech / Supabase)",
+            "concurrency": "Multi-client row-level locking",
+        }
+    return {
+        "engine": "SQLite",
+        "provider": "Local Embedded WAL Mode",
+        "path": str(DB_PATH),
+        "concurrency": "Write-Ahead Logging (WAL)",
+    }

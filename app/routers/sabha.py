@@ -147,3 +147,26 @@ def list_disputes(
 @router.post("/disputes/{dispute_id}/resolve", response_model=disputes_mod.Dispute)
 def resolve_dispute(dispute_id: int, body: disputes_mod.DisputeResolve, _: User = Depends(require_council)) -> disputes_mod.Dispute:
     return _dispute_call(disputes_mod.resolve_dispute, dispute_id, body)
+
+
+from app.services.dispute_advisor import analyze_sentiment, generate_ai_dispute_recommendation
+
+
+class ReviewSentimentRequest(BaseModel):
+    text: str
+
+
+@router.get("/disputes/{dispute_id}/ai-recommendation")
+def dispute_ai_recommendation(dispute_id: int, _: User = Depends(require_council)) -> dict:
+    """Generates AI-powered fair midpoint settlement calculation and diplomatic resolution note."""
+    disputes_list = disputes_mod.list_disputes()
+    match = next((d for d in disputes_list if d.id == dispute_id), None)
+    if not match:
+        raise HTTPException(status_code=404, detail="Dispute not found")
+    return generate_ai_dispute_recommendation(match.model_dump())
+
+
+@router.post("/reviews/analyze-sentiment")
+def review_sentiment_analysis(body: ReviewSentimentRequest, _: User = Depends(require_council)) -> dict:
+    """Evaluates customer/worker feedback sentiment and flags toxic grievances for council mediation."""
+    return analyze_sentiment(body.text)

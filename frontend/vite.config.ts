@@ -4,10 +4,27 @@ import { VitePWA } from "vite-plugin-pwa";
 
 // The API (FastAPI) owns the root paths; the web app lives under /app so the
 // two never collide, in dev (proxy) and in production (served by FastAPI).
-const API_PREFIXES = ["/auth", "/cooperative", "/disputes", "/stats", "/workers", "/bookings", "/admin", "/forecast", "/voice", "/allocation", "/rates", "/settlements", "/events", "/docs", "/openapi.json"];
+const API_PREFIXES = [
+  "/auth",
+  "/assistant",
+  "/cooperative",
+  "/disputes",
+  "/stats",
+  "/workers",
+  "/bookings",
+  "/admin",
+  "/forecast",
+  "/voice",
+  "/allocation",
+  "/rates",
+  "/settlements",
+  "/events",
+  "/docs",
+  "/openapi.json",
+];
 
 export default defineConfig({
-  base: "/app/",
+  base: process.env.VITE_BASE_PATH || "/",
   plugins: [
     react(),
     VitePWA({
@@ -17,8 +34,8 @@ export default defineConfig({
         name: "SahakarSetu",
         short_name: "SahakarSetu",
         description: "Fair work allocation for a workers' cooperative",
-        start_url: "/app/",
-        scope: "/app/",
+        start_url: process.env.VITE_BASE_PATH || "/",
+        scope: process.env.VITE_BASE_PATH || "/",
         display: "standalone",
         background_color: "#FCFAF6",
         theme_color: "#C65D26",
@@ -29,7 +46,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        navigateFallback: "/app/index.html",
+        navigateFallback: (process.env.VITE_BASE_PATH || "/") + "index.html",
         globPatterns: ["**/*.{js,css,html,svg}"],
       },
     }),

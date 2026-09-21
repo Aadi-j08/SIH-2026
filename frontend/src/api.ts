@@ -75,6 +75,19 @@ export type VoiceParse = {
   assumptions: string[];
 };
 
+export type AssistantResponse = {
+  transcript: string;
+  language: string;
+  intent: string;
+  entities: Record<string, unknown>;
+  confidence: number;
+  requires_confirmation: boolean;
+  confirmation_message: string | null;
+  action_preview: Record<string, unknown>;
+  reply: string;
+  result: unknown;
+};
+
 export type WorkerSummary = {
   worker_id: number;
   status: "pending" | "active";
@@ -294,6 +307,9 @@ export type ForecastPoint = {
   lower: number;
   upper: number;
   workers_needed: number;
+  forecast_jobs?: number | null;
+  confidence: number;
+  explanation: string;
 };
 
 export type Forecast = {
@@ -400,6 +416,9 @@ export type StaffingDay = {
   workers_needed: number;
   available_workers: number;
   shortage: number;
+  forecast_jobs?: number | null;
+  confidence: number;
+  explanation: string;
 };
 
 export type StaffingForecast = {
@@ -413,6 +432,8 @@ export type StaffingForecast = {
   shortage: number;
   recommendation: string;
   days: StaffingDay[];
+  confidence: number;
+  explanation: string;
 };
 
 export type PortalId = "ghar" | "kaam" | "sabha";
@@ -471,16 +492,50 @@ export function storageSet(key: string, value: string): void {
   }
 }
 
+export function storageRemove(key: string): void {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Public API origin when the SPA is hosted separately (Cloudflare Pages). Empty = same origin. */
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+
+const SESSION_TOKEN_KEY = "sahakarsetu_session_token";
+
+export function getSessionToken(): string | null {
+  return storageGet(SESSION_TOKEN_KEY);
+}
+
+export function setSessionToken(token: string | null): void {
+  if (token) storageSet(SESSION_TOKEN_KEY, token);
+  else storageRemove(SESSION_TOKEN_KEY);
+}
+
+export type AuthStatus = {
+  user: User | null;
+  access_role?: string | null;
+  session_token?: string | null;
+};
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const targetUrl = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers["content-type"] = "application/json";
+  const token = getSessionToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
   let response: Response;
   try {
-    response = await fetch(path, {
+    response = await fetch(targetUrl, {
       method,
-      headers: body === undefined ? undefined : { "content-type": "application/json" },
+      headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
+      credentials: "include",
     });
   } catch (error) {
     const message = error instanceof DOMException && error.name === "AbortError"
@@ -509,12 +564,25 @@ const put = <T>(path: string, body: unknown) => request<T>("PUT", path, body);
 const patch = <T>(path: string, body: unknown) => request<T>("PATCH", path, body);
 const del = <T>(path: string) => request<T>("DELETE", path);
 
+async function authPost(path: string, body?: unknown): Promise<AuthStatus> {
+  const status = await post<AuthStatus>(path, body ?? {});
+  if (status.session_token) setSessionToken(status.session_token);
+  return status;
+}
+
 export const api = {
   auth: {
-    me: () => get<{ user: User | null }>("/auth/me"),
-    signup: (body: SignupBody) => post<{ user: User }>("/auth/signup", body),
-    login: (portal: PortalId, phone: string, password: string) => post<{ user: User }>("/auth/login", { portal, phone, password }),
-    logout: () => post<{ user: null }>("/auth/logout"),
+    me: () => get<AuthStatus>("/auth/me"),
+    signup: (body: SignupBody) => authPost("/auth/signup", body),
+    login: (portal: PortalId, phone: string, password: string) =>
+      authPost("/auth/login", { portal, phone, password }),
+    logout: async () => {
+      try {
+        return await post<AuthStatus>("/auth/logout");
+      } finally {
+        setSessionToken(null);
+      }
+    },
   },
   workers: {
     list: (trade?: string) => get<Worker[]>(`/workers${trade ? `?trade=${encodeURIComponent(trade)}` : ""}`),
@@ -532,6 +600,18 @@ export const api = {
   voice: {
     parse: (transcript: string, referenceDate?: string) =>
       post<VoiceParse>("/voice/parse", { transcript, reference_date: referenceDate ?? null }),
+  },
+  assistant: {
+    message: (body: { transcript: string; confirmed?: boolean; reference_date?: string | null; latitude?: number; longitude?: number }) =>
+      post<AssistantResponse>("/assistant/message", body),
+    voice: (body: { transcript: string; confirmed?: boolean; reference_date?: string | null; latitude?: number; longitude?: number }) =>
+      post<AssistantResponse>("/assistant/voice", body),
+    parseQuery: (query: string, language = "hi") =>
+      post<{ trade: string; urgency: string; preferred_time: string | null; notes: string; source: string; confidence: number }>(
+        "/assistant/parse-query",
+        { query, language }
+      ),
+    languages: () => get<{ code: string; name: string }[]>("/assistant/languages"),
   },
   bookings: {
     list: (params: { status?: string; trade?: string } = {}) => {
@@ -581,11 +661,48 @@ export const api = {
   },
   allocation: {
     auto: (trade?: string, limit = 20) => post<AutoAllocation>(`/allocation/auto?limit=${limit}${trade ? `&trade=${encodeURIComponent(trade)}` : ""}`),
+    batchDispatch: (maxDistanceKm = 15.0) => post<{
+      matched_count: number;
+      assignments: Array<{
+        booking_id: number;
+        customer_name: string;
+        worker_id: number;
+        worker_name: string;
+        trade: string;
+        score: number;
+        distance_km: number;
+        explanation: string;
+      }>;
+      unassigned_bookings: number[];
+      idle_workers: number[];
+      solver: string;
+      cooperative_fairness_summary: string;
+    }>(`/allocation/batch-dispatch?max_distance_km=${maxDistanceKm}`),
   },
   disputes: {
     list: (status?: "open" | "resolved") => get<Dispute[]>(`/disputes${status ? `?status=${status}` : ""}`),
     raise: (body: { booking_id: number; kind: Dispute["kind"]; description?: string | null; amount_rupees?: number | null }) => post<Dispute>("/disputes", body),
     resolve: (id: number, resolution: string) => post<Dispute>(`/disputes/${id}/resolve`, { resolution }),
+    getAIRecommendation: (disputeId: number) => get<{
+      settlement_breakdown: {
+        worker_proposed_inr: number;
+        customer_counter_inr: number;
+        materials_cost_inr: number;
+        suggested_settlement_inr: number;
+        worker_concession_inr: number;
+        customer_concession_inr: number;
+      };
+      recommended_resolution_note: string;
+      recommended_resolution_hindi: string;
+      source: string;
+    }>(`/disputes/${disputeId}/ai-recommendation`),
+    analyzeSentiment: (text: string) => post<{
+      text: string;
+      polarity: number;
+      label: "positive" | "neutral" | "negative";
+      requires_council_review: boolean;
+      engine: string;
+    }>("/reviews/analyze-sentiment", { text }),
   },
   rates: {
     list: () => get<Rate[]>("/rates"),
@@ -607,6 +724,22 @@ export const api = {
     get<StaffingForecast>(`/forecast/staffing?trade=${encodeURIComponent(trade)}&days=${days}${area ? `&area=${encodeURIComponent(area)}` : ""}`),
   forecast: (trade?: string, days = 7) =>
     get<Forecast>(`/forecast?days=${days}${trade ? `&trade=${encodeURIComponent(trade)}` : ""}`),
+  forecastML: (trade = "general", wardId = "1") =>
+    get<{
+      trade: string;
+      ward_id: string | number;
+      model_type: string;
+      total_7d_predicted_bookings: number;
+      daily_forecast: Array<{
+        date: string;
+        day_name: string;
+        is_weekend: boolean;
+        predicted_bookings: number;
+        floor_rate_inr: number;
+        recommended_rate_inr: number;
+      }>;
+      insights: string;
+    }>(`/forecast/ml?trade=${encodeURIComponent(trade)}&ward_id=${encodeURIComponent(wardId)}`),
 };
 
 export function errorMessage(error: unknown): string {

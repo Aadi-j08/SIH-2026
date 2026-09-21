@@ -6,8 +6,6 @@ import {
   TRADES,
   api,
   errorMessage,
-  formatRupees,
-  formatWhen,
   titleCase,
   storageGet,
   storageSet,
@@ -19,6 +17,9 @@ import { useLive } from "../lib/live";
 import { ArrowRight, Check, Clock, Locate, Pin, Star, TRADE_ICONS } from "../components/Icons";
 import { RateHint, SettlementCard } from "../components/Settlement";
 import { AsapFindingWorker } from "../components/AsapFindingWorker";
+import AssistantPanel from "../components/AssistantPanel";
+import { AIVoiceSearchBar } from "../components/AIVoiceSearchBar";
+import { LiveBookingTracker } from "../components/LiveBookingTracker";
 
 function computeDistanceKm(lat1?: number | null, lon1?: number | null, lat2?: number | null, lon2?: number | null): number | null {
   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return null;
@@ -113,7 +114,7 @@ function BookingForm() {
   };
 
   return (
-    <form className="page" onSubmit={submit}>
+    <div className="page">
       <div className="stack" style={{ gap: 6 }}>
         <h1>Book a service</h1>
         <div className="sub">
@@ -127,6 +128,23 @@ function BookingForm() {
           )}
         </div>
       </div>
+
+      <AIVoiceSearchBar
+        onSelectTrade={(t) => {
+          const map: Record<string, string> = {
+            plumber: "plumbing",
+            electrician: "electrical",
+            carpenter: "carpentry",
+            painter: "painting",
+            mason: "cleaning", // or closest trade
+          };
+          setTrade(map[t] || t);
+        }}
+      />
+
+      <AssistantPanel role="customer" latitude={location.latitude} longitude={location.longitude} onBooking={(id) => navigate(`/ghar/home/${id}`)} />
+
+      <form className="stack" onSubmit={submit}>
 
       <section className="stack">
         <div className="label">What do you need?</div>
@@ -208,6 +226,7 @@ function BookingForm() {
         </div>
       </div>
     </form>
+    </div>
   );
 }
 
@@ -331,7 +350,8 @@ function BookingStatus({ bookingId }: { bookingId: number }) {
     : "";
 
   return (
-    <div className="page">
+    <div className="page" style={{ maxWidth: 640, margin: "0 auto", paddingBottom: 60 }}>
+      <LiveBookingTracker detail={detail} settlement={settlement} onRefresh={load} />
       <div className="stack" style={{ gap: 6 }}>
         <div className="row between">
           <h1>Booking #{booking.id}</h1>
