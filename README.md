@@ -2,10 +2,11 @@
 ### *AI-Powered Civic Cooperative Platform for Fair Work Allocation & Community Governance*
 **Smart India Hackathon (SIH 2026)**
 
-[![Backend Tests](https://img.shields.io/badge/Pytest-220%20Passed%20(100%25)-brightgreen.svg?style=flat-square)](tests/)
+[![Backend Tests](https://img.shields.io/badge/Pytest-224%20Passed%20(100%25)-brightgreen.svg?style=flat-square)](tests/)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI%200.115-blue.svg?style=flat-square)](https://fastapi.tiangolo.com)
 [![AI/ML](https://img.shields.io/badge/AI%2FML-Gemini%20Flash%20%2B%20scikit--learn-orange.svg?style=flat-square)](app/services/)
 [![Database](https://img.shields.io/badge/Database-Cloud%20PostgreSQL%20%2B%20SQLite-indigo.svg?style=flat-square)](schema.sql)
+[![Presentation Guide](https://img.shields.io/badge/Presentation-Evaluator%20Guide%20(3--min)-purple.svg?style=flat-square)](docs/EXPLANATION_GUIDE.md)
 [![Hosting](https://img.shields.io/badge/Hosting-100%25%20Free%20Tier%20(₹0)-green.svg?style=flat-square)](render.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 
