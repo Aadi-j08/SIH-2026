@@ -6,12 +6,16 @@ from app import events
 SITE = (23.18, 77.42)
 
 
-def place_and_assign(customer, council, trade: str = "plumbing") -> int:
+def place_and_assign(customer, council, worker=None, trade: str = "plumbing") -> int:
     r = customer.post("/bookings", json={"customer_name": "Test Household", "trade": trade, "latitude": SITE[0], "longitude": SITE[1],
                                          "scheduled_for": "2026-09-12T10:00"})
     assert r.status_code == 201, r.text
     booking_id = r.json()["id"]
     assert council.post(f"/bookings/{booking_id}/assign").status_code == 200
+    if worker:
+        worker.post(f"/bookings/{booking_id}/verify-arrival", json={"photo_data_uri": "data:image/jpeg;base64,...", "latitude": 1.0, "longitude": 1.0, "timestamp": "2026-09-12T11:00Z"})
+        worker.post(f"/bookings/{booking_id}/start-work", json={"timestamp": "2026-09-12T11:10Z"})
+        worker.post(f"/bookings/{booking_id}/verify-completion", json={"photo_data_uri": "data:image/jpeg;base64,...", "latitude": 1.0, "longitude": 1.0, "timestamp": "2026-09-12T12:00Z"})
     return booking_id
 
 
@@ -39,7 +43,7 @@ def test_only_the_council_edits_the_card(council, worker, customer):
 # ── settlement ───────────────────────────────────────────────────────────
 
 def test_worker_proposes_customer_agrees_and_the_ledger_runs(customer, worker, council):
-    booking_id = place_and_assign(customer, council)
+    booking_id = place_and_assign(customer, council, worker)
     assert customer.get(f"/bookings/{booking_id}/settlement").json() is None
 
     proposed = worker.post(f"/bookings/{booking_id}/settlement", json={"hours_worked": 2, "materials_rupees": 120, "work_note": "Replaced the tap washer"})
@@ -64,7 +68,7 @@ def test_worker_proposes_customer_agrees_and_the_ledger_runs(customer, worker, c
 
 
 def test_customer_counters_within_the_band_and_the_worker_accepts(customer, worker, council):
-    booking_id = place_and_assign(customer, council)
+    booking_id = place_and_assign(customer, council, worker)
     worker.post(f"/bookings/{booking_id}/settlement", json={"hours_worked": 1})  # ₹400 standard, band ₹300–₹500
     too_low = customer.post(f"/bookings/{booking_id}/settlement/respond", json={"action": "counter", "amount_rupees": 200})
     assert too_low.status_code == 422 and "fair band" in too_low.json()["detail"]
@@ -78,14 +82,14 @@ def test_customer_counters_within_the_band_and_the_worker_accepts(customer, work
 
 
 def test_a_proposal_outside_the_band_is_refused(customer, worker, council):
-    booking_id = place_and_assign(customer, council)
+    booking_id = place_and_assign(customer, council, worker)
     r = worker.post(f"/bookings/{booking_id}/settlement", json={"hours_worked": 1, "amount_rupees": 900})
     assert r.status_code == 422 and "fair band" in r.json()["detail"]
     assert worker.post(f"/bookings/{booking_id}/settlement", json={"hours_worked": 1, "amount_rupees": 480}).status_code == 201
 
 
 def test_disagreement_goes_to_the_sabha_which_fixes_the_amount(customer, worker, council):
-    booking_id = place_and_assign(customer, council)
+    booking_id = place_and_assign(customer, council, worker)
     worker.post(f"/bookings/{booking_id}/settlement", json={"hours_worked": 3})
     disputed = customer.post(f"/bookings/{booking_id}/settlement/respond", json={"action": "dispute", "note": "He was here barely an hour"})
     assert disputed.status_code == 200 and disputed.json()["status"] == "disputed" and disputed.json()["waiting_on"] == "council"
@@ -107,7 +111,7 @@ def test_disagreement_goes_to_the_sabha_which_fixes_the_amount(customer, worker,
 
 
 def test_only_the_parties_see_a_settlement(customer, worker, council, make_client):
-    booking_id = place_and_assign(customer, council)
+    booking_id = place_and_assign(customer, council, worker)
     worker.post(f"/bookings/{booking_id}/settlement", json={"hours_worked": 1})
     stranger = make_client("customer", name="Someone Else")
     assert stranger.get(f"/bookings/{booking_id}/settlement").status_code == 403
@@ -128,7 +132,7 @@ def test_a_price_needs_an_assigned_job(customer, worker, council):
 
 def test_writes_publish_events_the_client_can_poll(customer, worker, council):
     start = events.bus.latest
-    booking_id = place_and_assign(customer, council)
+    booking_id = place_and_assign(customer, council, worker)
     worker.post(f"/bookings/{booking_id}/settlement", json={"hours_worked": 1})
     got = council.get(f"/events?after={start}").json()
     assert [(e["topic"], e["action"]) for e in got] == [("bookings", "placed"), ("bookings", "assigned"), ("settlements", "proposed")]

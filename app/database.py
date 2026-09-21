@@ -295,14 +295,15 @@ def _migration_3_worker_status_and_replies(conn: sqlite3.Connection) -> None:
 
 def _migration_4_urgency_and_proof_of_work(conn: sqlite3.Connection) -> None:
     """Adds bookings.urgency_level and assignments proof-of-work columns."""
+    cols = _columns(conn, "assignments")
+    if "start_selfie_url" not in cols:
+        conn.execute("ALTER TABLE assignments ADD COLUMN start_selfie_url TEXT")
+    if "started_at" not in cols:
+        conn.execute("ALTER TABLE assignments ADD COLUMN started_at TEXT")
+    if "end_photo_url" not in cols:
+        conn.execute("ALTER TABLE assignments ADD COLUMN end_photo_url TEXT")
     if "urgency_level" not in _columns(conn, "bookings"):
         conn.execute("ALTER TABLE bookings ADD COLUMN urgency_level TEXT NOT NULL DEFAULT 'medium'")
-    if "start_selfie_url" not in _columns(conn, "assignments"):
-        conn.execute("ALTER TABLE assignments ADD COLUMN start_selfie_url TEXT")
-    if "end_photo_url" not in _columns(conn, "assignments"):
-        conn.execute("ALTER TABLE assignments ADD COLUMN end_photo_url TEXT")
-    if "started_at" not in _columns(conn, "assignments"):
-        conn.execute("ALTER TABLE assignments ADD COLUMN started_at TEXT")
 
 
 MIGRATIONS = (

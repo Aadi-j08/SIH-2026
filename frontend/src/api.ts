@@ -120,6 +120,9 @@ export type WorkerJob = {
   outcome: JobOutcome;
   assigned_at: string | null;
   accepted_at: string | null;
+  start_selfie_url: string | null;
+  started_at: string | null;
+  end_photo_url: string | null;
   completed_at: string | null;
   explanation: string | null;
   billed_rupees: number | null;
@@ -227,11 +230,24 @@ export type BookingDetail = {
   booking: Booking & Record<string, unknown>;
   assignment: {
     assignment_id: number;
-    worker: Record<string, unknown> & { id: number; name: string; trade: string; jobs_this_week: number; rating: number | null };
+    worker: Record<string, unknown> & {
+      id: number;
+      name: string;
+      trade: string;
+      jobs_this_week: number;
+      rating: number | null;
+      latitude?: number;
+      longitude?: number;
+      phone?: string | null;
+    };
     score: number | null;
     score_breakdown: Record<string, number> | null;
     explanation: string | null;
     assigned_at: string | null;
+    accepted_at?: string | null;
+    start_selfie_url?: string | null;
+    started_at?: string | null;
+    end_photo_url?: string | null;
   } | null;
   payment_ledger: LedgerEntry[];
   rating: { rating: number; comment: string | null; created_at: string } | null;
@@ -612,6 +628,7 @@ export const api = {
     complete: (id: number, amount: number) => post<CompletionResult>(`/bookings/${id}/complete`, { amount }),
     rate: (id: number, rating: number, comment?: string) =>
       post<RatingResult>(`/bookings/${id}/rating`, { rating, comment: comment || null }),
+    cancel: (id: number) => post<{ booking_id: number; status: string }>(`/bookings/${id}/cancel`),
   },
   kaam: {
     summary: () => get<WorkerSummary>("/workers/me/summary"),
@@ -619,6 +636,12 @@ export const api = {
     accept: (bookingId: number) => post<ReplyResult>(`/bookings/${bookingId}/accept`),
     decline: (bookingId: number, reason: DeclineReason, markBusyToday = false, note?: string) =>
       post<ReplyResult>(`/bookings/${bookingId}/decline`, { reason, mark_busy_today: markBusyToday, note: note || null }),
+    verifyArrival: (bookingId: number, photo_data_uri: string, latitude: number, longitude: number, timestamp: string) =>
+      post<{ status: string }>(`/bookings/${bookingId}/verify-arrival`, { photo_data_uri, latitude, longitude, timestamp }),
+    startWork: (bookingId: number, timestamp: string) =>
+      post<{ status: string }>(`/bookings/${bookingId}/start-work`, { timestamp }),
+    verifyCompletion: (bookingId: number, photo_data_uri: string, latitude: number, longitude: number, timestamp: string) =>
+      post<{ status: string }>(`/bookings/${bookingId}/verify-completion`, { photo_data_uri, latitude, longitude, timestamp }),
     replaceAvailability: (workerId: number, windows: AvailabilityWindow[]) =>
       put<Worker>(`/workers/${workerId}/availability`, { windows }),
     patchWindow: (workerId: number, index: number, change: Partial<Pick<AvailabilityWindow, "start" | "end" | "available">>) =>

@@ -371,3 +371,13 @@ def test_gini_measures_how_evenly_jobs_are_shared():
 def test_decimal_amounts_convert_exactly():
     from app.services.ledger import rupees_to_paise
     assert rupees_to_paise(Decimal("349.50")) == 34950
+
+
+def test_cancel_booking(client):
+    booking_id = add_booking(client)
+    res = client.post(f"/bookings/{booking_id}/cancel")
+    assert res.status_code == 200
+    assert res.json()["status"] == "cancelled"
+
+    detail = client.get(f"/bookings/{booking_id}").json()
+    assert detail["booking"]["status"] == "cancelled"
