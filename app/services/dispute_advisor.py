@@ -207,3 +207,56 @@ Respond ONLY with valid JSON:
             "source": "fallback_after_error",
         }
 
+
+def analyze_payment_discrepancy(
+    booking_id: int,
+    customer_paid_rupees: float,
+    worker_reported_rupees: float,
+    standard_rate_rupees: float = 400.0,
+    materials_rupees: float = 0.0,
+    customer_notes: str | None = None,
+) -> dict[str, Any]:
+    """
+    Audits payment discrepancies (e.g. cash bypass, rate-card mismatch, overcharging).
+    Flags anomalous variance and provides automated council settlement recommendations.
+    """
+    variance_rupees = round(customer_paid_rupees - worker_reported_rupees, 2)
+    rate_card_variance = round(customer_paid_rupees - (standard_rate_rupees + materials_rupees), 2)
+    is_discrepancy = abs(variance_rupees) > 10.0 or rate_card_variance > 50.0
+
+    sentiment_result = analyze_sentiment(customer_notes or "")
+
+    # Fair recommended resolution
+    fair_settlement = calculate_fair_settlement(
+        proposed_rupees=customer_paid_rupees,
+        counter_rupees=worker_reported_rupees,
+        standard_rupees=standard_rate_rupees,
+        materials_rupees=materials_rupees,
+    )
+
+    if variance_rupees > 0:
+        recommended_action = f"Worker collected ₹{variance_rupees:.2f} excess cash off-platform. Adjust ₹{variance_rupees:.2f} from future worker payout and credit customer wallet."
+        recommended_action_hi = f"कारीगर ने ₹{variance_rupees:.2f} अतिरिक्त नकद लिया। आगामी भुगतान से समायोजित कर ग्राहक को रिफंड दें।"
+    elif variance_rupees < 0:
+        recommended_action = f"Customer underpaid by ₹{abs(variance_rupees):.2f}. Council to review and disburse remainder from welfare fund buffer."
+        recommended_action_hi = f"ग्राहक द्वारा ₹{abs(variance_rupees):.2f} कम भुगतान। कल्याण कोष से कारीगर को भरपाई की सिफारिश।"
+    else:
+        recommended_action = "Payment matches records exactly. No adjustment required."
+        recommended_action_hi = "भुगतान विवरण पूरी तरह सही है। किसी समायोजन की आवश्यकता नहीं।"
+
+    return {
+        "booking_id": booking_id,
+        "is_discrepancy": is_discrepancy,
+        "customer_paid_rupees": customer_paid_rupees,
+        "worker_reported_rupees": worker_reported_rupees,
+        "standard_rate_rupees": standard_rate_rupees,
+        "materials_rupees": materials_rupees,
+        "variance_rupees": variance_rupees,
+        "rate_card_variance_rupees": rate_card_variance,
+        "grievance_sentiment": sentiment_result,
+        "fair_midpoint_settlement": fair_settlement,
+        "recommended_action": recommended_action,
+        "recommended_action_hi": recommended_action_hi,
+        "escalate_to_council": is_discrepancy or sentiment_result.get("requires_council_review", False),
+    }
+

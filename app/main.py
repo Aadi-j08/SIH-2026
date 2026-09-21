@@ -46,6 +46,8 @@ from app.schemas import (
 )
 from app.services import allocation, forecast, staffing, voice
 from app.services.demand_forecast import forecaster
+from app.services.dispute_advisor import analyze_payment_discrepancy
+from app.services.ledger import generate_upi_qr_data
 from app.services.worker_allocation import match_batch_jobs
 from app.trades import canonical_trade
 
@@ -352,3 +354,51 @@ def staffing_forecast(
         workers = [w for w in workers if w.id in local_workers]
     demand = forecast.forecast_demand(demand_dates, trade=trade, horizon_days=days, today=today)
     return staffing.staffing_forecast(demand, workers, trade=trade, area=area.strip() if area else None)
+
+
+# ── payment split & dispute reporting ───────────────────────────────────
+
+class PaymentMismatchRequest(BaseModel):
+    booking_id: int
+    customer_paid_rupees: float
+    worker_reported_rupees: float
+    standard_rate_rupees: float = 400.0
+    materials_rupees: float = 0.0
+    customer_notes: str | None = None
+
+
+@app.get("/payments/{booking_id}/upi-qr", tags=["payments"])
+def get_payment_upi_qr(
+    booking_id: int,
+    amount: float | None = Query(default=None, description="Optional bill amount in rupees"),
+    user: User = Depends(require_user),
+) -> dict:
+    """Generates NPCI-compliant dynamic UPI QR payload and transparent 85/10/5 split metadata."""
+    final_amount = amount
+    if final_amount is None:
+        with database.connection() as conn:
+            row = conn.execute(
+                "SELECT agreed_amount_rupees, proposed_amount_rupees FROM settlements WHERE booking_id = ?",
+                (booking_id,),
+            ).fetchone()
+            if row:
+                final_amount = float(row["agreed_amount_rupees"] or row["proposed_amount_rupees"] or 450.0)
+            else:
+                final_amount = 450.0
+    return generate_upi_qr_data(booking_id=booking_id, total_rupees=final_amount)
+
+
+@app.post("/disputes/report-mismatch", tags=["disputes"])
+def report_payment_mismatch(
+    body: PaymentMismatchRequest,
+    user: User = Depends(require_user),
+) -> dict:
+    """Audits payment discrepancies (cash bypass / rate card deviations) and alerts cooperative council."""
+    return analyze_payment_discrepancy(
+        booking_id=body.booking_id,
+        customer_paid_rupees=body.customer_paid_rupees,
+        worker_reported_rupees=body.worker_reported_rupees,
+        standard_rate_rupees=body.standard_rate_rupees,
+        materials_rupees=body.materials_rupees,
+        customer_notes=body.customer_notes,
+    )

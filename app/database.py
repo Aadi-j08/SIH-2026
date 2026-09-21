@@ -48,7 +48,9 @@ CREATE TABLE IF NOT EXISTS bookings (
     address         TEXT,
     scheduled_for   TEXT,                          -- ISO 8601, NULL = as soon as possible
     status          TEXT    NOT NULL DEFAULT 'pending'
-                    CHECK (status IN ('pending', 'assigned', 'completed', 'cancelled')),
+                    CHECK (status IN ('pending', 'assigned', 'in_progress', 'completed', 'cancelled')),
+    urgency_level   TEXT    NOT NULL DEFAULT 'medium'
+                    CHECK (urgency_level IN ('low', 'medium', 'high', 'urgent')),
     customer_user_id INTEGER REFERENCES users(id), -- the Ghar account that placed it (NULL for legacy rows)
     created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -59,6 +61,9 @@ CREATE TABLE IF NOT EXISTS assignments (
     worker_id       INTEGER NOT NULL REFERENCES workers(id),
     score           REAL,                          -- allocation engine score, 0..1
     accepted_at     TEXT,                          -- when the worker tapped Accept (NULL = not yet)
+    started_at      TEXT,                          -- when work was started (after selfie)
+    start_selfie_url TEXT,                         -- proof-of-work arrival selfie
+    end_photo_url   TEXT,                          -- proof-of-work completion photo
     created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -288,10 +293,23 @@ def _migration_3_worker_status_and_replies(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE assignments ADD COLUMN accepted_at TEXT")
 
 
+def _migration_4_urgency_and_proof_of_work(conn: sqlite3.Connection) -> None:
+    """Adds bookings.urgency_level and assignments proof-of-work columns."""
+    if "urgency_level" not in _columns(conn, "bookings"):
+        conn.execute("ALTER TABLE bookings ADD COLUMN urgency_level TEXT NOT NULL DEFAULT 'medium'")
+    if "start_selfie_url" not in _columns(conn, "assignments"):
+        conn.execute("ALTER TABLE assignments ADD COLUMN start_selfie_url TEXT")
+    if "end_photo_url" not in _columns(conn, "assignments"):
+        conn.execute("ALTER TABLE assignments ADD COLUMN end_photo_url TEXT")
+    if "started_at" not in _columns(conn, "assignments"):
+        conn.execute("ALTER TABLE assignments ADD COLUMN started_at TEXT")
+
+
 MIGRATIONS = (
     (1, _migration_1_customer_owner),
     (2, _migration_2_integrity_triggers),
     (3, _migration_3_worker_status_and_replies),
+    (4, _migration_4_urgency_and_proof_of_work),
 )
 
 

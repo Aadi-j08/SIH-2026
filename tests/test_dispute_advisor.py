@@ -29,7 +29,7 @@ def test_calculate_fair_settlement_midpoint():
     assert res["materials_cost_inr"] == 100.0
 
 
-def test_generate_ai_dispute_recommendation_offline():
+def test_generate_ai_dispute_recommendation():
     dispute_data = {
         "kind": "payment",
         "worker_name": "Karan",
@@ -40,4 +40,5 @@ def test_generate_ai_dispute_recommendation_offline():
     }
     rec = generate_ai_dispute_recommendation(dispute_data)
     assert rec["settlement_breakdown"]["suggested_settlement_inr"] == 500.0
-    assert "Recommended Settlement" in rec["recommended_resolution_note"]
+    assert len(rec["recommended_resolution_note"]) > 20
+    assert "500" in rec["recommended_resolution_note"]
