@@ -76,7 +76,7 @@ class WorkerJob(BaseModel):
     outcome: Literal["assigned", "accepted", "in_progress", "completed", "declined"]
     assigned_at: str | None = None
     accepted_at: str | None = None
-started_at: str | None = None
+    started_at: str | None = None
     start_selfie_url: str | None = None
     end_photo_url: str | None = None
     completed_at: str | None = None
