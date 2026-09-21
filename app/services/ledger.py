@@ -128,11 +128,31 @@ def _recompute_and_store_hashes(conn) -> None:
         conn.execute("UPDATE payment_ledger SET block_hash = ? WHERE id = ?", (current_hash, r["id"]))
 
 
+def _table_exists(conn, table: str) -> bool:
+    rows = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchall()
+    return len(rows) > 0
+
+
 def audit_ledger_chain(conn) -> dict[str, Any]:
     """
     Traverses the payment ledger and validates cryptographic hash integrity.
     Detects any unauthorized manual modifications to amounts or recipient shares.
     """
+    if not _table_exists(conn, "payment_ledger"):
+        return {
+            "intact": True,
+            "total_transactions": 0,
+            "welfare_fund_verified_paise": 0,
+            "welfare_fund_verified_rupees": 0.0,
+            "genesis_hash": GENESIS_HASH,
+            "latest_block_hash": GENESIS_HASH,
+            "tampered_entry_id": None,
+            "cryptographic_algorithm": "SHA-256 Recursive Chain",
+            "status": "No payment_ledger table found. Ledger not initialized.",
+        }
+
     _ensure_block_hash_column(conn)
 
     stored_hashes = {
