@@ -194,6 +194,12 @@ def propose(user: User, booking_id: int, data: Propose) -> Settlement:
             booking, worker_id = _assigned_worker(conn, booking_id)
             if not user.is_council and user.worker_id != worker_id:
                 raise SettlementError(403, "This job is assigned to another worker")
+            
+            # Person 2: enforce completion proof before proposing
+            assignment = conn.execute("SELECT end_photo_url FROM assignments WHERE booking_id = ?", (booking_id,)).fetchone()
+            if not user.is_council and assignment and not assignment["end_photo_url"]:
+                raise SettlementError(403, "You must submit the completion proof before proposing a price.")
+
             if _row(conn, booking_id) is not None:
                 raise SettlementError(409, f"Booking {booking_id} already has a price on the table")
             q = rates.quote(conn, booking["trade"], data.hours_worked, float(data.materials_rupees))

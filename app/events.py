@@ -73,6 +73,7 @@ _ROUTES: list[tuple[re.Pattern[str], Topic, str]] = [
     (re.compile(r"^/bookings/(?P<booking_id>\d+)/assign$"), "bookings", "assigned"),
     (re.compile(r"^/bookings/(?P<booking_id>\d+)/accept$"), "bookings", "accepted"),
     (re.compile(r"^/bookings/(?P<booking_id>\d+)/decline$"), "bookings", "declined"),
+    (re.compile(r"^/bookings/(?P<booking_id>\d+)/cancel$"), "bookings", "cancelled"),
     (re.compile(r"^/bookings/(?P<booking_id>\d+)/complete$"), "bookings", "completed"),
     (re.compile(r"^/bookings/(?P<booking_id>\d+)/rating$"), "bookings", "rated"),
     (re.compile(r"^/bookings$"), "bookings", "placed"),

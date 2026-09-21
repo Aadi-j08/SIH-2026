@@ -202,7 +202,7 @@ def jobs(worker_id: int) -> list[WorkerJob]:
     out: list[WorkerJob] = []
     with booking_flow_connection() as conn:
         for r in conn.execute(
-            """SELECT b.*, a.created_at AS assigned_at, a.accepted_at, a.explanation,
+            """SELECT b.*, a.created_at AS assigned_at, a.accepted_at, a.start_selfie_url, a.started_at, a.end_photo_url, a.explanation,
                       l.amount_paise AS share_paise, r.rating, r.comment
                FROM assignments a
                JOIN bookings b ON b.id = a.booking_id
@@ -236,7 +236,7 @@ def jobs(worker_id: int) -> list[WorkerJob]:
                 booking_id=row["id"], customer_name=row["customer_name"], customer_phone=row.get("customer_phone"),
                 trade=row["trade"], address=row.get("address"), latitude=row["latitude"], longitude=row["longitude"],
                 scheduled_for=row.get("scheduled_for"), outcome=outcome, assigned_at=row["assigned_at"],
-                accepted_at=row["accepted_at"], completed_at=row.get("completed_at"), explanation=row.get("explanation"),
+                accepted_at=row["accepted_at"], start_selfie_url=row.get("start_selfie_url"), started_at=row.get("started_at"), end_photo_url=row.get("end_photo_url"), completed_at=row.get("completed_at"), explanation=row.get("explanation"),
                 billed_rupees=paise_to_rupees(billed) if billed is not None else None,
                 share_rupees=paise_to_rupees(row["share_paise"]) if row["share_paise"] is not None else None,
                 rating=row["rating"], rating_comment=row["comment"], settlement=settlement_info,
