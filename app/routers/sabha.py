@@ -170,3 +170,74 @@ def dispute_ai_recommendation(dispute_id: int, _: User = Depends(require_council
 def review_sentiment_analysis(body: ReviewSentimentRequest, _: User = Depends(require_council)) -> dict:
     """Evaluates customer/worker feedback sentiment and flags toxic grievances for council mediation."""
     return analyze_sentiment(body.text)
+
+
+@router.get("/admin/export/csv")
+def export_audit_csv(_: User = Depends(require_council)):
+    """Exports official municipal cooperative transaction records and fund splits as CSV."""
+    import csv
+    import io
+    from fastapi.responses import Response
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Booking_ID", "Customer_Name", "Trade", "Urgency", "Status",
+        "Created_At", "Worker_Name", "Agreed_Amount_INR",
+        "Worker_Direct_Payout_85pct_INR", "Coop_Welfare_Fund_10pct_INR", "Platform_Ops_5pct_INR"
+    ])
+
+    with connection() as conn:
+        rows = conn.execute("""
+            SELECT 
+                b.id AS booking_id,
+                b.customer_name,
+                b.trade,
+                COALESCE(b.urgency_level, 'medium') AS urgency,
+                b.status,
+                b.created_at,
+                w.name AS worker_name,
+                s.agreed_amount_rupees,
+                s.proposed_amount_rupees
+            FROM bookings b
+            LEFT JOIN assignments a ON a.booking_id = b.id AND a.status IN ('accepted', 'completed', 'in_progress')
+            LEFT JOIN workers w ON w.id = a.worker_id
+            LEFT JOIN settlements s ON s.booking_id = b.id
+            ORDER BY b.id DESC
+        """).fetchall()
+
+        for r in rows:
+            _amount_raw = r["agreed_amount_rupees"] or r["proposed_amount_rupees"] or 400.0
+            amount = float(_amount_raw) if r["status"] == "completed" else 0.0
+            worker_cut = round(amount * 0.85, 2)
+            welfare_cut = round(amount * 0.10, 2)
+            ops_cut = round(amount * 0.05, 2)
+
+            writer.writerow([
+                r["booking_id"],
+                r["customer_name"] or "Citizen",
+                r["trade"],
+                r["urgency"],
+                r["status"],
+                r["created_at"],
+                r["worker_name"] or "Unassigned",
+                f"{amount:.2f}",
+                f"{worker_cut:.2f}",
+                f"{welfare_cut:.2f}",
+                f"{ops_cut:.2f}",
+            ])
+
+    csv_data = output.getvalue()
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sahakarsetu_audit_report.csv"},
+    )
+
+
+@router.get("/admin/ledger/audit-chain")
+def verify_cooperative_ledger_chain(_: User = Depends(require_council)) -> dict:
+    """Audits the cryptographic SHA-256 hash chain protecting the 10% cooperative welfare fund."""
+    from app.services.ledger import audit_ledger_chain
+    with connection() as conn:
+        return audit_ledger_chain(conn)
