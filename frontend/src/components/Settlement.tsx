@@ -11,8 +11,9 @@
  */
 import { useEffect, useState } from "react";
 
-import { api, errorMessage, formatRupees, titleCase, type LedgerEntry, type PaidVia, type Quote, type Rate, type Settlement } from "../api";
+import { api, errorMessage, formatRupees, titleCase, type Dispute, type LedgerEntry, type PaidVia, type Quote, type Rate, type Settlement } from "../api";
 import { Check, Scale } from "./Icons";
+import { DiscrepancyModal } from "./DiscrepancyModal";
 
 const PARTY_LABEL: Record<LedgerEntry["party"], string> = { worker: "To the worker", welfare_fund: "Workers' welfare fund", platform_operations: "Platform operations" };
 const RAMP = ["var(--ramp-1)", "var(--ramp-2)", "var(--ramp-3)"];
@@ -191,6 +192,8 @@ export function SettlementCard({ settlement: s, role, onChange }: { settlement: 
   const [paidVia, setPaidVia] = useState<PaidVia>("upi");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [discrepancyOpen, setDiscrepancyOpen] = useState(false);
+  const [disputeInfo, setDisputeInfo] = useState<Dispute | null>(null);
 
   const onTable = s.status === "countered" ? s.counter_rupees ?? s.proposed_rupees : s.proposed_rupees;
   const myTurn = s.waiting_on === role;
@@ -247,6 +250,47 @@ export function SettlementCard({ settlement: s, role, onChange }: { settlement: 
             <div className="tiny muted">No money passes through SahakarSetu. The worker's 15% contribution to the cooperative is settled at the weekly Sabha, in the open.</div>
           </>
         )}
+        {role === "customer" && (
+          disputeInfo || s.dispute_id ? (
+            <div className="card soft stack" style={{ gap: 4, background: "var(--paper-2)", border: "1px solid var(--line)", marginTop: 8, padding: "10px 12px", borderRadius: 10 }}>
+              <div className="row between" style={{ alignItems: "center" }}>
+                <span className="badge" style={{ background: "var(--amber-t)", color: "var(--amber-d)", fontWeight: 700, padding: "3px 8px" }}>
+                  Sent for Cooperative Review
+                </span>
+                <span className="tiny muted num">Dispute #{disputeInfo?.id || s.dispute_id}</span>
+              </div>
+              <div className="small" style={{ fontWeight: 600 }}>✓ Discrepancy Reported</div>
+              <div className="tiny muted">
+                The cooperative council is reviewing your reported price discrepancy for this booking.
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="btn outline"
+              style={{ minHeight: 44, width: "100%", marginTop: 8, borderColor: "#f59e0b", color: "#b45309" }}
+              onClick={() => setDiscrepancyOpen(true)}
+            >
+              ⚠️ Report Price Discrepancy
+            </button>
+          )
+        )}
+        {discrepancyOpen && (
+          <DiscrepancyModal
+            bookingId={s.booking_id}
+            trade={s.trade}
+            workerName={s.worker_name}
+            chargedAmount={total}
+            standardAmount={s.standard_rupees}
+            minFairAmount={s.min_fair_rupees}
+            maxFairAmount={s.max_fair_rupees}
+            onClose={() => setDiscrepancyOpen(false)}
+            onSuccess={async (dispute) => {
+              setDisputeInfo(dispute);
+              await onChange();
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -254,15 +298,42 @@ export function SettlementCard({ settlement: s, role, onChange }: { settlement: 
   // ── disputed ──
   if (s.status === "disputed") {
     return (
-      <div className="card stack" style={{ gap: 6 }}>
-        <div className="row" style={{ gap: 8 }}>
-          <Scale size={18} style={{ color: "var(--indigo-d)" }} />
-          <div style={{ fontWeight: 700 }}>The Sabha is deciding the price</div>
+      <div className="card stack" style={{ gap: 8 }}>
+        <div className="row between" style={{ alignItems: "center" }}>
+          <div className="row" style={{ gap: 8 }}>
+            <Scale size={18} style={{ color: "var(--indigo-d)" }} />
+            <div style={{ fontWeight: 700 }}>The Sabha is deciding the price</div>
+          </div>
+          <span className="badge" style={{ background: "var(--amber-t)", color: "var(--amber-d)", fontWeight: 700, padding: "4px 10px" }}>
+            Sent for Cooperative Review
+          </span>
         </div>
-        <div className="small muted">
-          {s.worker_name ?? "The worker"} proposed {formatRupees(s.proposed_rupees)}{s.counter_rupees ? `, ${s.customer_name ?? "the customer"} offered ${formatRupees(s.counter_rupees)}` : ""}. The council hears both sides and fixes an amount within the community's rate card.
+        <div className="card soft stack" style={{ gap: 4, background: "var(--paper-2)", border: "1px solid var(--line)", padding: "10px 12px", borderRadius: 10 }}>
+          <div className="row between">
+            <span className="small" style={{ fontWeight: 600 }}>✓ Discrepancy Reported</span>
+            {(disputeInfo?.id || s.dispute_id) && <span className="tiny muted num">Dispute #{disputeInfo?.id || s.dispute_id}</span>}
+          </div>
+          <div className="small muted">
+            {s.worker_name ?? "The worker"} proposed {formatRupees(s.proposed_rupees)}{s.counter_rupees ? `, ${s.customer_name ?? "the customer"} offered ${formatRupees(s.counter_rupees)}` : ""}. The council hears both sides and fixes an amount within the community's rate card.
+          </div>
+          {s.customer_note && <div className="tiny muted">“{s.customer_note}”</div>}
         </div>
-        {s.customer_note && <div className="tiny muted">“{s.customer_note}”</div>}
+        {discrepancyOpen && (
+          <DiscrepancyModal
+            bookingId={s.booking_id}
+            trade={s.trade}
+            workerName={s.worker_name}
+            chargedAmount={s.proposed_rupees}
+            standardAmount={s.standard_rupees}
+            minFairAmount={s.min_fair_rupees}
+            maxFairAmount={s.max_fair_rupees}
+            onClose={() => setDiscrepancyOpen(false)}
+            onSuccess={async (dispute) => {
+              setDisputeInfo(dispute);
+              await onChange();
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -348,6 +419,17 @@ export function SettlementCard({ settlement: s, role, onChange }: { settlement: 
               Ask the Sabha
             </button>
           </div>
+          {role === "customer" && (
+            <button
+              type="button"
+              className="btn outline"
+              style={{ minHeight: 44, width: "100%", borderColor: "#f59e0b", color: "#b45309" }}
+              onClick={() => setDiscrepancyOpen(true)}
+              disabled={busy}
+            >
+              ⚠️ Report Price Discrepancy
+            </button>
+          )}
           <div className="tiny muted">
             {role === "customer"
               ? `Agree and pay ${s.worker_name ?? "the worker"} directly. 10% of the amount is the worker's contribution to the cooperative's welfare fund.`
@@ -355,10 +437,40 @@ export function SettlementCard({ settlement: s, role, onChange }: { settlement: 
           </div>
         </>
       ) : (
-        <div className="row small muted" style={{ gap: 8 }}>
-          <span className="dot-mark" aria-hidden="true" style={{ background: "var(--terracotta)", width: 8, height: 8, borderRadius: 999, display: "inline-block" }} />
-          Waiting for {otherSide} to reply. You'll see it here the moment they do.
-        </div>
+        <>
+          <div className="row small muted" style={{ gap: 8 }}>
+            <span className="dot-mark" aria-hidden="true" style={{ background: "var(--terracotta)", width: 8, height: 8, borderRadius: 999, display: "inline-block" }} />
+            Waiting for {otherSide} to reply. You'll see it here the moment they do.
+          </div>
+          {role === "customer" && (
+            <button
+              type="button"
+              className="btn outline"
+              style={{ minHeight: 44, width: "100%", borderColor: "#f59e0b", color: "#b45309", marginTop: 4 }}
+              onClick={() => setDiscrepancyOpen(true)}
+              disabled={busy}
+            >
+              ⚠️ Report Price Discrepancy
+            </button>
+          )}
+        </>
+      )}
+
+      {discrepancyOpen && (
+        <DiscrepancyModal
+          bookingId={s.booking_id}
+          trade={s.trade}
+          workerName={s.worker_name}
+          chargedAmount={onTable}
+          standardAmount={s.standard_rupees}
+          minFairAmount={s.min_fair_rupees}
+          maxFairAmount={s.max_fair_rupees}
+          onClose={() => setDiscrepancyOpen(false)}
+          onSuccess={async (dispute) => {
+            setDisputeInfo(dispute);
+            await onChange();
+          }}
+        />
       )}
     </div>
   );
