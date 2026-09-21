@@ -7,8 +7,8 @@ from app.services.ledger import (
     audit_ledger_chain,
     compute_transaction_hash,
 )
-from app.database import connection
-from app.booking_flow_db import ensure_booking_flow_schema
+from app import database
+from app.booking_flow_db import booking_flow_connection
 
 
 def test_vision_verifier_offline_heuristics_both_photos():
@@ -52,8 +52,8 @@ def test_ledger_sha256_hash_chain_computation():
 
 
 def test_audit_ledger_chain_on_database():
-    with connection() as conn:
-        ensure_booking_flow_schema(conn)
+    database.init_db()
+    with booking_flow_connection() as conn:
         res = audit_ledger_chain(conn)
         assert res["intact"] is True
         assert res["cryptographic_algorithm"] == "SHA-256 Recursive Chain"
