@@ -19,9 +19,39 @@ export default function Overview() {
   if (error && !overview) return <div className="page wide"><div className="notice error">{error}</div></div>;
   if (!overview) return <div className="page wide muted">Loading the cooperative…</div>;
   const o = overview;
+
+  const handleExportCSV = () => {
+    window.open("/admin/export/csv", "_blank");
+  };
+
+  const handlePrintPDF = () => {
+    window.print();
+  };
+
   return (
     <div className="page wide sabha-page">
       {error && <div className="notice error">{error}</div>}
+
+      <div className="card row between" style={{ background: "linear-gradient(135deg, rgba(94, 120, 217, 0.08) 0%, rgba(37, 152, 77, 0.08) 100%)", padding: "16px 20px", alignItems: "center", gap: 16 }}>
+        <div className="stack" style={{ gap: 2 }}>
+          <div style={{ fontWeight: 800, fontSize: 16, display: "flex", alignItems: "center", gap: 8 }}>
+            <span>🏛️ Municipal Cooperative Governance</span>
+            <span className="pill green" style={{ fontSize: 11, padding: "2px 8px" }}>Live Audit Ready</span>
+          </div>
+          <div className="small muted">
+            Ward allocations, 85/10/5 fund distributions &amp; AI dispute logs.
+          </div>
+        </div>
+        <div className="row" style={{ gap: 8 }}>
+          <button type="button" className="btn outline" onClick={handleExportCSV} style={{ padding: "8px 14px", fontSize: 13, gap: 6 }}>
+            📥 Export CSV
+          </button>
+          <button type="button" className="btn primary" onClick={handlePrintPDF} style={{ padding: "8px 14px", fontSize: 13, gap: 6, background: "var(--indigo-d)" }}>
+            🖨️ Print Audit PDF
+          </button>
+        </div>
+      </div>
+
       <Metrics o={o} />
       <AIDemandWidget />
       <AssistantPanel role="council" />
