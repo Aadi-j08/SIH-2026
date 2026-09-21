@@ -309,6 +309,20 @@ def main() -> None:
                  None if open_ else stamp(raised_at + dt.timedelta(hours=rng.uniform(6, 72)))),
             )
 
+    # Ensure demo worker 9000000200 has an active urgent job for Person 2 photo proof verification
+    urgent_b = repository.create_booking(BookingCreate(
+        customer_name=customers[0].name,
+        customer_phone=customers[0].phone,
+        trade="plumbing",
+        latitude=SITE[0],
+        longitude=SITE[1],
+        address=f"12, {customers[0].locality or 'Arera Colony'}, Bhopal",
+        scheduled_for=None,
+    ))
+    run("UPDATE bookings SET customer_user_id = ?, status = 'assigned' WHERE id = ?", (customers[0].id, urgent_b.id))
+    run("INSERT INTO assignments (booking_id, worker_id, accepted_at, created_at) VALUES (?, ?, ?, ?)",
+        (urgent_b.id, workers[0].worker_id, stamp(NOW - dt.timedelta(minutes=25)), stamp(NOW - dt.timedelta(minutes=30))))
+
     with database.connection() as conn:
         summary = {t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("users", "workers", "bookings", "assignments", "payment_ledger", "settlements", "disputes")}
     print("Done:", json.dumps(summary))

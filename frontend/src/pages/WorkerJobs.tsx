@@ -128,7 +128,7 @@ export default function WorkerJobs() {
           </div>
         )}
         {finished.length > 4 && !showAll && (
-          <button type="button" className="link" style={{ background: "none", border: 0, alignSelf: "center", padding: 8, cursor: "pointer", font: "inherit", fontWeight: 700 }} onClick={() => setShowAll(true)}>
+          <button type="button" className="btn soft" onClick={() => setShowAll(true)}>
             Show {finished.length - 4} more
           </button>
         )}

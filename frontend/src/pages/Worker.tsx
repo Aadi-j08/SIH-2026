@@ -86,14 +86,16 @@ export default function Worker() {
       <Greeting worker={worker} summary={summary} />
       <AssistantPanel role="worker" />
       {open.length > 0 && (
-        <section className="stack">
+        <section className="stack card soft" style={{ gap: 12, padding: 12, background: "var(--paper-2)", border: "1px solid var(--green-d)" }}>
+          <div className="label" style={{ color: "var(--green-d)" }}>Action required</div>
           {open.map((job) => (
             <JobCard key={job.booking_id} job={job} onChange={refresh} />
           ))}
         </section>
       )}
-      <WeekStrip worker={worker} jobs={jobs} summary={summary} />
+      <Greeting worker={worker} summary={summary} />
       <VoiceAvailability worker={worker} onSaved={(w) => { setWorker(w); void refresh(); }} compact />
+      <WeekStrip worker={worker} jobs={jobs} summary={summary} />
       <Stats summary={summary} />
       <section className="stack">
         <div className="row between">
