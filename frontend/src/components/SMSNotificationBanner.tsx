@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface SMSAlertProps {
   customerName: string;
@@ -8,6 +8,31 @@ interface SMSAlertProps {
   urgency?: string;
   onAccept?: () => void;
   onDismiss?: () => void;
+}
+
+function playNotificationChime() {
+  try {
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+    osc.frequency.setValueAtTime(880.0, ctx.currentTime + 0.1); // A5
+
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.35);
+  } catch {
+    // ignore audio autoplay restriction
+  }
 }
 
 export default function SMSNotificationBanner({
@@ -21,9 +46,22 @@ export default function SMSNotificationBanner({
 }: SMSAlertProps) {
   const [visible, setVisible] = useState(true);
 
-  if (!visible) return null;
-
   const isUrgent = urgency === "urgent" || urgency === "high";
+
+  useEffect(() => {
+    // 📳 Mobile Haptics
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      if (isUrgent) {
+        navigator.vibrate([200, 100, 200, 100, 400]);
+      } else {
+        navigator.vibrate(150);
+      }
+    }
+    // 🔔 Audio Chime
+    playNotificationChime();
+  }, [isUrgent]);
+
+  if (!visible) return null;
 
   return (
     <div

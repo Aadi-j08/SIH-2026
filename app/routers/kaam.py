@@ -119,6 +119,29 @@ def save_photo_proof(
     )
 
 
+@router.post("/bookings/{booking_id}/verify-repair")
+def verify_repair_ai(
+    booking_id: int,
+    body: kaam.ProofOfWorkRequest,
+    user: User = Depends(require_worker),
+) -> dict:
+    """AI Vision analysis of start damage and completion photos via Gemini 1.5 Flash Vision."""
+    from app.services.vision_verifier import verify_repair_photos
+    from app.database import connection
+
+    with connection() as conn:
+        row = conn.execute("SELECT trade, customer_notes FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+        trade = row["trade"] if row else "general_repair"
+        notes = row["customer_notes"] if row else None
+
+    return verify_repair_photos(
+        trade=trade,
+        start_photo_data=body.start_selfie_url,
+        end_photo_data=body.end_photo_url,
+        job_notes=notes,
+    )
+
+
 @router.post("/bookings/{booking_id}/decline", response_model=kaam.ReplyResult)
 def decline_job(booking_id: int, body: kaam.DeclineRequest, user: User = Depends(require_worker)) -> kaam.ReplyResult:
     worker_id = _acting_worker_id(user, booking_id)

@@ -232,3 +232,11 @@ def export_audit_csv(_: User = Depends(require_council)):
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=sahakarsetu_audit_report.csv"},
     )
+
+
+@router.get("/admin/ledger/audit-chain")
+def verify_cooperative_ledger_chain(_: User = Depends(require_council)) -> dict:
+    """Audits the cryptographic SHA-256 hash chain protecting the 10% cooperative welfare fund."""
+    from app.services.ledger import audit_ledger_chain
+    with connection() as conn:
+        return audit_ledger_chain(conn)
