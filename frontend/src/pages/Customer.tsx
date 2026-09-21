@@ -100,7 +100,7 @@ function BookingForm() {
   };
 
   return (
-    <form className="page" onSubmit={submit}>
+    <div className="page">
       <div className="stack" style={{ gap: 6 }}>
         <h1>Book a service</h1>
         <div className="sub">
@@ -129,6 +129,8 @@ function BookingForm() {
       />
 
       <AssistantPanel role="customer" latitude={location.latitude} longitude={location.longitude} onBooking={(id) => navigate(`/ghar/home/${id}`)} />
+
+      <form className="stack" onSubmit={submit}>
 
       <section className="stack">
         <div className="label">What do you need?</div>
@@ -210,6 +212,7 @@ function BookingForm() {
         </div>
       </div>
     </form>
+    </div>
   );
 }
 
