@@ -106,10 +106,13 @@ def verify_repair_photos(
 
         client = genai.Client(api_key=api_key)
 
+        safe_notes = re.sub(r"[\n\r]", " ", job_notes or "Standard repair")
+        safe_notes = safe_notes[:500]
+
         prompt = (
             f"You are an expert civic municipal building and trade inspector for a worker cooperative.\n"
             f"Job Trade: {trade}\n"
-            f"Job Notes: {job_notes or 'Standard repair'}\n"
+            f"Job Notes: {safe_notes}\n"
             f"Has Start Photo: {'Yes' if start_photo_data else 'No'}\n"
             f"Has End Photo: {'Yes' if end_photo_data else 'No'}\n\n"
             f"Evaluate the repair proof-of-work. Output ONLY a valid JSON object matching this exact schema:\n"
