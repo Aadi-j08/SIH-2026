@@ -89,6 +89,7 @@ def forecast_demand(
 
     if history_bookings == 0:
         level, factors, method = 0.0, {weekday: 1.0 for weekday in range(7)}, "no booking history yet"
+        confidence = 0.35
     else:
         overall = history_bookings / history_days
         recent = counts[-7:]
@@ -96,6 +97,7 @@ def forecast_demand(
         level = RECENT_WEIGHT * recent_mean + (1 - RECENT_WEIGHT) * overall
         factors = weekday_factors(counts, first)
         method = f"weekday-seasonal moving average over {history_weeks} weeks"
+        confidence = round(min(0.9, 0.55 + min(0.3, history_bookings / 100)), 2)
 
     points = []
     for offset in range(horizon_days):
@@ -112,6 +114,12 @@ def forecast_demand(
             lower=round(max(0.0, expected - band), 2),
             upper=round(upper, 2),
             workers_needed=math.ceil(upper / jobs_per_worker_per_day) if upper > 0 else 0,
+            confidence=confidence,
+            forecast_jobs=round(expected, 2),
+            explanation=(
+                f"{trade + ' ' if trade else ''}demand is based on the {method}; "
+                f"{booked} booking{'s' if booked != 1 else ''} already on the calendar."
+            ),
         ))
 
     return DemandForecast(

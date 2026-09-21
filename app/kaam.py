@@ -73,11 +73,11 @@ class WorkerJob(BaseModel):
     latitude: float
     longitude: float
     scheduled_for: str | None
-    outcome: Literal["assigned", "accepted", "completed", "declined"]
+    outcome: Literal["assigned", "accepted", "in_progress", "completed", "declined"]
     assigned_at: str | None = None
     accepted_at: str | None = None
+started_at: str | None = None
     start_selfie_url: str | None = None
-    started_at: str | None = None
     end_photo_url: str | None = None
     completed_at: str | None = None
     explanation: str | None = None
@@ -88,6 +88,15 @@ class WorkerJob(BaseModel):
     decline_reason: str | None = None
     declined_at: str | None = None
     settlement: dict[str, Any] | None = Field(default=None, description="The price on the table (status, amounts, whose turn) once the worker has proposed one")
+
+
+class StartWorkRequest(BaseModel):
+    start_selfie_url: str | None = Field(default=None, description="Base64 or URL of arrival selfie")
+
+
+class ProofOfWorkRequest(BaseModel):
+    start_selfie_url: str | None = None
+    end_photo_url: str | None = Field(default=None, description="Base64 or URL of completed work photo")
 
 
 class AvailabilityUpdate(BaseModel):
@@ -288,8 +297,8 @@ def _assignment_for(conn: sqlite3.Connection, booking_id: int, worker_id: int) -
     booking = conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
     if booking is None:
         raise KaamError(404, f"Booking {booking_id} not found")
-    if booking["status"] != "assigned":
-        raise KaamError(409, f"Booking {booking_id} is '{booking['status']}'; only an assigned job can be replied to")
+    if booking["status"] not in ("assigned", "in_progress"):
+        raise KaamError(409, f"Booking {booking_id} is '{booking['status']}'; only an assigned or in-progress job can be acted upon")
     assignment = conn.execute(
         "SELECT * FROM assignments WHERE booking_id = ? ORDER BY id DESC LIMIT 1", (booking_id,)
     ).fetchone()
@@ -304,6 +313,46 @@ def accept(booking_id: int, worker_id: int) -> ReplyResult:
         if assignment.get("accepted_at") is None:
             conn.execute("UPDATE assignments SET accepted_at = CURRENT_TIMESTAMP WHERE id = ?", (assignment["id"],))
     return ReplyResult(booking_id=booking_id, status="assigned")
+
+
+def start_work(booking_id: int, worker_id: int, start_selfie_url: str | None = None) -> ReplyResult:
+    """Worker arrives on site, uploads verification selfie, and officially begins work."""
+    with booking_flow_connection() as conn, immediate_transaction(conn):
+        assignment = _assignment_for(conn, booking_id, worker_id)
+        conn.execute(
+            """UPDATE assignments 
+               SET started_at = COALESCE(started_at, CURRENT_TIMESTAMP),
+                   start_selfie_url = COALESCE(?, start_selfie_url)
+               WHERE id = ?""",
+            (start_selfie_url, assignment["id"]),
+        )
+        conn.execute(
+            "UPDATE bookings SET status = 'in_progress' WHERE id = ?",
+            (booking_id,),
+        )
+    return ReplyResult(booking_id=booking_id, status="in_progress")
+
+
+def record_proof_of_work(
+    booking_id: int, worker_id: int, start_selfie_url: str | None = None, end_photo_url: str | None = None
+) -> dict[str, Any]:
+    """Records start selfie or completion proof photo."""
+    with booking_flow_connection() as conn, immediate_transaction(conn):
+        assignment = _assignment_for(conn, booking_id, worker_id)
+        conn.execute(
+            """UPDATE assignments 
+               SET start_selfie_url = COALESCE(?, start_selfie_url),
+                   end_photo_url = COALESCE(?, end_photo_url)
+               WHERE id = ?""",
+            (start_selfie_url, end_photo_url, assignment["id"]),
+        )
+    return {
+        "booking_id": booking_id,
+        "worker_id": worker_id,
+        "start_selfie_url": start_selfie_url,
+        "end_photo_url": end_photo_url,
+        "status": "saved",
+    }
 
 
 def decline(booking_id: int, worker_id: int, body: DeclineRequest) -> ReplyResult:
@@ -329,7 +378,7 @@ def decline(booking_id: int, worker_id: int, body: DeclineRequest) -> ReplyResul
                 ).model_dump(mode="json"))
                 conn.execute("UPDATE workers SET availability = ? WHERE id = ?", (json.dumps(windows), worker_id))
             excluded = tuple(r["worker_id"] for r in conn.execute(
-                "SELECT worker_id FROM declines WHERE booking_id = ?", (booking_id,)
+                "SELECT DISTINCT worker_id FROM declines WHERE booking_id = ? ORDER BY worker_id", (booking_id,)
             ))
         try:
             result = booking_flow.assign_booking(conn, booking_id, exclude_worker_ids=excluded)

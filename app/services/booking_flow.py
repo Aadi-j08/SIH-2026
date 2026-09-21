@@ -76,6 +76,15 @@ def _latest_assignment(conn: sqlite3.Connection, booking_id: int) -> dict[str, A
     ).fetchone())
 
 
+def _declined_worker_ids(conn: sqlite3.Connection, booking_id: int) -> tuple[int, ...]:
+    """Workers who already declined this booking should remain excluded from all future reassignments."""
+    rows = conn.execute(
+        "SELECT DISTINCT worker_id FROM declines WHERE booking_id = ? ORDER BY worker_id",
+        (booking_id,),
+    ).fetchall()
+    return tuple(int(row["worker_id"]) for row in rows)
+
+
 def _decode_json(value: Any) -> Any:
     if isinstance(value, str):
         try:
@@ -118,17 +127,11 @@ def assign_booking(
             raise InvalidBookingState(
                 f"Booking {booking_id} is '{booking['status']}'; only pending bookings can be assigned"
             )
-        # Always exclude workers who already declined this specific booking,
-        # even when called without explicit exclude_worker_ids (e.g. council assign).
-        declined = {r["worker_id"] for r in conn.execute(
-            "SELECT worker_id FROM declines WHERE booking_id = ?", (booking_id,)
-        )} if "declines" in {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")} else set()
-        all_excluded = set(exclude_worker_ids) | declined
-
+        excluded = tuple(dict.fromkeys((*exclude_worker_ids, *_declined_worker_ids(conn, booking_id))))
         status_filter = "WHERE COALESCE(status, 'active') = 'active'" if "status" in table_columns(conn, "workers") else ""
         workers = [                                                     # 2. load workers
             dict(r) for r in conn.execute(f"SELECT * FROM workers {status_filter}")
-            if r["id"] not in all_excluded
+            if r["id"] not in excluded
         ]
         best = top_recommendation(booking, workers)                    # 3–5. schema, engine, top pick
         if best is None:

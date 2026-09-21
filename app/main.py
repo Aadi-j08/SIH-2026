@@ -16,13 +16,17 @@ import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import os
+
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from app import database, events, ownership, repository
 from app.auth import User, require_council, require_customer, require_user, require_worker
 from app.routers.auth import router as auth_router
+from app.routers.assistant import router as assistant_router
 from app.routers.booking_flow import router as booking_flow_router
 from app.routers.kaam import router as kaam_router
 from app.routers.pricing import router as pricing_router
@@ -40,9 +44,11 @@ from app.schemas import (
     Worker,
     WorkerCreate,
 )
-import os
-import threading
-from app.services import allocation, booking_flow, forecast, staffing, voice
+from app.services import allocation, forecast, staffing, voice
+from app.services.demand_forecast import forecaster
+from app.services.dispute_advisor import analyze_payment_discrepancy
+from app.services.ledger import generate_upi_qr_data
+from app.services.worker_allocation import match_batch_jobs
 from app.trades import canonical_trade
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -62,12 +68,25 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(auth_router)
+app.include_router(assistant_router)
 app.include_router(booking_flow_router)
 app.include_router(kaam_router)
 app.include_router(sabha_router)
 app.include_router(pricing_router)
 app.include_router(events.router)
 app.add_middleware(events.PublishChanges)
+
+# Cross-origin SPA (Cloudflare Pages → this API). Comma-separated origins, e.g.
+# https://sahakarsetu.pages.dev,http://127.0.0.1:5173
+_cors = [o.strip() for o in os.environ.get("SAHAKARSETU_CORS_ORIGINS", "").split(",") if o.strip()]
+if _cors:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 # ── errors: clean messages out, details in the log ───────────────────────
@@ -271,6 +290,26 @@ def recommend(
     return allocation.recommend_workers(request, repository.worker_profiles(), top_k=top_k)
 
 
+@app.post("/allocation/batch-dispatch", tags=["allocation"])
+def batch_dispatch(
+    max_distance_km: float = Query(default=15.0, ge=1.0, le=50.0),
+    _: User = Depends(require_council),
+) -> dict:
+    """Solves optimal fair bipartite matching between all pending bookings and available workers. Council only."""
+    # Fetch pending bookings and active worker profiles
+    with database.connection() as conn:
+        raw_bookings = conn.execute(
+            "SELECT id, customer_name, trade, latitude, longitude, address FROM bookings WHERE status = 'pending'"
+        ).fetchall()
+        raw_workers = conn.execute(
+            "SELECT id, name, trade, latitude, longitude, jobs_this_week, rating, status FROM workers WHERE status = 'active'"
+        ).fetchall()
+
+    bookings_list = [dict(r) for r in raw_bookings]
+    workers_list = [dict(r) for r in raw_workers]
+    return match_batch_jobs(bookings_list, workers_list, max_distance_km=max_distance_km)
+
+
 # ── forecast ─────────────────────────────────────────────────────────────
 
 @app.get("/forecast", response_model=DemandForecast, tags=["forecast"])
@@ -283,6 +322,16 @@ def demand_forecast(
     """Expected bookings per day for the coming days, and how many workers to keep on call. Council only."""
     trade = canonical_trade(trade) if trade else None
     return forecast.forecast_demand(repository.demand_dates(trade), trade=trade, horizon_days=days, today=today)
+
+
+@app.get("/forecast/ml", tags=["forecast"])
+def demand_forecast_ml(
+    trade: str = Query(default="general", description="Trade category"),
+    ward_id: str = Query(default="1", description="Ward identifier or locality name"),
+    _: User = Depends(require_council),
+) -> dict:
+    """ML-powered 7-day demand and fair-price band forecast using scikit-learn Ridge regression. Council only."""
+    return forecaster.predict_7_day_demand(trade=trade, ward_id=ward_id)
 
 
 @app.get("/forecast/staffing", response_model=StaffingForecast, tags=["forecast"])
@@ -315,3 +364,51 @@ def staffing_forecast(
         workers = [w for w in workers if w.id in local_workers]
     demand = forecast.forecast_demand(demand_dates, trade=trade, horizon_days=days, today=today)
     return staffing.staffing_forecast(demand, workers, trade=trade, area=area.strip() if area else None)
+
+
+# ── payment split & dispute reporting ───────────────────────────────────
+
+class PaymentMismatchRequest(BaseModel):
+    booking_id: int
+    customer_paid_rupees: float
+    worker_reported_rupees: float
+    standard_rate_rupees: float = 400.0
+    materials_rupees: float = 0.0
+    customer_notes: str | None = None
+
+
+@app.get("/payments/{booking_id}/upi-qr", tags=["payments"])
+def get_payment_upi_qr(
+    booking_id: int,
+    amount: float | None = Query(default=None, description="Optional bill amount in rupees"),
+    user: User = Depends(require_user),
+) -> dict:
+    """Generates NPCI-compliant dynamic UPI QR payload and transparent 85/10/5 split metadata."""
+    final_amount = amount
+    if final_amount is None:
+        with database.connection() as conn:
+            row = conn.execute(
+                "SELECT agreed_amount_rupees, proposed_amount_rupees FROM settlements WHERE booking_id = ?",
+                (booking_id,),
+            ).fetchone()
+            if row:
+                final_amount = float(row["agreed_amount_rupees"] or row["proposed_amount_rupees"] or 450.0)
+            else:
+                final_amount = 450.0
+    return generate_upi_qr_data(booking_id=booking_id, total_rupees=final_amount)
+
+
+@app.post("/disputes/report-mismatch", tags=["disputes"])
+def report_payment_mismatch(
+    body: PaymentMismatchRequest,
+    user: User = Depends(require_user),
+) -> dict:
+    """Audits payment discrepancies (cash bypass / rate card deviations) and alerts cooperative council."""
+    return analyze_payment_discrepancy(
+        booking_id=body.booking_id,
+        customer_paid_rupees=body.customer_paid_rupees,
+        worker_reported_rupees=body.worker_reported_rupees,
+        standard_rate_rupees=body.standard_rate_rupees,
+        materials_rupees=body.materials_rupees,
+        customer_notes=body.customer_notes,
+    )

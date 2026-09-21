@@ -5,6 +5,7 @@ import { api, errorMessage, formatRupees, titleCase, type Worker as WorkerT, typ
 import JobCard from "../components/JobCard";
 import { Check, Clock, Mic, Star } from "../components/Icons";
 import VoiceAvailability from "../components/VoiceAvailability";
+import AssistantPanel from "../components/AssistantPanel";
 import { useAuth } from "../lib/auth";
 import { useLive } from "../lib/live";
 import { buildWeek, SLOTS, type WeekDay } from "../lib/week";
@@ -54,6 +55,7 @@ export default function Worker() {
     return (
       <div className="page">
         <Greeting worker={worker} summary={summary} pending />
+          <AssistantPanel role="worker" />
         <PendingApproval user={user?.locality ?? null} phone={user?.phone ?? null} />
         <VoiceAvailability worker={worker} onSaved={(w) => { setWorker(w); void refresh(); }} compact />
         <WeekStrip worker={worker} jobs={jobs} summary={summary} />
@@ -67,6 +69,8 @@ export default function Worker() {
   return (
     <div className="page">
       {error && <div className="notice error">{error}</div>}
+      <Greeting worker={worker} summary={summary} />
+      <AssistantPanel role="worker" />
       {open.length > 0 && (
         <section className="stack card soft" style={{ gap: 12, padding: 12, background: "var(--paper-2)", border: "1px solid var(--green-d)" }}>
           <div className="label" style={{ color: "var(--green-d)" }}>Action required</div>
