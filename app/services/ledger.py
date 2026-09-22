@@ -117,15 +117,16 @@ def _recompute_and_store_hashes(conn) -> None:
     ).fetchall()
     current_hash = GENESIS_HASH
     for r in rows:
+        row_dict = dict(r)
         current_hash = compute_transaction_hash(
             prev_hash=current_hash,
-            booking_id=r["booking_id"],
-            worker_id=r["worker_id"],
-             party=r["party"],
-             amount_paise=r["amount_paise"],
-             created_at=str(r["created_at"]),
+            booking_id=row_dict["booking_id"],
+            worker_id=row_dict.get("worker_id"),
+            party=row_dict["party"],
+            amount_paise=row_dict["amount_paise"],
+            created_at=str(row_dict.get("created_at")),
         )
-        conn.execute("UPDATE payment_ledger SET block_hash = ? WHERE id = ?", (current_hash, r["id"]))
+        conn.execute("UPDATE payment_ledger SET block_hash = ? WHERE id = ?", (current_hash, row_dict["id"]))
 
 
 def _table_exists(conn, table: str) -> bool:
