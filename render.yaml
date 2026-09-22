@@ -8,7 +8,9 @@ services:
       pip install -r requirements.txt
       # Build the React frontend so the API can serve it at /app
       cd frontend && npm install && npm run build
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # Free tier has an ephemeral filesystem, so the SQLite DB resets on restart.
+    # Auto-seed on every start: the script is idempotent (refuses if data exists).
+    startCommand: python scripts/seed_demo.py 2>/dev/null; exec uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.8
