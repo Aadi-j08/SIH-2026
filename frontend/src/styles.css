@@ -646,3 +646,203 @@ button.rate-row:hover { background: var(--paper-2); }
   overflow-y: auto;
 }
 .feedback-fab { display: inline-flex; }
+
+/* ── ASAP: Status Tracker ───────────────────────────────────────── */
+
+.status-tracker {
+  display: flex;
+  align-items: flex-start;
+  padding: 8px 0;
+  width: 100%;
+}
+
+.status-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 52px;
+  min-width: 0;
+}
+
+.status-line {
+  flex: 1 1 auto;
+  height: 2px;
+  background: var(--line);
+  margin-top: 10px; /* center on the 22px dot */
+  min-width: 4px;
+}
+
+.status-line.filled { background: var(--green); }
+
+.status-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+
+.status-step.done .status-dot { background: var(--green); color: white; }
+.status-step.active .status-dot { background: var(--accent); color: white; }
+.status-step.future .status-dot { background: var(--line); }
+
+.status-dot-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: white;
+  animation: status-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.7); }
+}
+
+.status-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-align: center;
+  max-width: 54px;
+  line-height: 1.2;
+  color: var(--ink-3);
+  word-break: break-word;
+}
+
+.status-step.done .status-label { color: var(--green-d); }
+.status-step.active .status-label { color: var(--accent-d); font-weight: 700; }
+
+/* ── Customer: Worker Proof Photos ─────────────────────────────── */
+
+.proof-photo-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+}
+
+.proof-photo-wrapper {
+  position: relative;
+  width: 100%;
+  max-height: 260px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--paper-2);
+  border: 1px solid var(--line-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 10;
+}
+
+.proof-photo-wrapper img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.2s ease;
+}
+
+.proof-photo-wrapper:hover img {
+  transform: scale(1.02);
+}
+
+.status-tracker {
+  display: flex;
+  align-items: flex-start;
+  padding: 8px 0;
+  width: 100%;
+}
+
+.status-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 52px;
+  min-width: 0;
+}
+
+.status-line {
+  flex: 1 1 auto;
+  height: 2px;
+  background: var(--line);
+  margin-top: 10px; /* center on the 22px dot */
+  min-width: 4px;
+}
+
+.status-line.filled { background: var(--green); }
+
+.status-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+
+.status-step.done .status-dot { background: var(--green); color: white; }
+.status-step.active .status-dot { background: var(--accent); color: white; }
+.status-step.future .status-dot { background: var(--line); }
+
+.status-dot-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: white;
+  animation: status-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.7); }
+}
+
+.status-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-align: center;
+  max-width: 54px;
+  line-height: 1.2;
+  color: var(--ink-3);
+  word-break: break-word;
+}
+
+.status-step.done .status-label { color: var(--green-d); }
+.status-step.active .status-label { color: var(--accent-d); font-weight: 700; }
+
+/* ── Customer: Worker Proof Photos ─────────────────────────────── */
+
+.proof-photo-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+}
+
+.proof-photo-wrapper {
+  position: relative;
+  width: 100%;
+  max-height: 260px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--paper-2);
+  border: 1px solid var(--line-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 10;
+}
+
+.proof-photo-wrapper img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.2s ease;
+}
+
+.proof-photo-wrapper:hover img {
+  transform: scale(1.02);
+}
