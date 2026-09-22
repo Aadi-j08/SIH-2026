@@ -9,6 +9,7 @@ const API_PREFIXES = [
   "/assistant",
   "/cooperative",
   "/disputes",
+  "/feedback",
   "/stats",
   "/workers",
   "/bookings",

@@ -613,3 +613,36 @@ button.back { background: transparent; border: 0; padding: 0; }
 /* rate card rows are buttons (tap to edit) */
 button.rate-row { width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line-soft); font: inherit; color: inherit; text-align: left; cursor: pointer; }
 button.rate-row:hover { background: var(--paper-2); }
+
+/* feedback floating action button */
+.feedback-fab {
+  position: fixed; bottom: 20px; right: 20px;
+  width: 56px; height: 56px; border-radius: 999px;
+  background: var(--ink); color: var(--paper);
+  border: 0; cursor: pointer;
+  box-shadow: var(--shadow-lg);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+  transition: all 0.2s ease;
+}
+.feedback-fab:hover {
+  transform: scale(1.08);
+  box-shadow: 0 12px 32px -4px rgba(38, 29, 23, 0.25);
+}
+
+/* feedback form overlay + panel */
+.feedback-overlay {
+  position: fixed; inset: 0;
+  background: rgba(38, 29, 23, 0.5);
+  display: flex; align-items: flex-end; justify-content: flex-end;
+  padding: 20px; z-index: 200;
+}
+.feedback-panel {
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  padding: 20px; width: 100%; max-width: 420px;
+  box-shadow: var(--shadow-lg);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+.feedback-fab { display: inline-flex; }

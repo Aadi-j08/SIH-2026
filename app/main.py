@@ -28,6 +28,7 @@ from app.auth import User, require_council, require_customer, require_user, requ
 from app.routers.auth import router as auth_router
 from app.routers.assistant import router as assistant_router
 from app.routers.booking_flow import router as booking_flow_router
+from app.routers.feedback import router as feedback_router
 from app.routers.kaam import router as kaam_router
 from app.routers.pricing import router as pricing_router
 from app.routers.sabha import router as sabha_router
@@ -57,6 +58,12 @@ from app.trades import canonical_trade
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("sahakarsetu")
 
+# In production, disable the interactive API docs and OpenAPI schema to keep
+# internal endpoints out of public view. Set SAHAKARSETU_ENV=production on Render.
+_IS_PROD = os.environ.get("SAHAKARSETU_ENV", "development").strip().lower() == "production"
+_DOCS_URL = None if _IS_PROD else "/docs"
+_REDOC_URL = None if _IS_PROD else "/redoc"
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -69,10 +76,21 @@ app = FastAPI(
     version="0.1.0",
     description="Fair work allocation, voice availability and demand forecasting for a workers' cooperative.",
     lifespan=lifespan,
+    docs_url=_DOCS_URL,
+    redoc_url=_REDOC_URL,
 )
+
+
+@app.middleware("http")
+async def _hide_docs_in_production(request: Request, call_next):
+    if _IS_PROD and request.url.path in ("/openapi.json", "/docs", "/redoc"):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    return await call_next(request)
 app.include_router(auth_router)
 app.include_router(assistant_router)
 app.include_router(booking_flow_router)
+app.include_router(feedback_router)
 app.include_router(kaam_router)
 app.include_router(sabha_router)
 app.include_router(pricing_router)
@@ -123,7 +141,10 @@ FRONTEND_PUBLIC = FRONTEND_DIR / "public"   # static files (photos) picked up wi
 
 @app.get("/", tags=["health"])
 def root() -> dict:
-    return {"name": "SahakarSetu", "status": "ok", "docs": "/docs", "app": "/app/"}
+    response = {"name": "SahakarSetu", "status": "ok", "app": "/app/"}
+    if not _IS_PROD:
+        response["docs"] = "/docs"
+    return response
 
 
 # ── web app (React PWA built into frontend/dist) ─────────────────────────

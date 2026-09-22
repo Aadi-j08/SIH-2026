@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
+import FeedbackForm from "./FeedbackForm";
 import { type PortalId } from "../api";
 import { initials, useAuth } from "../lib/auth";
 import { LogOut } from "./Icons";
@@ -142,19 +143,25 @@ export default function PortalShell({ portal, children, sidebar }: { portal: Por
 
   if (sidebar) {
     return (
-      <div className="shell" data-portal={portal}>
-        <div className="sabha-layout">
-          {topbar}
-          {sidebar}
-          {children}
+      <>
+        <div className="shell" data-portal={portal}>
+          <div className="sabha-layout">
+            {topbar}
+            {sidebar}
+            {children}
+          </div>
         </div>
-      </div>
+        <FeedbackForm />
+      </>
     );
   }
   return (
-    <div className="shell" data-portal={portal}>
-      {topbar}
-      {children}
-    </div>
+    <>
+      <div className="shell" data-portal={portal}>
+        {topbar}
+        {children}
+      </div>
+      <FeedbackForm />
+    </>
   );
 }

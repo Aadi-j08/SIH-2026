@@ -120,10 +120,10 @@ def _recompute_and_store_hashes(conn) -> None:
         current_hash = compute_transaction_hash(
             prev_hash=current_hash,
             booking_id=r["booking_id"],
-            worker_id=r.get("worker_id"),
-            party=r["party"],
-            amount_paise=r["amount_paise"],
-            created_at=str(r.get("created_at")),
+            worker_id=r["worker_id"],
+             party=r["party"],
+             amount_paise=r["amount_paise"],
+             created_at=str(r["created_at"]),
         )
         conn.execute("UPDATE payment_ledger SET block_hash = ? WHERE id = ?", (current_hash, r["id"]))
 

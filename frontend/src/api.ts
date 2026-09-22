@@ -720,6 +720,15 @@ export const api = {
   },
   events: (after = 0) => get<LiveEvent[]>(`/events?after=${after}`),
   stats: () => get<PublicStats>("/stats"),
+  feedback: {
+    submit: (body: FeedbackCreate) => post<Feedback>("/feedback/", body),
+    list: (type?: string, resolved?: boolean) => {
+      const params = new URLSearchParams();
+      if (type) params.set("type", type);
+      if (resolved !== undefined) params.set("resolved", String(resolved));
+      return get<Feedback[]>(`/feedback/${params.toString() ? `?${params.toString()}` : ""}`);
+    },
+  },
   staffing: (trade: string, days = 7, area?: string) =>
     get<StaffingForecast>(`/forecast/staffing?trade=${encodeURIComponent(trade)}&days=${days}${area ? `&area=${encodeURIComponent(area)}` : ""}`),
   forecast: (trade?: string, days = 7) =>
@@ -756,6 +765,24 @@ export function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return "Something went wrong";
 }
+
+export type Feedback = {
+  id: number;
+  type: "bug" | "feature" | "general";
+  rating: number | null;
+  message: string;
+  user_name: string | null;
+  user_phone: string | null;
+  user_portal: "ghar" | "kaam" | "sabha" | null;
+  resolved: boolean;
+  created_at: string | null;
+};
+
+export type FeedbackCreate = {
+  type: "bug" | "feature" | "general";
+  rating: number | null;
+  message: string;
+};
 
 export const TRADES = ["plumbing", "electrical", "carpentry", "cleaning", "painting"] as const;
 

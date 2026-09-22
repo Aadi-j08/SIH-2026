@@ -11,6 +11,7 @@ import Announcements from "./pages/sabha/Announcements";
 import Customers from "./pages/sabha/Customers";
 import Demands from "./pages/sabha/Demands";
 import Disputes from "./pages/sabha/Disputes";
+import Feedback from "./pages/sabha/Feedback";
 import Fund from "./pages/sabha/Fund";
 import Overview from "./pages/sabha/Overview";
 import Payments from "./pages/sabha/Payments";
@@ -105,6 +106,7 @@ export default function App() {
           <Route path="/sabha/fund" element={<Fund />} />
           <Route path="/sabha/disputes" element={<Disputes />} />
           <Route path="/sabha/reports" element={<Reports />} />
+          <Route path="/sabha/feedback" element={<Feedback />} />
           <Route path="/sabha/announcements" element={<Announcements />} />
           <Route path="/sabha/profile" element={<Profile />} />
           <Route path="/sabha/settings" element={<Settings />} />

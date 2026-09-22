@@ -167,3 +167,21 @@ CREATE INDEX IF NOT EXISTS idx_assignments_booking  ON assignments (booking_id);
 CREATE INDEX IF NOT EXISTS idx_assignments_worker   ON assignments (worker_id);
 CREATE INDEX IF NOT EXISTS idx_declines_booking     ON declines (booking_id);
 CREATE INDEX IF NOT EXISTS idx_declines_worker      ON declines (worker_id);
+
+-- 13. User Feedback (for continuous improvement from real users)
+CREATE TABLE IF NOT EXISTS feedback (
+    id              SERIAL PRIMARY KEY,
+    type            VARCHAR(20) NOT NULL CHECK (type IN ('bug', 'feature', 'general')),
+    rating          INTEGER CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),
+    message         TEXT NOT NULL,
+    user_id         INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    user_name       VARCHAR(255),
+    user_phone      VARCHAR(20),
+    user_portal     VARCHAR(20) CHECK (user_portal IN ('ghar', 'kaam', 'sabha')),
+    resolved        INTEGER NOT NULL DEFAULT 0,
+    created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_type      ON feedback (type);
+CREATE INDEX IF NOT EXISTS idx_feedback_user      ON feedback (user_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_resolved  ON feedback (resolved);
