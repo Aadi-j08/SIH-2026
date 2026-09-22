@@ -187,6 +187,23 @@ CREATE INDEX IF NOT EXISTS idx_assignments_booking  ON assignments (booking_id);
 CREATE INDEX IF NOT EXISTS idx_assignments_worker   ON assignments (worker_id);
 CREATE INDEX IF NOT EXISTS idx_declines_booking     ON declines (booking_id);
 CREATE INDEX IF NOT EXISTS idx_declines_worker      ON declines (worker_id);
+
+CREATE TABLE IF NOT EXISTS feedback (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    type            TEXT    NOT NULL CHECK (type IN ('bug', 'feature', 'general')),
+    rating          INTEGER CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),
+    message         TEXT    NOT NULL,
+    user_id         INTEGER REFERENCES users(id),
+    user_name       TEXT,
+    user_phone      TEXT,
+    user_portal     TEXT CHECK (user_portal IN ('ghar', 'kaam', 'sabha')),
+    resolved        INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_type    ON feedback (type);
+CREATE INDEX IF NOT EXISTS idx_feedback_user    ON feedback (user_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_resolved ON feedback (resolved);
 """
 
 

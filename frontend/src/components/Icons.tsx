@@ -289,3 +289,18 @@ export const Camera = (p: IconProps) => (
     <circle cx="12" cy="13" r="3" />
   </svg>
 );
+
+export const MessageCircle = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12.7 3.3a9 9 0 0 1 8.76 7.3m-1.63 4.49A9 9 0 0 1 12 21a9 9 0 0 1-4.36-1.08" />
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l2 2" />
+  </Icon>
+);
+
+export const Send = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 3l7.7 7.7" />
+    <path d="M12 12L3 3l18-6l-6 18l-6-6z" />
+  </Icon>
+);

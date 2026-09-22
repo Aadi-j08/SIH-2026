@@ -3,8 +3,11 @@ services:
     name: sahakarsetu-api
     runtime: python
     plan: free
-    region: singapore
-    buildCommand: pip install -r requirements.txt
+    region: oregon
+    buildCommand: |
+      pip install -r requirements.txt
+      # Build the React frontend so the API can serve it at /app
+      cd frontend && npm install && npm run build
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
@@ -21,3 +24,7 @@ services:
         value: "1"
       - key: SAHAKARSETU_COOKIE_SAMESITE
         value: "none"
+      - key: SAHAKARSETU_ENV
+        value: "production"
+      - key: VITE_BASE_PATH
+        value: "/app/"

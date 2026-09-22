@@ -1,6 +1,7 @@
 import { type CSSProperties, type ReactElement } from "react";
 import { Link } from "react-router-dom";
 
+import FeedbackForm from "../components/FeedbackForm";
 import { type PortalId } from "../api";
 import { ArrowDown, ArrowRight, CalendarIcon, Check, Home, ListOrdered, LogIn, Star, Users, Wrench } from "../components/Icons";
 import { img, Photo, useImageExists } from "../components/Photo";
@@ -57,8 +58,9 @@ export default function Landing() {
     ? { backgroundImage: `linear-gradient(rgba(38, 29, 23, 0.86), rgba(38, 29, 23, 0.86)), url(${img("work-itself.jpg")})` }
     : undefined;
   return (
-    <div className="landing">
-      <div className="wrap">
+    <>
+      <div className="landing">
+        <div className="wrap">
         <header className="topbar">
           <div className="brand">
             <BrandMark />
@@ -167,9 +169,12 @@ export default function Landing() {
             </span>
           </div>
           <span>Household services, run by the neighbourhood’s own cooperative.</span>
-        </div>
-      </footer>
-    </div>
+          </div>
+        </footer>
+      </div>
+
+      <FeedbackForm />
+    </>
   );
 }
 
