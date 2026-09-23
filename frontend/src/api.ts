@@ -500,8 +500,16 @@ export function storageRemove(key: string): void {
   }
 }
 
-/** Public API origin when the SPA is hosted separately (Cloudflare Pages). Empty = same origin. */
-export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+/**
+ * Public API origin when the SPA is hosted separately (Cloudflare Pages). Empty = same origin.
+ * If the deploy-time env var is missing (Pages env not set / not rebuilt), production builds
+ * fall back to the known API host so auth never silently hits the static host instead.
+ * Dev keeps the empty base so the Vite proxy (vite.config.ts) handles API calls.
+ */
+const FALLBACK_API_BASE_URL = "https://sih-2026-1-n10c.onrender.com";
+export const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? FALLBACK_API_BASE_URL : "")
+).replace(/\/$/, "");
 
 const SESSION_TOKEN_KEY = "sahakarsetu_session_token";
 
@@ -546,7 +554,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     window.clearTimeout(timeout);
   }
   if (!response.ok) {
-    let detail: unknown = response.statusText;
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("text/html")) {
+      // The static host answered instead of the API (e.g. SPA fallback or a 405 from
+      // the CDN) — response.json() would fail with an empty/unhelpful message.
+      throw new ApiError(
+        response.status,
+        "The app could not reach the server. It may still be serving an old build — hard-refresh the page, or check the API base URL for this deployment.",
+      );
+    }
+    let detail: unknown = response.statusText || null;
     try {
       detail = (await response.json()).detail ?? detail;
     } catch {
@@ -554,6 +571,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     }
 
     throw new ApiError(response.status, detail);
+  }
+  const responseContentType = response.headers.get("content-type") ?? "";
+  if (!responseContentType.includes("json")) {
+    // Expected JSON (every API endpoint returns it) but got something else.
+    throw new ApiError(
+      response.status,
+      "The app could not reach the server. It may still be serving an old build — hard-refresh the page, or check the API base URL for this deployment.",
+    );
   }
   return (await response.json()) as T;
 }
@@ -753,16 +778,25 @@ export const api = {
 
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    if (typeof error.detail === "string") return error.detail;
+    if (typeof error.detail === "string" && error.detail.trim()) return error.detail;
     if (error.detail && typeof error.detail === "object" && "message" in error.detail) {
-      return String((error.detail as { message: unknown }).message);
+      const message = String((error.detail as { message: unknown }).message).trim();
+      if (message) return message;
     }
     if (Array.isArray(error.detail)) {
-      return error.detail.map((e: { msg?: string }) => e.msg ?? "invalid input").join("; ");
+      const joined = error.detail
+        .map((e: { msg?: string }) => e.msg ?? "invalid input")
+        .join("; ")
+        .trim();
+      if (joined) return joined;
     }
-    return error.message;
+    if (error.message.trim()) return error.message;
+    // Empty statusText (HTTP/2 with an empty body) must never render as a blank banner.
+    return error.status === 0
+      ? "Unable to reach the server. Check your connection and try again."
+      : "Something went wrong. Please try again.";
   }
-  if (error instanceof Error) return error.message;
+  if (error instanceof Error && error.message.trim()) return error.message;
   return "Something went wrong";
 }
 
