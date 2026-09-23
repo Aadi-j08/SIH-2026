@@ -64,9 +64,10 @@ def _database_path() -> str | None:
 def open_connection() -> sqlite3.Connection:
     """Open a fresh connection to the project's SQLite database.
 
-    The booking flow manages its own transactions, so it prefers opening its
-    own connection from the configured path and only falls back to the
-    project's connection function.
+    Uses the DB path configured in app/database.py; falls back to the
+    project's connection factory if no path is set. The booking flow
+    manages its own transactions (autocommit on, explicit BEGIN
+    IMMEDIATE), so it opens its own connection.
     """
     path = _database_path()
     conn: sqlite3.Connection | None = None
