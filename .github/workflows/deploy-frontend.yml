@@ -33,10 +33,12 @@ jobs:
 
       - name: Build Frontend Application
         run: npm run build
+        env:
+          VITE_API_BASE_URL: "https://sih-2026-1-n10c.onrender.com"
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          command: pages deploy ./dist --project-name=sahakarsetu-frontend
+          command: pages deploy ./dist --project-name=sahakarsetu-frontend --commit-dirty=true
