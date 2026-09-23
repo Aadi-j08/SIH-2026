@@ -98,7 +98,7 @@ app.include_router(events.router)
 app.add_middleware(events.PublishChanges)
 
 # Cross-origin SPA (Cloudflare Pages → this API). Comma-separated origins, e.g.
-# https://sahakarsetu.pages.dev,http://127.0.0.1:5173
+# https://sahakarsetu-frontend.pages.dev,http://127.0.0.1:5173
 _cors = [o.strip() for o in os.environ.get("SAHAKARSETU_CORS_ORIGINS", "").split(",") if o.strip()]
 if _cors:
     app.add_middleware(
