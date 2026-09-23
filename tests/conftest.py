@@ -16,6 +16,9 @@ _phones = itertools.count(9_100_000_000)
 
 @pytest.fixture
 def db_path(tmp_path, monkeypatch):
+    # Tests always run on a throwaway SQLite file, even if the developer's
+    # shell exports DATABASE_URL (see app/database.py use_postgres()).
+    monkeypatch.setattr(database, "DATABASE_URL", None)
     path = tmp_path / "sahakarsetu_test.db"
     monkeypatch.setattr(database, "DB_PATH", path)
     monkeypatch.setenv("SAHAKARSETU_DB", str(path))

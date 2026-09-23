@@ -17,6 +17,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = Path(os.environ.get("SAHAKARSETU_DB", BASE_DIR / "sahakarsetu.db"))
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
+# Postgres (Neon) when DATABASE_URL says so, SQLite otherwise. Read through the
+# module attribute at call time so tests can monkeypatch it off.
+def use_postgres() -> bool:
+    url = globals().get("DATABASE_URL") or ""
+    return url.startswith(("postgres://", "postgresql://"))
+
 log = logging.getLogger("sahakarsetu.database")
 
 BOOKING_STATUSES: tuple[str, ...] = ("pending", "assigned", "completed", "cancelled")

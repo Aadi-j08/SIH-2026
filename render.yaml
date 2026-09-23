@@ -17,7 +17,7 @@ services:
       - key: SAHAKARSETU_COUNCIL_CODE
         value: SABHA-2026
       - key: SAHAKARSETU_CORS_ORIGINS
-        sync: false
+        value: "https://sahakarsetu-frontend.pages.dev"
       - key: DATABASE_URL
         sync: false
       - key: GEMINI_API_KEY

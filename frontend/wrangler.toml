@@ -1,0 +1,9 @@
+name = "sahakarsetu-frontend"
+account_id = "128c051f5918b70c45c3ac53c04e3bf1"
+compatibility_date = "2026-09-20"
+
+[vars]
+VITE_API_BASE_URL = "https://sih-2026-1-n10c.onrender.com"
+
+[site]
+bucket = "frontend/dist"
