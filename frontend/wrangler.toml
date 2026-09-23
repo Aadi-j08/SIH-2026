@@ -6,4 +6,4 @@ compatibility_date = "2026-09-20"
 VITE_API_BASE_URL = "https://sih-2026-1-n10c.onrender.com"
 
 [site]
-bucket = "frontend/dist"
+bucket = "dist"
