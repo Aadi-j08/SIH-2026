@@ -99,7 +99,13 @@ app.add_middleware(events.PublishChanges)
 
 # Cross-origin SPA (Cloudflare Pages → this API). Comma-separated origins, e.g.
 # https://sahakarsetu-frontend.pages.dev,http://127.0.0.1:5173
-_cors = [o.strip() for o in os.environ.get("SAHAKARSETU_CORS_ORIGINS", "").split(",") if o.strip()]
+# Hard-coded fallback origins cover the known Pages deployment so the app keeps
+# working even if SAHAKARSETU_CORS_ORIGINS is not yet synced on the host.
+_KNOWN_PAGES_ORIGINS = ("https://sahakarsetu-frontend.pages.dev",)
+_cors = list(dict.fromkeys(
+    [o.strip() for o in os.environ.get("SAHAKARSETU_CORS_ORIGINS", "").split(",") if o.strip()]
+    + list(_KNOWN_PAGES_ORIGINS)
+))
 if _cors:
     app.add_middleware(
         CORSMiddleware,
