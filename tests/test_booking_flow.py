@@ -381,3 +381,54 @@ def test_cancel_booking(client):
 
     detail = client.get(f"/bookings/{booking_id}").json()
     assert detail["booking"]["status"] == "cancelled"
+
+
+# ── auto-assignment on booking creation ────────────────────────────────────
+
+def test_auto_assign_matches_worker_when_booking_is_placed(client, monkeypatch):
+    """A worker is automatically matched from the cooperative list the moment a customer books."""
+    worker_id = add_worker(client, "Asha", "plumbing", SITE[0], SITE[1], jobs_this_week=0, rating=4.8)
+    monkeypatch.setattr("app.main.AUTO_ASSIGN_ON_CREATE", True)
+
+    booking_id = add_booking(client)
+
+    assert query("SELECT status FROM bookings WHERE id = ?", (booking_id,))[0]["status"] == "assigned"
+    assignment = query("SELECT * FROM assignments WHERE booking_id = ?", (booking_id,))
+    assert len(assignment) == 1
+    assert assignment[0]["worker_id"] == worker_id
+    assert jobs_of(worker_id) == 1
+
+
+def test_auto_assign_works_for_asap_bookings_too(client, monkeypatch):
+    """ASAP (no scheduled_for) bookings are auto-assigned just like scheduled ones."""
+    worker_id = add_worker(client, "Asha", "plumbing", SITE[0], SITE[1], jobs_this_week=0, rating=4.8)
+    monkeypatch.setattr("app.main.AUTO_ASSIGN_ON_CREATE", True)
+
+    payload = booking_payload("plumbing", SITE[0], SITE[1])
+    del payload["scheduled_for"]
+    booking_id = client.post("/bookings", json=payload).json()["id"]
+
+    assert query("SELECT status FROM bookings WHERE id = ?", (booking_id,))[0]["status"] == "assigned"
+
+
+def test_auto_assign_leaves_booking_pending_when_no_workers(client, monkeypatch):
+    """With no eligible workers the booking stays pending instead of erroring."""
+    monkeypatch.setattr("app.main.AUTO_ASSIGN_ON_CREATE", True)
+
+    booking_id = add_booking(client)
+
+    assert query("SELECT status FROM bookings WHERE id = ?", (booking_id,))[0]["status"] == "pending"
+    assert query("SELECT * FROM assignments WHERE booking_id = ?", (booking_id,)) == []
+
+
+def test_auto_assign_spreads_work_fairly_across_workers(client, monkeypatch):
+    """Two back-to-back bookings go to different workers when fairness weights idle workers."""
+    add_worker(client, "Asha", "plumbing", SITE[0], SITE[1], jobs_this_week=0, rating=4.8)
+    add_worker(client, "Ravi", "plumbing", SITE[0], SITE[1], jobs_this_week=0, rating=4.5)
+    monkeypatch.setattr("app.main.AUTO_ASSIGN_ON_CREATE", True)
+
+    ids = [add_booking(client) for _ in range(2)]
+
+    worker_ids = {r["worker_id"] for r in query("SELECT worker_id FROM assignments WHERE booking_id IN (?, ?)",
+                                                 (ids[0], ids[1]))}
+    assert len(worker_ids) == 2

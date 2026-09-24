@@ -23,6 +23,9 @@ def db_path(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB_PATH", path)
     monkeypatch.setenv("SAHAKARSETU_DB", str(path))
     monkeypatch.setenv("SAHAKARSETU_COUNCIL_CODE", COUNCIL_CODE)
+    # Auto-assign is on by default in production; tests drive the manual /assign
+    # flow themselves unless a test opts back in (see test_auto_assign_*).
+    monkeypatch.setattr("app.main.AUTO_ASSIGN_ON_CREATE", False)
     database.init_db()
     return path
 
