@@ -45,9 +45,7 @@ from app.schemas import (
     Worker,
     WorkerCreate,
 )
-from app.services import allocation, forecast, staffing, voice
-import os
-import threading
+from app.booking_flow_db import booking_flow_connection
 from app.services import allocation, booking_flow, forecast, staffing, voice
 from app.services.demand_forecast import forecaster
 from app.services.dispute_advisor import analyze_payment_discrepancy
@@ -238,24 +236,51 @@ def parse_voice(body: VoiceAvailabilityRequest) -> VoiceAvailabilityResult:
     return voice.parse_availability(body.transcript, body.reference_date)
 
 
-def _auto_assign_asap(booking_id: int) -> None:
+# Auto-assign a worker from the cooperative's list the instant a customer
+# places a booking — fully automated, no council action needed. Tests disable
+# this (see conftest) so they can exercise the manual /assign flow directly.
+AUTO_ASSIGN_ON_CREATE = True
+
+
+def _auto_assign_booking(booking_id: int) -> bool:
+    """Match a newly created booking to a worker automatically — no manual step.
+
+    The fair allocation engine picks the best available worker from the
+    cooperative's worker list and moves the booking to 'assigned' right away.
+    If no eligible worker is available the booking simply stays 'pending' so the
+    council's /allocation/auto batch can take it up later. Returns True when a
+    worker was assigned, False when the booking was left pending.
+    """
     try:
-        with database.connection() as conn:
-            booking_flow.assign_booking(conn, booking_id)
-        events.bus.publish("bookings", "assigned", booking_id=booking_id)
-        log.info("booking %s automatically matched for ASAP", booking_id)
-    except Exception as e:
-        log.info("auto-assign for ASAP booking %s deferred: %s", booking_id, e)
+        with booking_flow_connection() as conn:
+            result = booking_flow.assign_booking(conn, booking_id)
+        events.bus.publish("bookings", "assigned", booking_id=booking_id, worker_id=result["worker"]["id"])
+        log.info("booking %s automatically assigned to worker %s", booking_id, result["worker"]["id"])
+        return True
+    except booking_flow.NoEligibleWorker:
+        log.info("auto-assign for booking %s deferred: no eligible worker", booking_id)
+        return False
+    except booking_flow.InvalidBookingState:
+        log.info("auto-assign for booking %s skipped: not in a pending state", booking_id)
+        return False
+    except Exception:
+        log.exception("auto-assign for booking %s failed", booking_id)
+        return False
 
 
 @app.post("/bookings", response_model=Booking, status_code=201, tags=["bookings"])
 def create_booking(body: BookingCreate, user: User = Depends(require_customer)) -> Booking:
-    """Place a booking. It belongs to the signed-in customer (or to the council member placing it on a household's behalf)."""
+    """Place a booking. It belongs to the signed-in customer (or to the council member placing it on a household's behalf).
+
+    A worker is automatically matched from the cooperative's worker list the
+    instant the booking is placed — no manual selection or council approval
+    required. If no eligible worker is available the booking stays pending.
+    """
     booking = repository.create_booking(body)
     ownership.attach_customer(booking.id, user)
     log.info("booking %s (%s) placed by %s #%s", booking.id, booking.trade, user.access_role, user.id)
-    if body.scheduled_for is None and not os.environ.get("PYTEST_CURRENT_TEST"):
-        threading.Timer(2.0, _auto_assign_asap, args=[booking.id]).start()
+    if AUTO_ASSIGN_ON_CREATE:
+        _auto_assign_booking(booking.id)
     return repository.get_booking(booking.id) or booking
 
 
@@ -282,11 +307,8 @@ class PublicStats(BaseModel):
 
 @app.get("/stats", response_model=PublicStats, tags=["health"])
 def public_stats() -> PublicStats:
-    from app.booking_flow_db import booking_flow_connection
-    from app.services.booking_flow import admin_dashboard
-
     with booking_flow_connection() as conn:
-        dashboard = admin_dashboard(conn)
+        dashboard = booking_flow.admin_dashboard(conn)
     return PublicStats(
         workers=len(dashboard["workers"]),
         bookings_completed=dashboard["bookings"]["completed"],
