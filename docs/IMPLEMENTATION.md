@@ -29,6 +29,13 @@ test suite + `tsc` pass.
 - [x] **Phase J — Bhashini / voice** (offline-first STT/TTS facade in
   `app/services/bhashini_client.py`; PWA uses Web Speech API + Bhashini
   fallback when `BHASHINI_*` env vars are set).
+- [x] **Phase K — Worker onboarding verification** (`2c7ea14`–`9ddcc27`)
+  Kaam self-signups are created `status='pending'` and **cannot receive jobs**
+  until council approves; `/auth/me` exposes `worker_status`;
+  `GET /admin/workers/pending` + `POST /workers/{id}/approve`
+  (active/rejected) with an **Aadhaar document gate** (409 until a doc of
+  type `aadhaar` is on file); frontend `VerificationPending` gate on the Kaam
+  portal + council approve/✗ in the Verification checklist.
 
 ## Phases marked done
 
@@ -37,5 +44,5 @@ test suite + `tsc` pass.
 
 ## Validation
 
-- Backend: `python3 -m pytest -q` → **246 passed**.
+- Backend: `python3 -m pytest -q` → **247 passed** (incl. onboarding Aadhaar gate).
 - Frontend: `npx tsc -b --noEmit` → **0 errors**.

@@ -277,7 +277,7 @@ class PortfolioItemCreate(PortfolioItemBase):
     pass
 
 
-DocumentType = Literal["id_proof", "insurance", "vehicle", "other"]
+DocumentType = Literal["id_proof", "insurance", "vehicle", "aadhaar", "other"]
 
 
 class WorkerDocumentBase(BaseModel):

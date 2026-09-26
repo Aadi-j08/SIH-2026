@@ -76,6 +76,10 @@ export function RequireAuth({ portal, children }: { portal: PortalId; children: 
   if (!user || user.portal !== portal) {
     return <Navigate to={PORTALS[portal].login} replace state={{ from: location.pathname, wrongPortal: user?.portal ?? null }} />;
   }
+  // Kaam (worker) onboarding gate: pending workers see a verification screen.
+  if (portal === "kaam" && user.worker_status === "pending") {
+    return <Navigate to="/kaam/verification" replace state={{ from: location.pathname }} />;
+  }
   return <>{children}</>;
 }
 
