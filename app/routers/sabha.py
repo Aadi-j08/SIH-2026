@@ -13,19 +13,24 @@ Sabha — the cooperative's own endpoints.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app import disputes as disputes_mod
+from app import repository
 from app.auth import User, require_council, require_user
 from app.booking_flow_db import booking_flow_connection
+from app.database import connection
+from app.schemas import Worker
 from app.cooperative import Cooperative, CooperativeUpdate, get_cooperative, update_cooperative
 from app.database import connection
+from app.schemas import Worker
 from app.services import booking_flow
 from app.services.allocation_bridge import AllocationBridgeError
 from app.services.overview import Overview, overview, FederationRollup, federation_rollup
+from app.repository import set_worker_status
 from app.trades import canonical_trade
 
 log = logging.getLogger("sahakarsetu.sabha")
@@ -57,6 +62,26 @@ def admin_overview(_: User = Depends(require_council)) -> Overview:
 def federation_overview(_: User = Depends(require_council)) -> FederationRollup:
     """Phase F: cross-cooperative roll-up — members, active workers, bookings, payouts, welfare funds, disputes."""
     return federation_rollup()
+
+
+class WorkerApproval(BaseModel):
+    status: Literal["active", "rejected"]
+
+
+@router.get("/admin/workers/pending", response_model=list[Worker])
+def pending_workers(_: User = Depends(require_council)) -> list[Worker]:
+    """Workers who have self-signed-up (status='pending') and are awaiting council verification."""
+    return repository.list_pending_workers()
+
+
+@router.post("/workers/{worker_id}/approve", response_model=Worker)
+def approve_worker(worker_id: int, body: WorkerApproval, user: User = Depends(require_council)) -> Worker:
+    """Council verification: activate a pending worker, or reject them."""
+    _resolve_worker(user, worker_id)
+    updated = set_worker_status(worker_id, body.status)
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")
+    return updated
 
 
 class CustomerRow(BaseModel):

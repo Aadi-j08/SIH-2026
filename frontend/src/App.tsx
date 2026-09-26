@@ -25,6 +25,7 @@ import SignUp from "./pages/SignUp";
 import Worker from "./pages/Worker";
 import WorkerJobs from "./pages/WorkerJobs";
 import WorkerProfile from "./pages/kaam/Profile";
+import VerificationPending from "./pages/kaam/VerificationPending";
 import WorkerWeek from "./pages/WorkerWeek";
 
 /** Every private Sabha page: signed-in council member, inside the Sabha frame. */
@@ -64,6 +65,16 @@ export default function App() {
         <Route path="/kaam" element={<PortalLanding portal="kaam" />} />
         <Route path="/kaam/login" element={<SignIn portal="kaam" />} />
         <Route path="/kaam/signup" element={<SignUp portal="kaam" />} />
+        <Route
+          path="/kaam/verification"
+          element={
+            <RequireAuth portal="kaam">
+              <PortalShell portal="kaam">
+                <VerificationPending />
+              </PortalShell>
+            </RequireAuth>
+          }
+        />
         <Route
           path="/kaam/home"
           element={
