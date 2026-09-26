@@ -622,6 +622,7 @@ export type User = {
   languages: string[];
   is_council: boolean;
   created_at: string | null;
+  worker_status: "pending" | "active" | null;
 };
 
 export type SignupBody = {
@@ -800,6 +801,8 @@ export const api = {
   },
   workers: {
     list: (trade?: string) => get<Worker[]>(`/workers${trade ? `?trade=${encodeURIComponent(trade)}` : ""}`),
+    pending: () => get<Worker[]>("/admin/workers/pending"),
+    approve: (id: number, status: "active" | "rejected") => post<Worker>(`/workers/${id}/approve`, { status }),
     get: (id: number) => get<Worker>(`/workers/${id}`),
     create: (body: Omit<Worker, "id" | "jobs_this_week" | "created_at" | "availability" | "phone" | "rating"> & Partial<Worker>) =>
       post<Worker>("/workers", body),

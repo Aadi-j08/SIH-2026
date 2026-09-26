@@ -86,9 +86,18 @@ def worker_profiles(trade: str | None = None) -> list[WorkerProfile]:
 
 def set_worker_status(worker_id: int, status: str) -> Worker | None:
     with connection() as conn:
-        conn.execute("UPDATE workers SET status = ? WHERE id = ?", (status, worker_id))
+        cur = conn.execute("UPDATE workers SET status = ? WHERE id = ?", (status, worker_id))
+        if cur.rowcount == 0:
+            return None
         row = conn.execute("SELECT * FROM workers WHERE id = ?", (worker_id,)).fetchone()
-    return _worker(row) if row else None
+        return _worker(row) if row else None
+
+
+def list_pending_workers() -> list[Worker]:
+    """Workers whose self-sign-up is awaiting council verification (status='pending')."""
+    with connection() as conn:
+        rows = conn.execute("SELECT * FROM workers WHERE status = 'pending' ORDER BY id")
+        return [_worker(row) for row in rows]
 
 
 def set_worker_availability(

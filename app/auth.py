@@ -91,6 +91,9 @@ class User(BaseModel):
     languages: list[str] = Field(default_factory=list)
     created_at: str | None = None
     cooperative_id: int = 1
+    worker_status: str | None = None
+    """Kaam workers: 'pending' until council approves, then 'active'.
+    None for non-worker accounts."""
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -186,6 +189,15 @@ def _user(row: sqlite3.Row) -> User:
     data = dict(row)
     data.pop("password_hash", None)
     data["languages"] = json.loads(data.get("languages") or "[]")
+    worker_status = None
+    wid = data.get("worker_id")
+    if wid:
+        from app.database import connection
+        with connection() as conn:
+            st = conn.execute("SELECT status FROM workers WHERE id = ?", (wid,)).fetchone()
+            if st:
+                worker_status = st[0]
+    data["worker_status"] = worker_status
     return User.model_validate(data)
 
 
