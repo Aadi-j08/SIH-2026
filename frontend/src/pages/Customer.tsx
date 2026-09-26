@@ -16,10 +16,9 @@ import {
 } from "../api";
 import { useAuth } from "../lib/auth";
 import { useLive } from "../lib/live";
-import { ArrowRight, Check, Clock, Locate, Pin, Star, TRADE_ICONS } from "../components/Icons";
+import { ArrowRight, Check, Locate, Pin, Star, TRADE_ICONS } from "../components/Icons";
 import { RateHint, SettlementCard } from "../components/Settlement";
 import { AsapFindingWorker } from "../components/AsapFindingWorker";
-import AssistantPanel from "../components/AssistantPanel";
 import { AIVoiceSearchBar } from "../components/AIVoiceSearchBar";
 import { LiveBookingTracker } from "../components/LiveBookingTracker";
 import { DiscrepancyModal } from "../components/DiscrepancyModal";
@@ -47,14 +46,7 @@ export default function Customer() {
 
 // ── booking form ─────────────────────────────────────────────────────
 
-type When = "asap" | "tomorrow" | "custom";
-
-function tomorrowAt(hour: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  date.setHours(hour, 0, 0, 0);
-  return toLocalIso(date);
-}
+type When = "asap" | "custom";
 
 function toLocalIso(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -68,8 +60,8 @@ function BookingForm() {
   const [address, setAddress] = useState("");
   const [location, setLocation] = useState({ ...DEFAULT_LOCATION, fromGps: false });
   const [locating, setLocating] = useState(false);
-  const [when, setWhen] = useState<When>("tomorrow");
-  const [custom, setCustom] = useState(tomorrowAt(10));
+  const [when, setWhen] = useState<When>("asap");
+  const [custom, setCustom] = useState(() => toLocalIso(new Date()));
   const [name, setName] = useState(user?.name ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -107,7 +99,7 @@ function BookingForm() {
         latitude: location.latitude,
         longitude: location.longitude,
         address: address.trim() || null,
-        scheduled_for: when === "asap" ? null : when === "tomorrow" ? tomorrowAt(10) : custom,
+        scheduled_for: when === "asap" ? null : custom,
       });
       storageSet(LAST_BOOKING_KEY, String(booking.id));
       navigate(`/ghar/home/${booking.id}`);
@@ -145,8 +137,6 @@ function BookingForm() {
           setTrade(map[t] || t);
         }}
       />
-
-      <AssistantPanel role="customer" latitude={location.latitude} longitude={location.longitude} onBooking={(id) => navigate(`/ghar/home/${id}`)} />
 
       <form className="stack" onSubmit={submit}>
 
@@ -186,10 +176,6 @@ function BookingForm() {
         <div className="chips" role="radiogroup" aria-label="When">
           <button type="button" className={`chip${when === "asap" ? " on" : ""}`} onClick={() => setWhen("asap")}>
             As soon as possible
-          </button>
-          <button type="button" className={`chip${when === "tomorrow" ? " on" : ""}`} onClick={() => setWhen("tomorrow")}>
-            <Clock size={16} />
-            Tomorrow, 10:00
           </button>
           <button type="button" className={`chip${when === "custom" ? " on" : ""}`} onClick={() => setWhen("custom")}>
             Pick a time

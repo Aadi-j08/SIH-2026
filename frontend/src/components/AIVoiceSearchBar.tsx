@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../api";
 
 interface AIVoiceSearchBarProps {
@@ -8,11 +8,23 @@ interface AIVoiceSearchBarProps {
 
 export function AIVoiceSearchBar({ onSelectTrade, onSelectUrgency }: AIVoiceSearchBarProps) {
   const [query, setQuery] = useState("");
+  const [transcript, setTranscript] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [loading, setLoading] = useState(false);
   const [aiResult, setAiResult] = useState<any>(null);
+  const recognitionRef = useRef<any>(null);
 
   const handleSpeech = () => {
+    if (isListening && recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
+      setIsListening(false);
+      return;
+    }
+
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert("Voice recognition is not supported in this browser. Please type your query.");
@@ -21,16 +33,55 @@ export function AIVoiceSearchBar({ onSelectTrade, onSelectUrgency }: AIVoiceSear
 
     const recognition = new SpeechRecognition();
     recognition.lang = "hi-IN"; // Hindi / Indian English
-    recognition.interimResults = false;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    recognition.continuous = false;
+    recognitionRef.current = recognition;
 
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = () => setIsListening(false);
+    recognition.onstart = () => {
+      setIsListening(true);
+      setTranscript("");
+      setAiResult(null);
+    };
+    recognition.onerror = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
+
+    let latestCaptured = "";
+    let parsed = false;
 
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setQuery(transcript);
-      handleAIParse(transcript);
+      let interim = "";
+      let final = "";
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const item = event.results[i];
+        const text = item[0]?.transcript || "";
+        if (item.isFinal) {
+          final += text;
+        } else {
+          interim += text;
+        }
+      }
+      const captured = (final || interim || (event.results[0] && event.results[0][0]?.transcript) || "").trim();
+      if (captured) {
+        latestCaptured = captured;
+        setTranscript(captured);
+        setQuery(captured);
+      }
+      if (final.trim() && !parsed) {
+        parsed = true;
+        handleAIParse(final.trim());
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+      if (!parsed && latestCaptured.trim()) {
+        parsed = true;
+        handleAIParse(latestCaptured.trim());
+      }
     };
 
     recognition.start();
@@ -137,6 +188,80 @@ export function AIVoiceSearchBar({ onSelectTrade, onSelectUrgency }: AIVoiceSear
           {loading ? "Analyzing..." : "🔍 Find"}
         </button>
       </div>
+
+      {/* Real Live / Final STT Transcript */}
+      {transcript ? (
+        <div style={{
+          marginTop: "12px",
+          padding: "10px 14px",
+          background: "#fff",
+          borderRadius: "10px",
+          border: "1px solid #dcd6ce",
+          fontSize: "0.9rem",
+          display: "flex",
+          alignItems: "center",
+          gap: "10px"
+        }}>
+          <span style={{ fontSize: "1.1rem" }}>💬</span>
+          <div style={{ flex: 1 }}>
+            <span style={{
+              fontSize: "0.75rem",
+              textTransform: "uppercase",
+              fontWeight: 700,
+              color: isListening ? "#dc2626" : "#777",
+              letterSpacing: "0.04em",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              marginBottom: "2px"
+            }}>
+              {isListening ? (
+                <>
+                  <span style={{
+                    display: "inline-block",
+                    width: "8px",
+                    height: "8px",
+                    borderRadius: "50%",
+                    background: "#dc2626"
+                  }} />
+                  Live Transcript
+                </>
+              ) : (
+                "Transcribed Speech"
+              )}
+            </span>
+            <span style={{ fontWeight: 600, color: "#1f2937" }}>“{transcript}”</span>
+          </div>
+          {isListening && (
+            <span style={{
+              fontSize: "0.72rem",
+              color: "#dc2626",
+              fontWeight: 700,
+              padding: "2px 8px",
+              background: "rgba(220, 38, 38, 0.1)",
+              borderRadius: "6px"
+            }}>
+              LIVE
+            </span>
+          )}
+        </div>
+      ) : isListening ? (
+        <div style={{
+          marginTop: "12px",
+          padding: "10px 14px",
+          background: "rgba(220, 38, 38, 0.05)",
+          borderRadius: "10px",
+          border: "1px dashed rgba(220, 38, 38, 0.35)",
+          fontSize: "0.86rem",
+          color: "#b91c1c",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px"
+        }}>
+          <span>🎙️</span>
+          <span>Listening… Speak clearly into your microphone</span>
+        </div>
+      ) : null}
 
       {aiResult && (
         <div style={{
