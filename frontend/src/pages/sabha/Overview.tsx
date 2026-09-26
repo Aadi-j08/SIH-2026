@@ -7,7 +7,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { api, errorMessage, formatRupees, titleCase, type AttentionItem, type MatchingGroup, type Overview as OverviewT, type TradeRow } from "../../api";
-import { AlertCircle, ArrowRight, Check, Sparkle, Star, TrendingUp } from "../../components/Icons";
+import { AlertCircle, Check, Sparkle, Star } from "../../components/Icons";
 import { FundPie } from "../../components/sabha/FundPie";
 import { SabhaLoop } from "../../components/sabha/SabhaLoop";
 import AssistantPanel from "../../components/AssistantPanel";
@@ -64,10 +64,9 @@ export default function Overview() {
         <WorkerNetwork o={o} />
         <FundAllocation o={o} />
       </div>
-      <div className="sabha-grid three">
+      <div className="sabha-grid">
         <Performance o={o} />
         <ResolutionCentre o={o} />
-        <ForecastCard o={o} />
       </div>
       <SabhaLoop />
     </div>
@@ -400,32 +399,6 @@ function ResolutionCentre({ o }: { o: OverviewT }) {
         </div>
       )}
       <Link to="/sabha/disputes" className="small" style={{ fontWeight: 700 }}>All disputes →</Link>
-    </section>
-  );
-}
-
-function ForecastCard({ o }: { o: OverviewT }) {
-  const f = o.forecast_insight;
-  return (
-    <section className="panel" aria-labelledby="fc-h">
-      <div className="row between" style={{ alignItems: "flex-start" }}>
-        <div className="stack" style={{ gap: 2 }}>
-          <h2 id="fc-h">Demand forecast</h2>
-          <div className="small muted">Next 7 days{f.trade ? ` · busiest: ${f.trade}` : ""}</div>
-        </div>
-        <Link to="/sabha/reports" className="small" style={{ fontWeight: 700 }}>Reports →</Link>
-      </div>
-      <div className="grid-2">
-        <div className="stat"><div className="value">{f.expected_bookings.toFixed(0)}</div><div className="caption">expected on peak day{f.peak_weekday ? ` (${f.peak_weekday.slice(0, 3)})` : ""}</div></div>
-        <div className="stat"><div className="value">{f.workers_needed}<small> / {f.available_workers}</small></div><div className="caption">workers needed / available</div></div>
-      </div>
-      <div className="insight">
-        <TrendingUp size={18} style={{ color: "var(--indigo-d)", flexShrink: 0 }} />
-        <span>{f.text}</span>
-      </div>
-      <Link to="/sabha/reports" className="row small" style={{ gap: 6, fontWeight: 700 }}>
-        See the 7-day chart <ArrowRight size={14} />
-      </Link>
     </section>
   );
 }
