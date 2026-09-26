@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS workers (
     rating          REAL    CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),  -- NULL until first rating
     availability    TEXT    NOT NULL DEFAULT '[]', -- JSON list of AvailabilityWindow
     status          TEXT    NOT NULL DEFAULT 'active' CHECK (status IN ('pending', 'active')),  -- pending = awaiting council approval
+    cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id), -- which member cooperative owns this worker
     created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -58,6 +59,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     urgency_level   TEXT    NOT NULL DEFAULT 'medium'
                     CHECK (urgency_level IN ('low', 'medium', 'high', 'urgent')),
     customer_user_id INTEGER REFERENCES users(id), -- the Ghar account that placed it (NULL for legacy rows)
+    cooperative_id   INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id), -- member cooperative that owns this booking
     created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -70,6 +72,7 @@ CREATE TABLE IF NOT EXISTS assignments (
     started_at      TEXT,                          -- when work was started (after selfie)
     start_selfie_url TEXT,                         -- proof-of-work arrival selfie
     end_photo_url   TEXT,                          -- proof-of-work completion photo
+    cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id), -- member cooperative that owns this assignment
     created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -81,6 +84,7 @@ CREATE TABLE IF NOT EXISTS declines (
     worker_id       INTEGER NOT NULL REFERENCES workers(id),
     reason          TEXT    NOT NULL CHECK (reason IN ('unwell', 'too_far', 'already_booked', 'not_my_job', 'other')),
     note            TEXT,
+    cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id), -- member cooperative that owns this decline
     created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -96,6 +100,7 @@ CREATE TABLE IF NOT EXISTS users (
     role            TEXT,                          -- sabha: secretary, member, ...
     worker_id       INTEGER REFERENCES workers(id),-- kaam: the worker record this account drives
     languages       TEXT    NOT NULL DEFAULT '[]', -- JSON list, e.g. ["hi", "en"]
+    cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id), -- member cooperative this account belongs to
     created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (portal, phone)
 );
@@ -103,14 +108,19 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS sessions (
     token_hash      TEXT    PRIMARY KEY,
     user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id), -- cooperative the session was issued under
     created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at      TEXT    NOT NULL
 );
 
--- The cooperative itself: one row, edited from the Sabha profile page.
-CREATE TABLE IF NOT EXISTS cooperative (
-    id                INTEGER PRIMARY KEY CHECK (id = 1),
+-- The federation: one row per member cooperative. The default row (id = 1)
+-- is the original cooperative and is backfilled/seeded on first use so that
+-- single-cooperative deployments keep working unchanged (see app/tenancy.py).
+CREATE TABLE IF NOT EXISTS cooperative_federations (
+    id                INTEGER PRIMARY KEY,
     name              TEXT    NOT NULL,
+    code              TEXT    NOT NULL UNIQUE,           -- short identifier, e.g. "SABHA-2026"
+    region            TEXT,
     short_name        TEXT    NOT NULL,
     registration_id   TEXT,
     established       INTEGER,
@@ -121,9 +131,10 @@ CREATE TABLE IF NOT EXISTS cooperative (
     payments_verified INTEGER NOT NULL DEFAULT 0,
     secretary         TEXT,
     coordinator       TEXT,
-    last_meeting      TEXT,                            -- ISO date
+    last_meeting      TEXT,                              -- ISO date
     weekly_job_limit  INTEGER NOT NULL DEFAULT 6 CHECK (weekly_job_limit > 0),
-    fund_allocation   TEXT    NOT NULL DEFAULT '{}',   -- JSON {category: percent}, sums to 100
+    fund_allocation   TEXT    NOT NULL DEFAULT '{}',    -- JSON {category: percent}, sums to 100
+    created_at        TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at        TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -138,6 +149,7 @@ CREATE TABLE IF NOT EXISTS disputes (
     description       TEXT,
     status            TEXT    NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
     resolution        TEXT,
+    cooperative_id     INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id), -- member cooperative this dispute belongs to
     created_at        TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     resolved_at       TEXT
 );
@@ -145,13 +157,15 @@ CREATE TABLE IF NOT EXISTS disputes (
 -- Community rate card: the standard price of an hour of each trade, fixed by the general body.
 -- A settlement quotes from it; the agreed amount may sit within a fair band around it.
 CREATE TABLE IF NOT EXISTS standard_rates (
-    trade              TEXT    PRIMARY KEY,
+    trade              TEXT    NOT NULL,
+    cooperative_id     INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id), -- member cooperative that owns this rate card row
     visit_charge_paise INTEGER NOT NULL CHECK (visit_charge_paise >= 0),
     hourly_rate_paise  INTEGER NOT NULL CHECK (hourly_rate_paise > 0),
     min_hours          REAL    NOT NULL DEFAULT 1 CHECK (min_hours > 0),
     band_percent       INTEGER NOT NULL DEFAULT 25 CHECK (band_percent BETWEEN 0 AND 100),
     note               TEXT,
-    updated_at         TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at         TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (trade, cooperative_id)
 );
 
 -- Settlement: the price of a finished job, agreed by the worker and the customer.
@@ -176,7 +190,8 @@ CREATE TABLE IF NOT EXISTS settlements (
     dispute_id        INTEGER REFERENCES disputes(id),
     created_at        TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     responded_at      TEXT,
-    agreed_at         TEXT
+    agreed_at         TEXT,
+    cooperative_id     INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id) -- member cooperative this settlement belongs to
 );
 
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -192,7 +207,7 @@ CREATE INDEX IF NOT EXISTS idx_bookings_trade       ON bookings (trade);
 CREATE INDEX IF NOT EXISTS idx_assignments_booking  ON assignments (booking_id);
 CREATE INDEX IF NOT EXISTS idx_assignments_worker   ON assignments (worker_id);
 CREATE INDEX IF NOT EXISTS idx_declines_booking     ON declines (booking_id);
-CREATE INDEX IF NOT EXISTS idx_declines_worker      ON declines (worker_id);
+CREATE INDEX IF NOT EXISTS idx_declines_worker     ON declines (worker_id);
 
 CREATE TABLE IF NOT EXISTS feedback (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -203,6 +218,7 @@ CREATE TABLE IF NOT EXISTS feedback (
     user_name       TEXT,
     user_phone      TEXT,
     user_portal     TEXT CHECK (user_portal IN ('ghar', 'kaam', 'sabha')),
+    cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id), -- member cooperative this feedback belongs to
     resolved        INTEGER NOT NULL DEFAULT 0,
     created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -210,6 +226,128 @@ CREATE TABLE IF NOT EXISTS feedback (
 CREATE INDEX IF NOT EXISTS idx_feedback_type    ON feedback (type);
 CREATE INDEX IF NOT EXISTS idx_feedback_user    ON feedback (user_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_resolved ON feedback (resolved);
+
+-- ── Phase B: provider profile (skills, certificates, portfolio, documents) ──
+CREATE TABLE IF NOT EXISTS worker_skills (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    worker_id       INTEGER NOT NULL REFERENCES workers(id),
+    skill           TEXT    NOT NULL,
+    level           TEXT    NOT NULL DEFAULT 'intermediate'
+                    CHECK (level IN ('beginner', 'intermediate', 'expert')),
+    verified        INTEGER NOT NULL DEFAULT 0,
+    verified_by     INTEGER REFERENCES users(id),         -- council user who approved
+    verified_at     TEXT,
+    cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+    created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (worker_id, skill)
+);
+
+CREATE TABLE IF NOT EXISTS certifications (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    worker_id       INTEGER NOT NULL REFERENCES workers(id),
+    name            TEXT    NOT NULL,
+    issuing_org     TEXT,
+    issue_date      TEXT,                                 -- ISO date
+    expiry_date     TEXT,                                 -- ISO date, NULL = no expiry
+    document        TEXT,                                 -- file path / URL of the certificate (stored off-FS)
+    verified        INTEGER NOT NULL DEFAULT 0,
+    verified_by     INTEGER REFERENCES users(id),
+    verified_at     TEXT,
+    cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+    created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (worker_id, name, issuing_org, issue_date)
+);
+
+CREATE TABLE IF NOT EXISTS portfolio_items (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    worker_id       INTEGER NOT NULL REFERENCES workers(id),
+    image_url       TEXT    NOT NULL,                    -- off-FS storage reference
+    caption         TEXT,
+    category        TEXT,                                 -- e.g. 'before','after','work_in_progress'
+    verified        INTEGER NOT NULL DEFAULT 0,
+    verified_by     INTEGER REFERENCES users(id),
+    verified_at     TEXT,
+    cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+    created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS worker_documents (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    worker_id       INTEGER NOT NULL REFERENCES workers(id),
+    document_type   TEXT    NOT NULL,                     -- e.g. 'id_proof','insurance','vehicle','other'
+    file_url        TEXT    NOT NULL,                    -- off-FS storage reference
+    uploaded_at     TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+    UNIQUE (worker_id, document_type, file_url)
+);
+
+CREATE INDEX IF NOT EXISTS idx_worker_skills_worker    ON worker_skills (worker_id);
+CREATE INDEX IF NOT EXISTS idx_worker_skills_coop      ON worker_skills (cooperative_id);
+CREATE INDEX IF NOT EXISTS idx_certifications_worker   ON certifications (worker_id);
+CREATE INDEX IF NOT EXISTS idx_certifications_coop     ON certifications (cooperative_id);
+CREATE INDEX IF NOT EXISTS idx_certifications_verified ON certifications (verified);
+CREATE INDEX IF NOT EXISTS idx_portfolio_worker        ON portfolio_items (worker_id);
+CREATE INDEX IF NOT EXISTS idx_portfolio_coop          ON portfolio_items (cooperative_id);
+CREATE INDEX IF NOT EXISTS idx_worker_documents_worker  ON worker_documents (worker_id);
+CREATE INDEX IF NOT EXISTS idx_worker_documents_coop    ON worker_documents (cooperative_id);
+
+-- ── Phase E: welfare benefits, insurance policies and grievances ─────────
+CREATE TABLE IF NOT EXISTS benefits (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    worker_id       INTEGER NOT NULL REFERENCES workers(id),
+    kind            TEXT    NOT NULL CHECK (kind IN ('pension', 'medical', 'disability', 'other')),
+    name            TEXT    NOT NULL,
+    description     TEXT,
+    eligible        INTEGER NOT NULL DEFAULT 0,          -- whether the worker currently qualifies
+    claimed         INTEGER NOT NULL DEFAULT 0,
+    amount_rupees   REAL    CHECK (amount_rupees IS NULL OR amount_rupees >= 0),
+    start_date      TEXT,
+    end_date        TEXT,
+    document        TEXT,                                 -- off-FS proof/reference
+    cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+    created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS insurance_policies (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT    NOT NULL,
+    kind            TEXT    NOT NULL CHECK (kind IN ('health', 'accident', 'life', 'liability', 'other')),
+    insurer         TEXT,
+    policy_number   TEXT,
+    premium_rupees  REAL    NOT NULL CHECK (premium_rupees >= 0),
+    premium_paid    INTEGER NOT NULL DEFAULT 0,
+    coverage_paise  INTEGER NOT NULL CHECK (coverage_paise >= 0),
+    start_date      TEXT,
+    end_date        TEXT,
+    active          INTEGER NOT NULL DEFAULT 1,
+    cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+    created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS grievances (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    worker_id       INTEGER REFERENCES workers(id),
+    raised_by_user_id INTEGER REFERENCES users(id),
+    kind            TEXT    NOT NULL CHECK (kind IN ('wage', 'safety', 'equipment', 'assignment', 'other')),
+    title           TEXT    NOT NULL,
+    description     TEXT    NOT NULL,
+    status          TEXT    NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'triaged', 'in_progress', 'resolved', 'rejected')),
+    resolution      TEXT,
+    priority        TEXT    NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high')),
+    cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+    created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_benefits_worker     ON benefits (worker_id);
+CREATE INDEX IF NOT EXISTS idx_benefits_coop       ON benefits (cooperative_id);
+CREATE INDEX IF NOT EXISTS idx_insurance_coop      ON insurance_policies (cooperative_id);
+CREATE INDEX IF NOT EXISTS idx_insurance_active    ON insurance_policies (active);
+CREATE INDEX IF NOT EXISTS idx_grievances_worker   ON grievances (worker_id);
+CREATE INDEX IF NOT EXISTS idx_grievances_status   ON grievances (status);
+CREATE INDEX IF NOT EXISTS idx_grievances_coop     ON grievances (cooperative_id);
 """
 
 
@@ -328,11 +466,260 @@ def _migration_4_urgency_and_proof_of_work(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE assignments ADD COLUMN started_at TEXT")
 
 
+# The member cooperative this tenant owns a row. Defaults to the original
+# cooperative (id = 1), which is backfilled below for old databases.
+_TENANT_TABLES = {
+    "cooperative_federations",  # master table (created here)
+    "users",
+    "workers",
+    "bookings",
+    "assignments",
+    "declines",
+    "sessions",
+    "disputes",
+    "settlements",
+    "feedback",
+}
+
+
+def _migration_5_federation_tenants(conn: sqlite3.Connection) -> None:
+    """Generalize the singleton `cooperative` table into a multi-row federation
+    and thread `cooperative_id` through every tenant table.
+
+    - Creates `cooperative_federations` (the new profile table).
+    - Copies any legacy `cooperative` row into it (so Bhopal's profile survives).
+    - Seeds the default row id=1 if nothing did.
+    - Adds `cooperative_id` columns (default 1) to every tenant table, guarding
+      with PRAGMA checks so a fresh database (already fully defined by SCHEMA)
+      is left untouched.
+    """
+    tables = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+
+    if "cooperative_federations" not in tables:
+        conn.execute(
+            """
+            CREATE TABLE cooperative_federations (
+                id                INTEGER PRIMARY KEY,
+                name              TEXT    NOT NULL,
+                code              TEXT    NOT NULL UNIQUE,
+                region            TEXT,
+                short_name        TEXT    NOT NULL,
+                registration_id   TEXT,
+                established       INTEGER,
+                area              TEXT,
+                radius_km         REAL,
+                verified          INTEGER NOT NULL DEFAULT 0,
+                worker_kyc        INTEGER NOT NULL DEFAULT 0,
+                payments_verified INTEGER NOT NULL DEFAULT 0,
+                secretary         TEXT,
+                coordinator       TEXT,
+                last_meeting      TEXT,
+                weekly_job_limit  INTEGER NOT NULL DEFAULT 6 CHECK (weekly_job_limit > 0),
+                fund_allocation   TEXT    NOT NULL DEFAULT '{}',
+                created_at        TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at        TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+    # Copy legacy profile into the federation, if the old table exists.
+    if "cooperative" in tables and conn.execute("SELECT COUNT(*) FROM cooperative_federations").fetchone()[0] == 0:
+        copied = conn.execute(
+            """
+            INSERT INTO cooperative_federations
+                (id, name, short_name, registration_id, established, area, radius_km,
+                 verified, worker_kyc, payments_verified, secretary, coordinator,
+                 last_meeting, weekly_job_limit, fund_allocation)
+            SELECT id, name, short_name, registration_id, established, area, radius_km,
+                   verified, worker_kyc, payments_verified, secretary, coordinator,
+                   last_meeting, weekly_job_limit, fund_allocation
+            FROM cooperative
+            """
+        ).rowcount
+        log.info("backfilled %d cooperative row(s) into cooperative_federations", copied)
+
+    # Ensure the default cooperative (id = 1) always exists.
+    if conn.execute("SELECT COUNT(*) FROM cooperative_federations WHERE id = 1").fetchone()[0] == 0:
+        from app.cooperative import DEFAULTS
+        cols = ", ".join(DEFAULTS)
+        marks = ", ".join("?" for _ in DEFAULTS)
+        conn.execute(
+            f"INSERT INTO cooperative_federations (id, code, {cols}) VALUES (1, ?, {marks})",
+            ("SABHA-2026", *DEFAULTS.values()),
+        )
+
+    _DEFAULT_CODE = os.environ.get("SAHAKARSETU_COOPERATIVE_CODE", "SABHA-2026").strip().upper() or "SABHA-2026"
+    # Make the default cooperative carry the configured code if it was inserted above.
+    conn.execute("UPDATE cooperative_federations SET code = ? WHERE code IS NULL OR code = '' ", (_DEFAULT_CODE,))
+
+    # Add cooperative_id columns to tenant tables that lack them. SQLite cannot
+    # add a REFERENCES column with a non-NULL default, so the FK is omitted on
+    # legacy databases (referential integrity is still enforced for new writes
+    # via the application tenant scope).
+    for table in ("users", "workers", "bookings", "assignments", "declines", "sessions",
+                  "disputes", "settlements", "feedback", "standard_rates"):
+        if table in tables and "cooperative_id" not in _columns(conn, table):
+            conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN cooperative_id INTEGER NOT NULL DEFAULT 1"
+            )
+    # Tenant indexes; safe to create (columns now exist on every table above).
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_workers_cooperative ON workers (cooperative_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_bookings_cooperative ON bookings (cooperative_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_assignments_cooperative ON assignments (cooperative_id)")
+
+
+def _migration_6_provider_profile_tables(conn: sqlite3.Connection) -> None:
+    """Phase B: skills, certificates, portfolio, worker documents.
+
+    Additive only — every table is created with IF NOT EXISTS and guarded by
+    PRAGMA checks so a fresh database (columns already in SCHEMA) is untouched.
+    """
+    tables = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS worker_skills (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            worker_id       INTEGER NOT NULL REFERENCES workers(id),
+            skill           TEXT    NOT NULL,
+            level           TEXT    NOT NULL DEFAULT 'intermediate'
+                            CHECK (level IN ('beginner', 'intermediate', 'expert')),
+            verified        INTEGER NOT NULL DEFAULT 0,
+            verified_by     INTEGER REFERENCES users(id),
+            verified_at     TEXT,
+            cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+            created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (worker_id, skill)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS certifications (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            worker_id       INTEGER NOT NULL REFERENCES workers(id),
+            name            TEXT    NOT NULL,
+            issuing_org     TEXT,
+            issue_date      TEXT,
+            expiry_date     TEXT,
+            document        TEXT,
+            verified        INTEGER NOT NULL DEFAULT 0,
+            verified_by     INTEGER REFERENCES users(id),
+            verified_at     TEXT,
+            cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+            created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (worker_id, name, issuing_org, issue_date)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS portfolio_items (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            worker_id       INTEGER NOT NULL REFERENCES workers(id),
+            image_url       TEXT    NOT NULL,
+            caption         TEXT,
+            category        TEXT,
+            verified        INTEGER NOT NULL DEFAULT 0,
+            verified_by     INTEGER REFERENCES users(id),
+            verified_at     TEXT,
+            cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+            created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS worker_documents (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            worker_id       INTEGER NOT NULL REFERENCES workers(id),
+            document_type   TEXT    NOT NULL,
+            file_url        TEXT    NOT NULL,
+            uploaded_at     TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+            UNIQUE (worker_id, document_type, file_url)
+        )
+        """
+    )
+    if "worker_skills" not in tables:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_worker_skills_worker ON worker_skills (worker_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_worker_skills_coop ON worker_skills (cooperative_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_certifications_worker ON certifications (worker_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_certifications_coop ON certifications (cooperative_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_certifications_verified ON certifications (verified)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_portfolio_worker ON portfolio_items (worker_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_portfolio_coop ON portfolio_items (cooperative_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_worker_documents_worker ON worker_documents (worker_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_worker_documents_coop ON worker_documents (cooperative_id)")
+
+
+def _migration_7_welfare_benefits_and_grievances(conn: sqlite3.Connection) -> None:
+    """Phase E: benefits, insurance policies, and worker grievances."""
+    tables = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS benefits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            worker_id INTEGER NOT NULL REFERENCES workers(id),
+            kind TEXT NOT NULL CHECK (kind IN ('pension', 'medical', 'disability', 'other')),
+            name TEXT NOT NULL, description TEXT,
+            eligible INTEGER NOT NULL DEFAULT 0,
+            claimed INTEGER NOT NULL DEFAULT 0,
+            amount_rupees REAL CHECK (amount_rupees IS NULL OR amount_rupees >= 0),
+            start_date TEXT, end_date TEXT, document TEXT,
+            cooperative_id INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS insurance_policies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN ('health', 'accident', 'life', 'liability', 'other')),
+            insurer TEXT, policy_number TEXT,
+            premium_rupees REAL NOT NULL CHECK (premium_rupees >= 0),
+            premium_paid INTEGER NOT NULL DEFAULT 0,
+            coverage_paise INTEGER NOT NULL CHECK (coverage_paise >= 0),
+            start_date TEXT, end_date TEXT, active INTEGER NOT NULL DEFAULT 1,
+            cooperative_id INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS grievances (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            worker_id INTEGER REFERENCES workers(id),
+            raised_by_user_id INTEGER REFERENCES users(id),
+            kind TEXT NOT NULL CHECK (kind IN ('wage', 'safety', 'equipment', 'assignment', 'other')),
+            title TEXT NOT NULL, description TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'triaged', 'in_progress', 'resolved', 'rejected')),
+            resolution TEXT, priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high')),
+            cooperative_id INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_benefits_worker ON benefits (worker_id)",
+        "CREATE INDEX IF NOT EXISTS idx_benefits_coop ON benefits (cooperative_id)",
+        "CREATE INDEX IF NOT EXISTS idx_insurance_coop ON insurance_policies (cooperative_id)",
+        "CREATE INDEX IF NOT EXISTS idx_insurance_active ON insurance_policies (active)",
+        "CREATE INDEX IF NOT EXISTS idx_grievances_worker ON grievances (worker_id)",
+        "CREATE INDEX IF NOT EXISTS idx_grievances_status ON grievances (status)",
+        "CREATE INDEX IF NOT EXISTS idx_grievances_coop ON grievances (cooperative_id)",
+    ]
+    for stmt in statements:
+        conn.execute(stmt)
+
+
 MIGRATIONS = (
     (1, _migration_1_customer_owner),
     (2, _migration_2_integrity_triggers),
     (3, _migration_3_worker_status_and_replies),
     (4, _migration_4_urgency_and_proof_of_work),
+    (5, _migration_5_federation_tenants),
+    (6, _migration_6_provider_profile_tables),
+    (7, _migration_7_welfare_benefits_and_grievances),
 )
 
 

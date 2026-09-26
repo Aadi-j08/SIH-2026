@@ -15,6 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from app.auth import User
+from app import tenancy
 from app.database import connection
 
 Kind = Literal["payment", "quality", "other"]
@@ -114,32 +115,42 @@ def create_dispute(user: User, data: DisputeCreate) -> Dispute:
             if assigned is None:
                 raise DisputeError(403, "You can only raise a dispute on a booking assigned to you")
         already = conn.execute(
-            "SELECT id FROM disputes WHERE booking_id = ? AND status = 'open'", (data.booking_id,)
+            "SELECT id FROM disputes WHERE booking_id = ? AND cooperative_id = ? AND status = 'open'",
+            (data.booking_id, tenancy.tenant_id()),
         ).fetchone()
         if already is not None:
             raise DisputeError(409, f"Booking {data.booking_id} already has an open dispute (#{already['id']})")
         paise = int(round(data.amount_rupees * 100)) if data.amount_rupees is not None else None
         cursor = conn.execute(
-            "INSERT INTO disputes (booking_id, kind, raised_by, raised_by_user_id, amount_paise, description) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (data.booking_id, data.kind, _party_of(user), user.id, paise, (data.description or "").strip() or None),
+            "INSERT INTO disputes (booking_id, kind, raised_by, raised_by_user_id, amount_paise, description, cooperative_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (data.booking_id, data.kind, _party_of(user), user.id, paise, (data.description or "").strip() or None, tenancy.tenant_id()),
         )
         return _model(conn.execute(_SELECT + " WHERE d.id = ?", (cursor.lastrowid,)).fetchone())
 
 
 def list_disputes(status: str | None = None, limit: int = 100) -> list[Dispute]:
+    coop = tenancy.tenant_id()
     with connection() as conn:
         if status:
-            rows = conn.execute(_SELECT + " WHERE d.status = ? ORDER BY d.created_at DESC, d.id DESC LIMIT ?", (status, limit))
+            rows = conn.execute(
+                _SELECT + " WHERE d.status = ? AND d.cooperative_id = ? ORDER BY d.created_at DESC, d.id DESC LIMIT ?",
+                (status, coop, limit),
+            )
         else:
-            rows = conn.execute(_SELECT + " ORDER BY (d.status = 'open') DESC, d.created_at DESC, d.id DESC LIMIT ?", (limit,))
+            rows = conn.execute(
+                _SELECT + " WHERE d.cooperative_id = ? ORDER BY (d.status = 'open') DESC, d.created_at DESC, d.id DESC LIMIT ?",
+                (coop, limit),
+            )
         return [_model(row) for row in rows]
 
 
 def resolve_dispute(dispute_id: int, data: DisputeResolve) -> Dispute:
     with connection() as conn:
-        row = conn.execute("SELECT status FROM disputes WHERE id = ?", (dispute_id,)).fetchone()
+        row = conn.execute("SELECT status, cooperative_id FROM disputes WHERE id = ?", (dispute_id,)).fetchone()
         if row is None:
+            raise DisputeError(404, f"Dispute {dispute_id} not found")
+        if row["cooperative_id"] != tenancy.tenant_id():
             raise DisputeError(404, f"Dispute {dispute_id} not found")
         if row["status"] == "resolved":
             raise DisputeError(409, f"Dispute {dispute_id} is already resolved")
@@ -151,7 +162,9 @@ def resolve_dispute(dispute_id: int, data: DisputeResolve) -> Dispute:
 
 
 def dispute_stats(conn: sqlite3.Connection) -> DisputeStats:
-    counts = {r["status"]: r["n"] for r in conn.execute("SELECT status, COUNT(*) AS n FROM disputes GROUP BY status")}
+    counts = {r["status"]: r["n"] for r in conn.execute(
+        "SELECT status, COUNT(*) AS n FROM disputes WHERE cooperative_id = ? GROUP BY status", (tenancy.tenant_id(),)
+    )}
     open_, resolved = counts.get("open", 0), counts.get("resolved", 0)
     total = open_ + resolved
     return DisputeStats(open=open_, resolved=resolved, resolution_rate=round(resolved / total, 3) if total else None)

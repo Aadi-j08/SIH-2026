@@ -23,15 +23,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from app import database, events, ownership, repository
+from app import database, events, ownership, repository, tenancy
 from app.auth import User, require_council, require_customer, require_user, require_worker
 from app.routers.auth import router as auth_router
 from app.routers.assistant import router as assistant_router
 from app.routers.booking_flow import router as booking_flow_router
 from app.routers.feedback import router as feedback_router
+from app.routers.invoicing import router as invoicing_router
 from app.routers.kaam import router as kaam_router
 from app.routers.pricing import router as pricing_router
 from app.routers.sabha import router as sabha_router
+from app.routers.welfare import router as welfare_router
+from app.routers.workers import router as workers_profile_router
 from app.schemas import (
     Booking,
     BookingCreate,
@@ -47,7 +50,7 @@ from app.schemas import (
 )
 from app.booking_flow_db import booking_flow_connection
 from app.services import allocation, booking_flow, forecast, staffing, voice
-from app.services.demand_forecast import forecaster
+from app.services.demand_forecast import BASE_TRADE_RATES_PAISE, forecaster
 from app.services.dispute_advisor import analyze_payment_discrepancy
 from app.services.ledger import generate_upi_qr_data
 from app.services.worker_allocation import match_batch_jobs
@@ -80,6 +83,19 @@ app = FastAPI(
 
 
 @app.middleware("http")
+async def _tenant_middleware(request: Request, call_next):
+    """Pin every request to a tenant (member cooperative) before any route runs,
+    so the DB layer always sees a cooperative_id context (default 1)."""
+    requested = tenancy.read_requested_cooperative(request)
+    coop_id = requested if requested is not None else tenancy.DEFAULT_COOPERATIVE_ID
+    token = tenancy.set_tenant_id(coop_id)
+    try:
+        return await call_next(request)
+    finally:
+        tenancy.reset_tenant_id(token)
+
+
+@app.middleware("http")
 async def _hide_docs_in_production(request: Request, call_next):
     if _IS_PROD and request.url.path in ("/openapi.json", "/docs", "/redoc"):
         from fastapi.responses import JSONResponse
@@ -89,9 +105,12 @@ app.include_router(auth_router)
 app.include_router(assistant_router)
 app.include_router(booking_flow_router)
 app.include_router(feedback_router)
+app.include_router(invoicing_router)
 app.include_router(kaam_router)
 app.include_router(sabha_router)
+app.include_router(welfare_router)
 app.include_router(pricing_router)
+app.include_router(workers_profile_router)
 app.include_router(events.router)
 app.add_middleware(events.PublishChanges)
 
@@ -384,6 +403,33 @@ def demand_forecast_ml(
 ) -> dict:
     """ML-powered 7-day demand and fair-price band forecast using scikit-learn Ridge regression. Council only."""
     return forecaster.predict_7_day_demand(trade=trade, ward_id=ward_id)
+
+
+@app.get("/forecast/dynamic-pricing", tags=["forecast"])
+def dynamic_pricing(
+    trade: str = Query(default="general", description="Trade category"),
+    horizon_days: int = Query(default=7, ge=1, le=30),
+    _: User = Depends(require_council),
+) -> dict:
+    """Phase G1: Ridge-based dynamic fair-wage price bands per trade.
+
+    Returns a floor (90% of baseline) and a recommended ceiling (baseline +
+    15% weekend surge) for each day ahead, so the Sabha can set the rate card
+    dynamically while never going below the guaranteed minimum wage floor.
+    """
+    prediction = forecaster.predict_7_day_demand(trade=trade, ward_id="1")
+    base = BASE_TRADE_RATES_PAISE.get(trade.lower(), BASE_TRADE_RATES_PAISE["general"])
+    days = prediction["daily_forecast"]
+    bands = []
+    for d in days[:horizon_days]:
+        ceiling = int(base * (1.15 if d["is_weekend"] else 1.05))
+        bands.append({
+            "date": d["date"], "day_name": d["day_name"], "is_weekend": d["is_weekend"],
+            "predicted_bookings": d["predicted_bookings"],
+            "floor_rate_inr": round(base * 0.90 / 100, 2),
+            "recommended_rate_inr": round(ceiling / 100, 2),
+        })
+    return {"trade": trade, "model": prediction["model_type"], "price_bands": bands}
 
 
 @app.get("/forecast/staffing", response_model=StaffingForecast, tags=["forecast"])

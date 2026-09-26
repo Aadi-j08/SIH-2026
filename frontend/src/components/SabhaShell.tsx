@@ -11,7 +11,7 @@ import { api, errorMessage, type Overview } from "../api";
 import { initials, useAuth } from "../lib/auth";
 import { useLive } from "../lib/live";
 import {
-  Bell, Building, CalendarIcon, ChevronDown, Coins, Home, LayoutGrid, LogOut, Megaphone, MessageCircle, Receipt, Refresh, Scale, Settings, ShieldCheck, TrendingUp, Users,
+  Bell, Building, CalendarIcon, ChevronDown, Coins, Home, LayoutGrid, LogOut, Megaphone, MessageCircle, Receipt, Refresh, Scale, Settings, Shield, ShieldCheck, TrendingUp, Users,
 } from "./Icons";
 import { BrandMark, PORTALS, useThemeColor, Wordmark } from "./PortalShell";
 
@@ -36,6 +36,7 @@ const NAV: { to: string; label: string; icon: (p: { size?: number }) => ReactEle
   { to: "/sabha/home", label: "Overview", icon: LayoutGrid, end: true },
   { to: "/sabha/demands", label: "Demands", icon: CalendarIcon },
   { to: "/sabha/workers", label: "Workers", icon: Users },
+  { to: "/sabha/verification", label: "Verification", icon: Shield },
   { to: "/sabha/customers", label: "Customers", icon: Home },
   { to: "/sabha/payments", label: "Payments", icon: Receipt },
   { to: "/sabha/fund", label: "Cooperative Fund", icon: Coins },

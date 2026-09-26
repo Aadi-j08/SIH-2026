@@ -38,7 +38,7 @@ from typing import Literal
 from fastapi import Cookie, Depends, Header, HTTPException
 from pydantic import BaseModel, Field, computed_field, model_validator
 
-from app import repository
+from app import tenancy
 from app.database import connection
 from app.schemas import WorkerCreate
 
@@ -90,12 +90,18 @@ class User(BaseModel):
     worker_id: int | None = None
     languages: list[str] = Field(default_factory=list)
     created_at: str | None = None
+    cooperative_id: int = 1
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def access_role(self) -> Role:
         """customer / worker / council — what the account may do (`role` is a council member's title)."""
         return ROLE_OF_PORTAL[self.portal]
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def is_council(self) -> bool:
+        return self.portal == "sabha"
 
     @property
     def is_council(self) -> bool:
@@ -116,6 +122,7 @@ class SignupRequest(BaseModel):
     # Sabha
     role: str | None = Field(default=None, max_length=60)
     council_code: str | None = Field(default=None, max_length=60)
+    cooperative_code: str | None = Field(default=None, max_length=60, description="Member cooperative to join; defaults to the current tenant")
 
     @model_validator(mode="after")
     def _portal_specific_fields(self) -> "SignupRequest":
@@ -189,27 +196,38 @@ def signup(data: SignupRequest) -> User:
     if data.portal == "sabha" and not is_council_code(data.council_code):
         raise AuthError(403, "That council code is not right. Ask your cooperative's secretary for it.")
 
+    cooperative_id = None
+    if data.cooperative_code:
+        from app.cooperative import get_cooperative_by_code
+
+        coop = get_cooperative_by_code(data.cooperative_code)
+        if coop is None:
+            raise AuthError(404, f"There is no cooperative with code {data.cooperative_code}")
+        cooperative_id = coop.id
+    if cooperative_id is None:
+        cooperative_id = tenancy.tenant_id()
+
     worker_id: int | None = None
     with connection() as conn:
         if data.portal == "kaam":
             from app.repository import _normalise_trade, _dump_windows
             cursor = conn.execute(
-                "INSERT INTO workers (name, phone, trade, latitude, longitude, rating, availability, status) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO workers (name, phone, trade, latitude, longitude, rating, availability, status, cooperative_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (data.name.strip(), phone, _normalise_trade((data.trade or "").strip()),
                  data.latitude if data.latitude is not None else DEFAULT_LATITUDE,
                  data.longitude if data.longitude is not None else DEFAULT_LONGITUDE,
-                 None, "[]", "pending"),
+                 None, "[]", "pending", cooperative_id),
             )
             worker_id = cursor.lastrowid
 
         try:
             cursor = conn.execute(
-                "INSERT INTO users (portal, phone, name, password_hash, locality, role, worker_id, languages) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO users (portal, phone, name, password_hash, locality, role, worker_id, languages, cooperative_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (data.portal, phone, data.name.strip(), hash_password(data.password),
                  (data.locality or None) and data.locality.strip(), data.role, worker_id,
-                 json.dumps([lang.strip() for lang in data.languages if lang.strip()])),
+                 json.dumps([lang.strip() for lang in data.languages if lang.strip()]), cooperative_id),
             )
         except sqlite3.IntegrityError as exc:
             raise AuthError(409, f"There is already a {data.portal.capitalize()} account for this number. Sign in instead.") from exc
@@ -286,6 +304,11 @@ def current_user(
 def require_user(user: User | None = Depends(current_user)) -> User:
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in first")
+    if user.cooperative_id != tenancy.tenant_id():
+        raise HTTPException(
+            status_code=403,
+            detail=f"This account belongs to cooperative #{user.cooperative_id}, not the requested tenant.",
+        )
     return user
 
 

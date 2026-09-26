@@ -43,16 +43,16 @@ def seed_postgres(db_url: str):
     with psycopg.connect(db_url) as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                TRUNCATE TABLE declines, assignments, settlements, disputes, bookings, sessions, users, workers, cooperative, standard_rates RESTART IDENTITY CASCADE;
+                TRUNCATE TABLE declines, assignments, settlements, disputes, bookings, sessions, users, workers, cooperative_federations, standard_rates RESTART IDENTITY CASCADE;
             """)
 
             cur.execute("""
-                INSERT INTO cooperative (
-                    id, name, short_name, registration_id, established, area, radius_km,
+                INSERT INTO cooperative_federations (
+                    id, code, name, short_name, registration_id, established, area, radius_km,
                     verified, worker_kyc, payments_verified, secretary, coordinator,
                     last_meeting, weekly_job_limit, fund_allocation
                 ) VALUES (
-                    1, 'Bhopal Shramik Sahakari Samiti', 'Bhopal Sabha', 'MP/BPL/COOP/2026/042',
+                    1, 'SABHA-2026', 'Bhopal Shramik Sahakari Samiti', 'Bhopal Sabha', 'MP/BPL/COOP/2026/042',
                     2021, 'Bhopal Municipal Corporation Area', 25.0, 1, 1, 1,
                     'Sunita Verma', 'Aman Yadav', '2026-09-15', 6,
                     '{"welfare": 40, "emergency_fund": 30, "training": 20, "ops": 10}'
@@ -69,8 +69,8 @@ def seed_postgres(db_url: str):
             ]
             for trade, visit, hourly, min_h, band, note in rates:
                 cur.execute("""
-                    INSERT INTO standard_rates (trade, visit_charge_paise, hourly_rate_paise, min_hours, band_percent, note)
-                    VALUES (%s, %s, %s, %s, %s, %s);
+                    INSERT INTO standard_rates (trade, cooperative_id, visit_charge_paise, hourly_rate_paise, min_hours, band_percent, note)
+                    VALUES (%s, 1, %s, %s, %s, %s, %s);
                 """, (trade, visit, hourly, min_h, band, note))
 
             workers_data = [
@@ -87,8 +87,8 @@ def seed_postgres(db_url: str):
             worker_ids = {}
             for name, phone, trade, lat, lon, jobs, rating, status in workers_data:
                 cur.execute("""
-                    INSERT INTO workers (name, phone, trade, latitude, longitude, jobs_this_week, rating, status)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
+                    INSERT INTO workers (name, phone, trade, latitude, longitude, jobs_this_week, rating, status, cooperative_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1) RETURNING id;
                 """, (name, phone, trade, lat, lon, jobs, rating, status))
                 worker_ids[phone] = cur.fetchone()[0]
 
@@ -99,22 +99,22 @@ def seed_postgres(db_url: str):
             ]
             for portal, phone, name, locality, role, wid in users:
                 cur.execute("""
-                    INSERT INTO users (portal, phone, name, password_hash, locality, role, worker_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s);
+                    INSERT INTO users (portal, phone, name, password_hash, locality, role, worker_id, cooperative_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 1);
                 """, (portal, phone, name, demo_pass_hash, locality, role, wid))
 
             cur.execute("""
-                INSERT INTO bookings (customer_name, customer_phone, trade, latitude, longitude, address, status)
-                VALUES 
-                ('Pooja Patel', '9811111111', 'plumbing', 23.2300, 77.4300, 'E-3/42 Arera Colony, Bhopal', 'pending'),
-                ('Rajesh Gupta', '9822222222', 'plumbing', 23.2250, 77.4200, 'Zone-1, MP Nagar, Bhopal', 'pending'),
-                ('Anjali Saxena', '9833333333', 'electrician', 23.2400, 77.4050, 'B-Sector, Shahpura, Bhopal', 'pending'),
-                ('Sunil Mehta', '9844444444', 'carpentry', 23.2500, 77.4550, 'Sector-A, Indrapuri, Bhopal', 'completed');
+                INSERT INTO bookings (customer_name, customer_phone, trade, latitude, longitude, address, status, cooperative_id)
+                VALUES
+                ('Pooja Patel', '9811111111', 'plumbing', 23.2300, 77.4300, 'E-3/42 Arera Colony, Bhopal', 'pending', 1),
+                ('Rajesh Gupta', '9822222222', 'plumbing', 23.2250, 77.4200, 'Zone-1, MP Nagar, Bhopal', 'pending', 1),
+                ('Anjali Saxena', '9833333333', 'electrician', 23.2400, 77.4050, 'B-Sector, Shahpura, Bhopal', 'pending', 1),
+                ('Sunil Mehta', '9844444444', 'carpentry', 23.2500, 77.4550, 'Sector-A, Indrapuri, Bhopal', 'completed', 1);
             """)
 
             cur.execute("""
-                INSERT INTO bookings (customer_name, customer_phone, trade, latitude, longitude, address, status)
-                VALUES ('Manish Jain', '9855555555', 'plumbing', 23.2310, 77.4320, '12 Arera Colony, Bhopal', 'completed')
+                INSERT INTO bookings (customer_name, customer_phone, trade, latitude, longitude, address, status, cooperative_id)
+                VALUES ('Manish Jain', '9855555555', 'plumbing', 23.2310, 77.4320, '12 Arera Colony, Bhopal', 'completed', 1)
                 RETURNING id;
             """)
             dispute_bid = cur.fetchone()[0]
@@ -122,18 +122,18 @@ def seed_postgres(db_url: str):
             cur.execute("""
                 INSERT INTO settlements (
                     booking_id, worker_id, hours_worked, materials_paise, work_note,
-                    standard_paise, proposed_paise, counter_paise, customer_note, status
+                    standard_paise, proposed_paise, counter_paise, customer_note, status, cooperative_id
                 ) VALUES (%s, %s, 2.0, 15000, 'Replaced kitchen main valve and PVC connector pipe',
-                          70000, 85000, 75000, 'Work was fine but expected standard rate', 'disputed');
+                          70000, 85000, 75000, 'Work was fine but expected standard rate', 'disputed', 1);
             """, (dispute_bid, worker_ids["9876543211"]))
 
             cur.execute("""
                 INSERT INTO disputes (
-                    booking_id, kind, raised_by, amount_paise, description, status
+                    booking_id, kind, raised_by, amount_paise, description, status, cooperative_id
                 ) VALUES (
                     %s, 'payment', 'worker', 10000,
                     'Customer refuses to reimburse 150 for heavy duty PVC connector valve bought from hardware store',
-                    'open'
+                    'open', 1
                 );
             """, (dispute_bid,))
 
@@ -150,12 +150,12 @@ def seed_sqlite():
 
     with connection() as conn:
         conn.execute("""
-        INSERT OR REPLACE INTO cooperative (
-            id, name, short_name, registration_id, established, area, radius_km,
+        INSERT OR REPLACE INTO cooperative_federations (
+            id, code, name, short_name, registration_id, established, area, radius_km,
             verified, worker_kyc, payments_verified, secretary, coordinator,
             last_meeting, weekly_job_limit, fund_allocation
         ) VALUES (
-            1, 'Bhopal Shramik Sahakari Samiti', 'Bhopal Sabha', 'MP/BPL/COOP/2026/042',
+            1, 'SABHA-2026', 'Bhopal Shramik Sahakari Samiti', 'Bhopal Sabha', 'MP/BPL/COOP/2026/042',
             2021, 'Bhopal Municipal Corporation Area', 25.0, 1, 1, 1,
             'Sunita Verma', 'Aman Yadav', '2026-09-15', 6,
             '{"welfare": 40, "emergency_fund": 30, "training": 20, "ops": 10}'
@@ -172,8 +172,8 @@ def seed_sqlite():
         ]
         for trade, visit, hourly, min_h, band, note in rates:
             conn.execute("""
-            INSERT OR REPLACE INTO standard_rates (trade, visit_charge_paise, hourly_rate_paise, min_hours, band_percent, note)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO standard_rates (trade, cooperative_id, visit_charge_paise, hourly_rate_paise, min_hours, band_percent, note)
+            VALUES (?, 1, ?, ?, ?, ?, ?)
             """, (trade, visit, hourly, min_h, band, note))
 
         workers_data = [
@@ -190,8 +190,8 @@ def seed_sqlite():
         worker_ids = {}
         for name, phone, trade, lat, lon, jobs, rating in workers_data:
             cur = conn.execute("""
-            INSERT INTO workers (name, phone, trade, latitude, longitude, jobs_this_week, rating, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
+            INSERT INTO workers (name, phone, trade, latitude, longitude, jobs_this_week, rating, status, cooperative_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 1)
             """, (name, phone, trade, lat, lon, jobs, rating))
             worker_ids[phone] = cur.lastrowid
 
@@ -202,19 +202,45 @@ def seed_sqlite():
         ]
         for portal, phone, name, locality, role, wid in users:
             conn.execute("""
-            INSERT OR REPLACE INTO users (portal, phone, name, password_hash, locality, role, worker_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO users (portal, phone, name, password_hash, locality, role, worker_id, cooperative_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1)
             """, (portal, phone, name, demo_pass_hash, locality, role, wid))
 
         conn.execute("""
-        INSERT INTO bookings (customer_name, customer_phone, trade, latitude, longitude, address, status)
-        VALUES 
-        ('Pooja Patel', '9811111111', 'plumbing', 23.2300, 77.4300, 'E-3/42 Arera Colony, Bhopal', 'pending'),
-        ('Rajesh Gupta', '9822222222', 'plumbing', 23.2250, 77.4200, 'Zone-1, MP Nagar, Bhopal', 'pending'),
-        ('Anjali Saxena', '9833333333', 'electrician', 23.2400, 77.4050, 'B-Sector, Shahpura, Bhopal', 'pending'),
-        ('Sunil Mehta', '9844444444', 'carpentry', 23.2500, 77.4550, 'Sector-A, Indrapuri, Bhopal', 'completed')
+        INSERT INTO bookings (customer_name, customer_phone, trade, latitude, longitude, address, status, cooperative_id)
+        VALUES
+        ('Pooja Patel', '9811111111', 'plumbing', 23.2300, 77.4300, 'E-3/42 Arera Colony, Bhopal', 'pending', 1),
+        ('Rajesh Gupta', '9822222222', 'plumbing', 23.2250, 77.4200, 'Zone-1, MP Nagar, Bhopal', 'pending', 1),
+        ('Anjali Saxena', '9833333333', 'electrician', 23.2400, 77.4050, 'B-Sector, Shahpura, Bhopal', 'pending', 1),
+        ('Sunil Mehta', '9844444444', 'carpentry', 23.2500, 77.4550, 'Sector-A, Indrapuri, Bhopal', 'completed', 1)
         """)
 
+        conn.execute("""
+        INSERT INTO bookings (customer_name, customer_phone, trade, latitude, longitude, address, status, cooperative_id)
+        VALUES ('Manish Jain', '9855555555', 'plumbing', 23.2310, 77.4320, '12 Arera Colony, Bhopal', 'completed', 1)
+        """)
+        dispute_bid = conn.execute("SELECT id FROM bookings ORDER BY id DESC LIMIT 1").fetchone()[0]
+
+        worker_id = worker_ids["9876543211"]
+        conn.execute("""
+        INSERT INTO settlements (
+            booking_id, worker_id, hours_worked, materials_paise, work_note,
+            standard_paise, proposed_paise, counter_paise, customer_note, status, cooperative_id
+        ) VALUES (?, ?, 2.0, 15000, 'Replaced kitchen main valve and PVC connector pipe',
+                  70000, 85000, 75000, 'Work was fine but expected standard rate', 'disputed', 1)
+        """, (dispute_bid, worker_id))
+
+        conn.execute("""
+        INSERT INTO disputes (
+            booking_id, kind, raised_by, amount_paise, description, status, cooperative_id
+        ) VALUES (
+            ?, 'payment', 'worker', 10000,
+            'Customer refuses to reimburse 150 for heavy duty PVC connector valve bought from hardware store',
+            'open', 1
+        )
+        """, (dispute_bid,))
+
+        conn.commit()
     print("✅ Successfully seeded Local SQLite (sahakarsetu.db)!")
 
 
