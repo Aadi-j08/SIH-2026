@@ -21,6 +21,7 @@ from app.booking_flow_db import (
     pick_column,
     table_columns,
 )
+from app import tenancy
 from app.services.allocation_bridge import AllocationBridgeError, top_recommendation
 from app.services.ledger import SPLIT_PERCENT, paise_to_rupees, rupees_to_paise, split_payment
 
@@ -60,27 +61,33 @@ def _row(row: sqlite3.Row | None) -> dict[str, Any] | None:
 
 
 def _get_booking(conn: sqlite3.Connection, booking_id: int) -> dict[str, Any]:
-    booking = _row(conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone())
+    booking = _row(conn.execute(
+        "SELECT * FROM bookings WHERE id = ? AND cooperative_id = ?", (booking_id, tenancy.tenant_id())
+    ).fetchone())
     if booking is None:
         raise BookingNotFound(f"Booking {booking_id} not found")
     return booking
 
 
 def _get_worker(conn: sqlite3.Connection, worker_id: int) -> dict[str, Any] | None:
-    return _row(conn.execute("SELECT * FROM workers WHERE id = ?", (worker_id,)).fetchone())
+    row = conn.execute(
+        "SELECT * FROM workers WHERE id = ? AND cooperative_id = ?", (worker_id, tenancy.tenant_id())
+    ).fetchone()
+    return _row(row)
 
 
 def _latest_assignment(conn: sqlite3.Connection, booking_id: int) -> dict[str, Any] | None:
     return _row(conn.execute(
-        "SELECT * FROM assignments WHERE booking_id = ? ORDER BY id DESC LIMIT 1", (booking_id,)
+        "SELECT * FROM assignments WHERE booking_id = ? AND cooperative_id = ? ORDER BY id DESC LIMIT 1",
+        (booking_id, tenancy.tenant_id()),
     ).fetchone())
 
 
 def _declined_worker_ids(conn: sqlite3.Connection, booking_id: int) -> tuple[int, ...]:
     """Workers who already declined this booking should remain excluded from all future reassignments."""
     rows = conn.execute(
-        "SELECT DISTINCT worker_id FROM declines WHERE booking_id = ? ORDER BY worker_id",
-        (booking_id,),
+        "SELECT DISTINCT worker_id FROM declines WHERE booking_id = ? AND cooperative_id = ? ORDER BY worker_id",
+        (booking_id, tenancy.tenant_id()),
     ).fetchall()
     return tuple(int(row["worker_id"]) for row in rows)
 
@@ -97,7 +104,8 @@ def _decode_json(value: Any) -> Any:
 def _ledger_entries(conn: sqlite3.Connection, booking_id: int) -> list[dict[str, Any]]:
     rows = conn.execute(
         "SELECT party, share_percent, amount_paise, worker_id FROM payment_ledger "
-        "WHERE booking_id = ? ORDER BY share_percent DESC", (booking_id,)
+        "WHERE booking_id = ? AND cooperative_id = ? ORDER BY share_percent DESC",
+        (booking_id, tenancy.tenant_id()),
     ).fetchall()
     return [
         {**dict(r), "amount_rupees": paise_to_rupees(r["amount_paise"])}
@@ -128,9 +136,14 @@ def assign_booking(
                 f"Booking {booking_id} is '{booking['status']}'; only pending bookings can be assigned"
             )
         excluded = tuple(dict.fromkeys((*exclude_worker_ids, *_declined_worker_ids(conn, booking_id))))
-        status_filter = "WHERE COALESCE(status, 'active') = 'active'" if "status" in table_columns(conn, "workers") else ""
+        has_status = "status" in table_columns(conn, "workers")
+        conditions = ["cooperative_id = ?"]
+        params: list = [tenancy.tenant_id()]
+        if has_status:
+            conditions.append("COALESCE(status, 'active') = 'active'")
+        where = "WHERE " + " AND ".join(conditions)
         workers = [                                                     # 2. load workers
-            dict(r) for r in conn.execute(f"SELECT * FROM workers {status_filter}")
+            dict(r) for r in conn.execute(f"SELECT * FROM workers {where}", params)
             if r["id"] not in excluded
         ]
         best = top_recommendation(booking, workers)                    # 3–5. schema, engine, top pick
@@ -269,9 +282,9 @@ def complete_booking(conn: sqlite3.Connection, booking_id: int, amount: Decimal)
 
         for party, paise in shares.items():
             conn.execute(
-                "INSERT INTO payment_ledger (booking_id, worker_id, party, share_percent, amount_paise) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (booking_id, worker_id if party == "worker" else None, party, SPLIT_PERCENT[party], paise),
+                "INSERT INTO payment_ledger (booking_id, worker_id, party, share_percent, amount_paise, cooperative_id) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (booking_id, worker_id if party == "worker" else None, party, SPLIT_PERCENT[party], paise, tenancy.tenant_id()),
             )
         updated = conn.execute(
             "UPDATE bookings SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ? AND status = ?",
@@ -307,12 +320,12 @@ def rate_booking(conn: sqlite3.Connection, booking_id: int, rating: int, comment
         worker_id = assignment["worker_id"]
 
         conn.execute(
-            "INSERT INTO booking_ratings (booking_id, worker_id, rating, comment) VALUES (?, ?, ?, ?)",
-            (booking_id, worker_id, rating, comment),
+            "INSERT INTO booking_ratings (booking_id, worker_id, rating, comment, cooperative_id) VALUES (?, ?, ?, ?, ?)",
+            (booking_id, worker_id, rating, comment, tenancy.tenant_id()),
         )
         count, total = conn.execute(
-            "SELECT COUNT(*), COALESCE(SUM(rating), 0) FROM booking_ratings WHERE worker_id = ?",
-            (worker_id,),
+            "SELECT COUNT(*), COALESCE(SUM(rating), 0) FROM booking_ratings WHERE worker_id = ? AND cooperative_id = ?",
+            (worker_id, tenancy.tenant_id()),
         ).fetchone()
 
         average = None
@@ -353,13 +366,16 @@ def gini(values: list[float]) -> float:
 
 
 def admin_dashboard(conn: sqlite3.Connection) -> dict[str, Any]:
-    status_counts = {r[0]: r[1] for r in conn.execute("SELECT status, COUNT(*) FROM bookings GROUP BY status")}
+    coop = tenancy.tenant_id()
+    status_counts = {r[0]: r[1] for r in conn.execute(
+        "SELECT status, COUNT(*) FROM bookings WHERE cooperative_id = ? GROUP BY status", (coop,)
+    )}
     bookings = {"total": sum(status_counts.values())}
     for status in (PENDING, ASSIGNED, COMPLETED):
         bookings[status] = status_counts.get(status, 0)
 
     party_totals = {r[0]: r[1] for r in conn.execute(
-        "SELECT party, SUM(amount_paise) FROM payment_ledger GROUP BY party"
+        "SELECT party, SUM(amount_paise) FROM payment_ledger WHERE cooperative_id = ? GROUP BY party", (coop,)
     )}
     money = {
         "gross_rupees": paise_to_rupees(sum(party_totals.values())),
@@ -368,7 +384,9 @@ def admin_dashboard(conn: sqlite3.Connection) -> dict[str, Any]:
         "platform_operations_rupees": paise_to_rupees(party_totals.get("platform_operations", 0)),
     }
 
-    rating_count, rating_avg = conn.execute("SELECT COUNT(*), AVG(rating) FROM booking_ratings").fetchone()
+    rating_count, rating_avg = conn.execute(
+        "SELECT COUNT(*), AVG(rating) FROM booking_ratings WHERE cooperative_id = ?", (coop,)
+    ).fetchone()
     ratings = {"count": rating_count, "average": round(rating_avg, 2) if rating_avg is not None else None}
 
     earnings = {r["worker_id"]: dict(r) for r in conn.execute(
@@ -376,12 +394,13 @@ def admin_dashboard(conn: sqlite3.Connection) -> dict[str, Any]:
                    COUNT(*) AS completed_jobs,
                    SUM(amount_paise) AS earnings_paise,
                    COUNT(DISTINCT DATE(created_at, {_IST})) AS engagement_days
-            FROM payment_ledger WHERE party = 'worker' GROUP BY worker_id"""
+            FROM payment_ledger WHERE party = 'worker' AND cooperative_id = ? GROUP BY worker_id""",
+        (coop,)
     )}
     name_column = pick_column(conn, "workers", WORKER_NAME_COLUMNS)
     rating_column = pick_column(conn, "workers", WORKER_RATING_COLUMNS)
     workers = []
-    for row in conn.execute("SELECT * FROM workers ORDER BY id"):
+    for row in conn.execute("SELECT * FROM workers WHERE cooperative_id = ? ORDER BY id", (coop,)):
         w = dict(row)
         stats = earnings.get(w["id"], {})
         days = stats.get("engagement_days", 0)
@@ -410,7 +429,9 @@ def admin_dashboard(conn: sqlite3.Connection) -> dict[str, Any]:
         f"""SELECT a.id AS assignment_id, a.booking_id, a.worker_id,
                    a.{score_column} AS score, b.status AS booking_status
             FROM assignments a JOIN bookings b ON b.id = a.booking_id
-            ORDER BY a.id DESC LIMIT 5"""
+            WHERE a.cooperative_id = ? AND b.cooperative_id = ?
+            ORDER BY a.id DESC LIMIT 5""",
+        (coop, coop),
     )]
     names = {w["id"]: w["name"] for w in workers}
     for item in recent:

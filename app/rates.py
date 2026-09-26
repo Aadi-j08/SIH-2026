@@ -21,6 +21,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from app.database import connection
+from app import tenancy
 from app.services.ledger import paise_to_rupees, rupees_to_paise
 from app.trades import CANONICAL_TRADES, canonical_trade
 
@@ -72,11 +73,12 @@ class Quote(BaseModel):
 
 
 def _seed(conn: sqlite3.Connection) -> None:
+    coop = tenancy.tenant_id()
     for trade, (visit, hourly, min_hours) in DEFAULT_RATES.items():
         conn.execute(
-            "INSERT OR IGNORE INTO standard_rates (trade, visit_charge_paise, hourly_rate_paise, min_hours, band_percent) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (trade, visit * 100, hourly * 100, min_hours, DEFAULT_BAND_PERCENT),
+            "INSERT OR IGNORE INTO standard_rates (trade, cooperative_id, visit_charge_paise, hourly_rate_paise, min_hours, band_percent) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (trade, coop, visit * 100, hourly * 100, min_hours, DEFAULT_BAND_PERCENT),
         )
 
 
@@ -108,14 +110,15 @@ def get_rate(conn: sqlite3.Connection, trade: str) -> Rate:
     """The card for one trade. A trade the general body has not priced yet gets the plumbing rate as a placeholder."""
     trade = canonical_trade(trade)
     _seed(conn)
-    row = conn.execute("SELECT * FROM standard_rates WHERE trade = ?", (trade,)).fetchone()
+    coop = tenancy.tenant_id()
+    row = conn.execute("SELECT * FROM standard_rates WHERE trade = ? AND cooperative_id = ?", (trade, coop)).fetchone()
     if row is None:
         visit, hourly, min_hours = DEFAULT_RATES["plumbing"]
         conn.execute(
-            "INSERT INTO standard_rates (trade, visit_charge_paise, hourly_rate_paise, min_hours, band_percent, note) VALUES (?, ?, ?, ?, ?, ?)",
-            (trade, visit * 100, hourly * 100, min_hours, DEFAULT_BAND_PERCENT, "Placeholder until the general body prices this trade"),
+            "INSERT INTO standard_rates (trade, cooperative_id, visit_charge_paise, hourly_rate_paise, min_hours, band_percent, note) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (trade, coop, visit * 100, hourly * 100, min_hours, DEFAULT_BAND_PERCENT, "Placeholder until the general body prices this trade"),
         )
-        row = conn.execute("SELECT * FROM standard_rates WHERE trade = ?", (trade,)).fetchone()
+        row = conn.execute("SELECT * FROM standard_rates WHERE trade = ? AND cooperative_id = ?", (trade, coop)).fetchone()
     return _model(conn, row)
 
 
@@ -125,7 +128,7 @@ def list_rates(conn: sqlite3.Connection | None = None) -> list[Rate]:
             return list_rates(own)
     _seed(conn)
     order = {t: i for i, t in enumerate(CANONICAL_TRADES)}
-    rows = [_model(conn, r) for r in conn.execute("SELECT * FROM standard_rates")]
+    rows = [_model(conn, r) for r in conn.execute("SELECT * FROM standard_rates WHERE cooperative_id = ?", (tenancy.tenant_id(),))]
     rows.sort(key=lambda r: (order.get(r.trade, 99), r.trade))
     return rows
 
@@ -147,7 +150,10 @@ def update_rate(trade: str, data: RateUpdate) -> Rate:
         get_rate(conn, trade)  # ensures the row exists
         if changes:
             assignments = ", ".join(f"{column} = ?" for column in changes)
-            conn.execute(f"UPDATE standard_rates SET {assignments}, updated_at = CURRENT_TIMESTAMP WHERE trade = ?", (*changes.values(), trade))
+            conn.execute(
+                f"UPDATE standard_rates SET {assignments}, updated_at = CURRENT_TIMESTAMP WHERE trade = ? AND cooperative_id = ?",
+                (*changes.values(), trade, tenancy.tenant_id()),
+            )
         return get_rate(conn, trade)
 
 

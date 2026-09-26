@@ -25,7 +25,7 @@ from app.cooperative import Cooperative, CooperativeUpdate, get_cooperative, upd
 from app.database import connection
 from app.services import booking_flow
 from app.services.allocation_bridge import AllocationBridgeError
-from app.services.overview import Overview, overview
+from app.services.overview import Overview, overview, FederationRollup, federation_rollup
 from app.trades import canonical_trade
 
 log = logging.getLogger("sahakarsetu.sabha")
@@ -51,6 +51,12 @@ def admin_overview(_: User = Depends(require_council)) -> Overview:
     """Cooperative health, what needs attention, demand vs workforce, matching, fairness, fund, performance, disputes."""
     with booking_flow_connection() as conn:
         return overview(conn)
+
+
+@router.get("/admin/federation", response_model=FederationRollup)
+def federation_overview(_: User = Depends(require_council)) -> FederationRollup:
+    """Phase F: cross-cooperative roll-up — members, active workers, bookings, payouts, welfare funds, disputes."""
+    return federation_rollup()
 
 
 class CustomerRow(BaseModel):

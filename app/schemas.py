@@ -56,6 +56,7 @@ class Worker(WorkerCreate):
     id: int
     jobs_this_week: int = 0
     status: WorkerStatus = "active"      # pending = signed up, waiting for the council; the engine skips them
+    cooperative_id: int = 1
     created_at: str | None = None
 
 
@@ -94,6 +95,7 @@ class Booking(BookingCreate):
     id: int
     status: str = "pending"
     customer_user_id: int | None = None
+    cooperative_id: int = 1
     created_at: str | None = None
 
 
@@ -207,3 +209,177 @@ class StaffingForecast(BaseModel):
     days: list[StaffingDay]
     confidence: float = Field(default=0.5, ge=0, le=1)
     explanation: str = ""
+
+
+# ── Phase B: provider profile (skills, certificates, portfolio, documents) ──
+
+SkillLevel = Literal["beginner", "intermediate", "expert"]
+
+
+class SkillBase(BaseModel):
+    name: str = Field(min_length=1, max_length=100, description="e.g. tile, plumbing, electrical")
+    level: SkillLevel = "intermediate"
+
+
+class Skill(SkillBase):
+    id: int
+    verified: bool = False
+    verified_by: int | None = None
+    verified_at: str | None = None
+    cooperative_id: int = 1
+    created_at: str | None = None
+
+
+class SkillCreate(SkillBase):
+    pass
+
+
+class CertificationBase(BaseModel):
+    name: str = Field(min_length=1, max_length=120, description="e.g. 'Plumbing License' or 'First Aid'")
+    issuing_org: str | None = Field(default=None, max_length=120)
+    issue_date: dt.date | None = None
+    expiry_date: dt.date | None = None
+    document: str | None = None  # off-FS file path / URL
+
+
+class Certification(CertificationBase):
+    id: int
+    verified: bool = False
+    verified_by: int | None = None
+    verified_at: str | None = None
+    cooperative_id: int = 1
+    created_at: str | None = None
+
+
+class CertificationCreate(CertificationBase):
+    pass
+
+
+PortfolioCategory = Literal["before", "after", "work_in_progress", "other"]
+
+
+class PortfolioItemBase(BaseModel):
+    image_url: str = Field(min_length=1, description="off-FS storage reference for the photo")
+    caption: str | None = None
+    category: PortfolioCategory = "other"
+
+
+class PortfolioItem(PortfolioItemBase):
+    id: int
+    verified: bool = False
+    verified_by: int | None = None
+    verified_at: str | None = None
+    cooperative_id: int = 1
+    created_at: str | None = None
+
+
+class PortfolioItemCreate(PortfolioItemBase):
+    pass
+
+
+DocumentType = Literal["id_proof", "insurance", "vehicle", "other"]
+
+
+class WorkerDocumentBase(BaseModel):
+    document_type: DocumentType = "other"
+    file_url: str = Field(min_length=1, description="off-FS storage reference")
+
+
+class WorkerDocument(WorkerDocumentBase):
+    id: int
+    worker_id: int
+    uploaded_at: str | None = None
+    cooperative_id: int = 1
+
+
+class WorkerDocumentCreate(WorkerDocumentBase):
+    pass
+
+
+class VerificationRequest(BaseModel):
+    """Toggle verification of a profile item (council only)."""
+    verified: bool = True
+
+
+# ── Phase E: welfare benefits, insurance and grievances ──────────────────
+
+BenefitKind = Literal["pension", "medical", "disability", "other"]
+GrievanceKind = Literal["wage", "safety", "equipment", "assignment", "other"]
+GrievanceStatus = Literal["open", "triaged", "in_progress", "resolved", "rejected"]
+Priority = Literal["low", "normal", "high"]
+InsuranceKind = Literal["health", "accident", "life", "liability", "other"]
+
+
+class BenefitBase(BaseModel):
+    kind: BenefitKind = "other"
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = None
+    eligible: bool = False
+    claimed: bool = False
+    amount_rupees: float | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    document: str | None = None
+
+
+class Benefit(BenefitBase):
+    id: int
+    worker_id: int
+    cooperative_id: int = 1
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class BenefitCreate(BenefitBase):
+    worker_id: int
+
+
+class InsurancePolicyBase(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    kind: InsuranceKind = "health"
+    insurer: str | None = None
+    policy_number: str | None = None
+    premium_rupees: float = Field(ge=0)
+    premium_paid: bool = False
+    coverage_paise: int = Field(ge=0)
+    start_date: str | None = None
+    end_date: str | None = None
+    active: bool = True
+
+
+class InsurancePolicy(InsurancePolicyBase):
+    id: int
+    cooperative_id: int = 1
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class InsurancePolicyCreate(InsurancePolicyBase):
+    pass
+
+
+class GrievanceBase(BaseModel):
+    worker_id: int | None = None
+    kind: GrievanceKind = "other"
+    title: str = Field(min_length=1, max_length=140)
+    description: str = Field(min_length=1)
+    priority: Priority = "normal"
+
+
+class Grievance(GrievanceBase):
+    id: int
+    raised_by_user_id: int | None = None
+    status: GrievanceStatus = "open"
+    resolution: str | None = None
+    cooperative_id: int = 1
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class GrievanceCreate(GrievanceBase):
+    pass
+
+
+class GrievanceStatusUpdate(BaseModel):
+    status: GrievanceStatus
+    resolution: str | None = None

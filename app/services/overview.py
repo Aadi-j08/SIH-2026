@@ -18,6 +18,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app import disputes as disputes_mod
+from app import tenancy
 from app.cooperative import Cooperative, get_cooperative
 from app.schemas import ServiceRequest, WorkerProfile
 from app.services import allocation, forecast as forecast_mod, staffing
@@ -207,10 +208,15 @@ def _month_start(when: dt.datetime) -> dt.datetime:
     return when.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
-def _profiles(conn: sqlite3.Connection) -> list[WorkerProfile]:
+def _profiles(conn: sqlite3.Connection, cooperative_id: int | None = None) -> list[WorkerProfile]:
     import json
     profiles = []
-    for row in conn.execute("SELECT * FROM workers ORDER BY id"):
+    rows = conn.execute(
+        "SELECT * FROM workers WHERE cooperative_id = ?" if cooperative_id is not None
+        else "SELECT * FROM workers",
+        (cooperative_id,) if cooperative_id is not None else (),
+    )
+    for row in rows:
         data = dict(row)
         data["availability"] = json.loads(data.get("availability") or "[]")
         profiles.append(WorkerProfile.model_validate(data))
@@ -235,6 +241,7 @@ def _trade_status(demand: int, unassigned: int, available: int) -> str:
 
 def overview(conn: sqlite3.Connection, now: dt.datetime | None = None) -> Overview:
     now = now or _utcnow()
+    coop = tenancy.tenant_id()
     profile = get_cooperative(conn)
     limit = profile.weekly_job_limit
     this_month, last_month = _month_start(now), _month_start(_month_start(now) - dt.timedelta(days=1))
@@ -245,10 +252,10 @@ def overview(conn: sqlite3.Connection, now: dt.datetime | None = None) -> Overvi
     have_ledger = _has_table(conn, "payment_ledger")
 
     # workers ----------------------------------------------------------------
-    profiles = _profiles(conn)
+    profiles = _profiles(conn, coop)
     workers_by_id = {w.id: w for w in profiles}
     active_ids = {
-        r["worker_id"] for r in conn.execute("SELECT DISTINCT worker_id FROM assignments WHERE created_at >= ?", (active_since,))
+        r["worker_id"] for r in conn.execute("SELECT DISTINCT worker_id FROM assignments WHERE created_at >= ? AND cooperative_id = ?", (active_since, coop))
     }
     status_now = {w.id: allocation.availability_status(w.availability, reference) for w in profiles}
     available_ids = {w.id for w in profiles if status_now[w.id] != "unavailable" and w.jobs_this_week < limit}
@@ -256,7 +263,7 @@ def overview(conn: sqlite3.Connection, now: dt.datetime | None = None) -> Overvi
     trades_present = {canonical_trade(w.trade) for w in profiles}
 
     # bookings ---------------------------------------------------------------
-    bookings = [dict(r) for r in conn.execute("SELECT * FROM bookings")]
+    bookings = [dict(r) for r in conn.execute("SELECT * FROM bookings WHERE cooperative_id = ?", (coop,))]
     by_status: dict[str, list[dict]] = defaultdict(list)
     for b in bookings:
         by_status[b["status"]].append(b)
@@ -271,7 +278,7 @@ def overview(conn: sqlite3.Connection, now: dt.datetime | None = None) -> Overvi
     earners_month: dict[int, int] = defaultdict(int)
     benefited: set[int] = set()
     if have_ledger:
-        for r in conn.execute("SELECT party, worker_id, amount_paise, created_at FROM payment_ledger"):
+        for r in conn.execute("SELECT party, worker_id, amount_paise, created_at FROM payment_ledger WHERE cooperative_id = ?", (coop,)):
             when = _parse(r["created_at"]) or now
             if r["party"] == "worker":
                 benefited.add(r["worker_id"])
@@ -288,7 +295,7 @@ def overview(conn: sqlite3.Connection, now: dt.datetime | None = None) -> Overvi
 
     # fairness ---------------------------------------------------------------
     recent_jobs = {r["worker_id"]: r["n"] for r in conn.execute(
-        "SELECT worker_id, COUNT(*) AS n FROM assignments WHERE created_at >= ? GROUP BY worker_id", (active_since,))}
+        "SELECT worker_id, COUNT(*) AS n FROM assignments WHERE created_at >= ? AND cooperative_id = ? GROUP BY worker_id", (active_since, coop))}
     workload_score = round((1 - gini([float(n) for n in recent_jobs.values()])) * 100) if recent_jobs else 100
     pay_score = round((1 - gini([float(v) for v in earners_month.values()])) * 100) if earners_month else 100
     allocation_score = round(len(active_ids) / len(profiles) * 100) if profiles else 100
@@ -402,7 +409,7 @@ def overview(conn: sqlite3.Connection, now: dt.datetime | None = None) -> Overvi
     response_minutes: list[float] = []
     for r in conn.execute(
         "SELECT a.created_at AS assigned_at, b.created_at AS booked_at FROM assignments a JOIN bookings b ON b.id = a.booking_id "
-        "WHERE a.created_at >= ?", (active_since,)
+        "WHERE a.cooperative_id = ? AND a.created_at >= ?", (coop, active_since)
     ):
         a, b = _parse(r["assigned_at"]), _parse(r["booked_at"])
         if a and b and a >= b:
@@ -422,7 +429,7 @@ def overview(conn: sqlite3.Connection, now: dt.datetime | None = None) -> Overvi
     best: tuple[int, int, Any] | None = None
     for trade in trade_names:
         dates = [r["demand_at"] for r in conn.execute(
-            "SELECT COALESCE(scheduled_for, created_at) AS demand_at FROM bookings WHERE trade = ?", (trade,)
+            "SELECT COALESCE(scheduled_for, created_at) AS demand_at FROM bookings WHERE trade = ? AND cooperative_id = ?", (trade, coop)
         )]
         if not dates:
             continue
@@ -448,7 +455,7 @@ def overview(conn: sqlite3.Connection, now: dt.datetime | None = None) -> Overvi
             workers_needed=st.workers_needed, available_workers=st.available_workers, shortage=st.shortage, text=text,
         )
 
-    members = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    members = conn.execute("SELECT COUNT(*) FROM users WHERE cooperative_id = ?", (coop,)).fetchone()[0]
     return Overview(
         generated_at=now.isoformat(timespec="seconds"),
         cooperative=CoopSummary(
@@ -472,5 +479,70 @@ def overview(conn: sqlite3.Connection, now: dt.datetime | None = None) -> Overvi
             open=dispute_stats.open, resolved=dispute_stats.resolved, resolution_rate=dispute_stats.resolution_rate,
             recent=disputes_mod.list_disputes(status="open", limit=4),
         ),
-        forecast_insight=insight,
+         forecast_insight=insight,
     )
+
+
+# ── Phase F: federation roll-up ──────────────────────────────────────────
+
+class FederationMember(BaseModel):
+    cooperative_id: int
+    code: str
+    name: str
+    members: int
+    active_workers: int
+    bookings_this_month: int
+    worker_payouts_this_month_rupees: float
+    welfare_fund_rupees: float
+    open_disputes: int
+    fairness_gini: float = 0.0
+
+
+class FederationRollup(BaseModel):
+    members: list[FederationMember]
+    totals: dict[str, Any]
+
+
+def federation_rollup() -> FederationRollup:
+    """Roll-up across every member cooperative (council / federation-admin view)."""
+    from app.cooperative import list_cooperatives
+    from app.database import connection
+
+    now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    month_start = now.replace(day=1)
+    members: list[FederationMember] = []
+    totals = {"members": 0, "active_workers": 0, "bookings_this_month": 0,
+              "worker_payouts_rupees": 0.0, "welfare_fund_rupees": 0.0, "open_disputes": 0}
+    with connection() as conn:
+        for c in list_cooperatives():
+            members_n = conn.execute("SELECT COUNT(*) FROM users WHERE cooperative_id = ?", (c.id,)).fetchone()[0]
+            active = conn.execute(
+                "SELECT COUNT(DISTINCT worker_id) FROM assignments WHERE cooperative_id = ? AND started_at IS NOT NULL "
+                "AND datetime(started_at) >= ?", (c.id, month_start.isoformat()),
+            ).fetchone()[0]
+            bookings = conn.execute(
+                "SELECT COUNT(*) FROM bookings WHERE cooperative_id = ? AND datetime(created_at) >= ?", (c.id, month_start.isoformat()),
+            ).fetchone()[0]
+            payout = conn.execute(
+                "SELECT COALESCE(SUM(amount_paise),0) FROM payment_ledger WHERE cooperative_id = ? AND party = 'worker' "
+                "AND datetime(created_at) >= ?", (c.id, month_start.isoformat()),
+            ).fetchone()[0]
+            welfare_total = conn.execute(
+                "SELECT COALESCE(SUM(amount_paise),0) FROM payment_ledger WHERE cooperative_id = ? AND party = 'welfare_fund'", (c.id,)
+            ).fetchone()[0]
+            disputes_open = conn.execute(
+                "SELECT COUNT(*) FROM disputes WHERE cooperative_id = ? AND status = 'open'", (c.id,)
+            ).fetchone()[0]
+            gini_val = 0.0
+            members.append(FederationMember(
+                cooperative_id=c.id, code=c.code, name=c.name, members=members_n, active_workers=active,
+                bookings_this_month=bookings, worker_payouts_this_month_rupees=paise_to_rupees(payout),
+                welfare_fund_rupees=paise_to_rupees(welfare_total), open_disputes=disputes_open, fairness_gini=round(gini_val, 3),
+            ))
+            totals["members"] += members_n
+            totals["active_workers"] += active
+            totals["bookings_this_month"] += bookings
+            totals["worker_payouts_rupees"] = round(totals["worker_payouts_rupees"] + paise_to_rupees(payout), 2)
+            totals["welfare_fund_rupees"] = round(totals["welfare_fund_rupees"] + paise_to_rupees(welfare_total), 2)
+            totals["open_disputes"] += disputes_open
+    return FederationRollup(members=members, totals=totals)

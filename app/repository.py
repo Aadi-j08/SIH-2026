@@ -19,6 +19,7 @@ from app.schemas import (
     WorkerCreate,
     WorkerProfile,
 )
+from app import tenancy
 
 
 # ── row <-> model ────────────────────────────────────────────────────────
@@ -51,10 +52,10 @@ def create_worker(data: WorkerCreate, status: str = "active") -> Worker:
     """Council-registered workers are active at once; self sign-ups pass status="pending" and wait for approval."""
     with connection() as conn:
         cursor = conn.execute(
-            "INSERT INTO workers (name, phone, trade, latitude, longitude, rating, availability, status) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO workers (name, phone, trade, latitude, longitude, rating, availability, status, cooperative_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (data.name.strip(), data.phone, _normalise_trade(data.trade), data.latitude, data.longitude,
-             data.rating, _dump_windows(data.availability), status),
+             data.rating, _dump_windows(data.availability), status, tenancy.tenant_id()),
         )
         row = conn.execute("SELECT * FROM workers WHERE id = ?", (cursor.lastrowid,)).fetchone()
     return _worker(row)
@@ -62,16 +63,19 @@ def create_worker(data: WorkerCreate, status: str = "active") -> Worker:
 
 def get_worker(worker_id: int) -> Worker | None:
     with connection() as conn:
-        row = conn.execute("SELECT * FROM workers WHERE id = ?", (worker_id,)).fetchone()
+        row = conn.execute("SELECT * FROM workers WHERE id = ? AND cooperative_id = ?", (worker_id, tenancy.tenant_id())).fetchone()
     return _worker(row) if row else None
 
 
 def list_workers(trade: str | None = None) -> list[Worker]:
     with connection() as conn:
         if trade:
-            rows = conn.execute("SELECT * FROM workers WHERE trade = ? ORDER BY id", (_normalise_trade(trade),))
+            rows = conn.execute(
+                "SELECT * FROM workers WHERE trade = ? AND cooperative_id = ? ORDER BY id",
+                (_normalise_trade(trade), tenancy.tenant_id()),
+            )
         else:
-            rows = conn.execute("SELECT * FROM workers ORDER BY id")
+            rows = conn.execute("SELECT * FROM workers WHERE cooperative_id = ? ORDER BY id", (tenancy.tenant_id(),))
         return [_worker(row) for row in rows]
 
 
@@ -107,10 +111,11 @@ def set_worker_availability(
 def create_booking(data: BookingCreate) -> Booking:
     with connection() as conn:
         cursor = conn.execute(
-            "INSERT INTO bookings (customer_name, customer_phone, trade, latitude, longitude, address, scheduled_for) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO bookings (customer_name, customer_phone, trade, latitude, longitude, address, scheduled_for, cooperative_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (data.customer_name.strip(), data.customer_phone, _normalise_trade(data.trade), data.latitude,
-             data.longitude, data.address, data.scheduled_for.isoformat() if data.scheduled_for else None),
+             data.longitude, data.address, data.scheduled_for.isoformat() if data.scheduled_for else None,
+             tenancy.tenant_id()),
         )
         row = conn.execute("SELECT * FROM bookings WHERE id = ?", (cursor.lastrowid,)).fetchone()
     return _booking(row)
@@ -118,19 +123,19 @@ def create_booking(data: BookingCreate) -> Booking:
 
 def get_booking(booking_id: int) -> Booking | None:
     with connection() as conn:
-        row = conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+        row = conn.execute("SELECT * FROM bookings WHERE id = ? AND cooperative_id = ?", (booking_id, tenancy.tenant_id())).fetchone()
     return _booking(row) if row else None
 
 
 def list_bookings(status: str | None = None, trade: str | None = None) -> list[Booking]:
-    clauses, params = [], []
+    clauses, params = ["cooperative_id = ?"], [tenancy.tenant_id()]
     if status:
         clauses.append("status = ?")
         params.append(status)
     if trade:
         clauses.append("trade = ?")
         params.append(_normalise_trade(trade))
-    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    where = f"WHERE {' AND '.join(clauses)}"
     with connection() as conn:
         rows = conn.execute(f"SELECT * FROM bookings {where} ORDER BY id", params)
         return [_booking(row) for row in rows]
@@ -141,9 +146,9 @@ def demand_dates(trade: str | None = None) -> list[str]:
     with connection() as conn:
         if trade:
             rows = conn.execute(
-                "SELECT COALESCE(scheduled_for, created_at) AS demand_at FROM bookings WHERE trade = ?",
-                (_normalise_trade(trade),),
+                "SELECT COALESCE(scheduled_for, created_at) AS demand_at FROM bookings WHERE trade = ? AND cooperative_id = ?",
+                (_normalise_trade(trade), tenancy.tenant_id()),
             )
         else:
-            rows = conn.execute("SELECT COALESCE(scheduled_for, created_at) AS demand_at FROM bookings")
+            rows = conn.execute("SELECT COALESCE(scheduled_for, created_at) AS demand_at FROM bookings WHERE cooperative_id = ?", (tenancy.tenant_id(),))
         return [row["demand_at"] for row in rows]
