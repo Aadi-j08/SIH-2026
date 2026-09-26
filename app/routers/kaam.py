@@ -3,14 +3,14 @@ Kaam — the worker's own endpoints.
 
   GET    /workers/me/summary                       worker: the numbers on their home page
   GET    /workers/me/jobs                          worker: assigned / completed / passed-on jobs with money and ratings
-  PUT    /workers/{id}/availability                worker (own record), council: replace the windows
-  PATCH  /workers/{id}/availability/{index}        worker (own record), council: change one window's time or free/busy
-  DELETE /workers/{id}/availability/{index}        worker (own record), council: remove one window
-  POST   /bookings/{id}/accept                     worker assigned to it, council
-  POST   /bookings/{id}/decline                    worker assigned to it, council: pass it on; goes to the next-best worker
-  GET    /workers/pending                          council: sign-ups waiting for approval
-  POST   /workers/{id}/approve                     council
-"""
+   PUT    /workers/{id}/availability                worker (own record), council: replace the windows
+   PATCH  /workers/{id}/availability/{index}        worker (own record), council: change one window's time or free/busy
+   DELETE /workers/{id}/availability/{index}        worker (own record), council: remove one window
+   POST   /bookings/{id}/accept                     worker assigned to it, council
+   POST   /bookings/{id}/decline                    worker assigned to it, council: pass it on; goes to the next-best worker
+   GET    /workers/pending                          council: sign-ups waiting for approval (see sabha router)
+   POST   /workers/{id}/approve                     council: activate/reject with Aadhaar gate (see sabha router)
+   """
 from __future__ import annotations
 
 import logging
@@ -154,16 +154,3 @@ def decline_job(booking_id: int, body: kaam.DeclineRequest, user: User = Depends
              result.reassigned_to or "pending")
     return result
 
-
-# ── council approval ─────────────────────────────────────────────────────
-
-@router.get("/workers/pending", response_model=list[Worker])
-def pending_workers(_: User = Depends(require_council)) -> list[Worker]:
-    return kaam.pending_workers()
-
-
-@router.post("/workers/{worker_id}/approve", response_model=Worker)
-def approve_worker(worker_id: int, user: User = Depends(require_council)) -> Worker:
-    worker = _call(kaam.approve, worker_id)
-    log.info("worker %s approved by council #%s", worker_id, user.id)
-    return worker

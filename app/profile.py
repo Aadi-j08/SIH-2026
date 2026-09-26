@@ -243,6 +243,17 @@ def list_documents(worker_id: int) -> list[WorkerDocumentOut]:
         return [_doc(row) for row in rows]
 
 
+def has_aadhaar(worker_id: int) -> bool:
+    """At least one 'aadhaar' document has been uploaded for the worker."""
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM worker_documents WHERE worker_id = ? AND cooperative_id = ? "
+            "AND document_type = 'aadhaar' LIMIT 1",
+            (worker_id, tenancy.tenant_id()),
+        ).fetchone()
+        return row is not None
+
+
 def add_document(worker_id: int, document_type: str, file_url: str) -> WorkerDocumentOut:
     with connection() as conn:
         conn.execute(

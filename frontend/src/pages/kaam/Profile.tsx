@@ -278,6 +278,7 @@ function DocumentsSection({ workerId, docs }: { workerId: number; docs: WorkerDo
           <option value="id_proof">ID proof</option>
           <option value="insurance">Insurance</option>
           <option value="vehicle">Vehicle registration</option>
+          <option value="aadhaar">Aadhaar (required for approval)</option>
           <option value="other">Other</option>
         </select>
         <input className="input" placeholder="File URL (from your uploads)" value={url} onChange={(e) => setUrl(e.target.value)} />
