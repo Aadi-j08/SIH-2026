@@ -70,7 +70,7 @@ export function AIVoiceSearchBar({ onSelectTrade, onSelectUrgency }: AIVoiceSear
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span style={{ fontSize: "1.2rem" }}>✨</span>
           <span style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--terracotta-d, #C65D26)", letterSpacing: "0.02em" }}>
-            AI SMART VOICE ASSISTANT (GEMINI 1.5)
+            AI SMART VOICE ASSISTANT
           </span>
         </div>
         <span style={{ fontSize: "0.75rem", background: "rgba(37, 152, 77, 0.12)", color: "#1b7337", padding: "3px 8px", borderRadius: "12px", fontWeight: 600 }}>
