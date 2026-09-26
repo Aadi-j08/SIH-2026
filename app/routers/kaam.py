@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app import kaam, ownership
 from app.auth import User, require_council, require_worker
 from app.schemas import Worker
+from app import tenancy
 
 log = logging.getLogger("sahakarsetu.kaam")
 router = APIRouter(tags=["kaam"])
@@ -80,7 +81,8 @@ def _acting_worker_id(user: User, booking_id: int) -> int:
 
     with booking_flow_connection() as conn:
         row = conn.execute(
-            "SELECT worker_id FROM assignments WHERE booking_id = ? ORDER BY id DESC LIMIT 1", (booking_id,)
+            "SELECT worker_id FROM assignments WHERE booking_id = ? AND cooperative_id = ? ORDER BY id DESC LIMIT 1",
+            (booking_id, tenancy.tenant_id()),
         ).fetchone()
     if row is None:
         raise HTTPException(status_code=409, detail=f"Booking {booking_id} has no assignment to reply to")
@@ -130,7 +132,7 @@ def verify_repair_ai(
     from app.database import connection
 
     with connection() as conn:
-        row = conn.execute("SELECT trade, customer_notes FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+        row = conn.execute("SELECT trade, customer_notes FROM bookings WHERE id = ? AND cooperative_id = ?", (booking_id, tenancy.tenant_id())).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail=f"Booking {booking_id} not found")
         trade = row["trade"]

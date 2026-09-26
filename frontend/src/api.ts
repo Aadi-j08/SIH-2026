@@ -12,6 +12,175 @@ export type AvailabilityWindow = {
   available: boolean;
 };
 
+export type GrievanceStatusUpdate = {
+  status: "open" | "triaged" | "in_progress" | "resolved" | "rejected";
+  resolution?: string | null;
+};
+
+export type SkillLevel = "beginner" | "intermediate" | "expert";
+
+export type Skill = {
+  id: number;
+  worker_id: number;
+  name: string;
+  level: SkillLevel;
+  verified: boolean;
+  verified_by: number | null;
+  verified_at: string | null;
+  cooperative_id: number;
+  created_at: string | null;
+};
+
+export type Certification = {
+  id: number;
+  worker_id: number;
+  name: string;
+  issuing_org: string | null;
+  issue_date: string | null;
+  expiry_date: string | null;
+  document: string | null;
+  verified: boolean;
+  verified_by: number | null;
+  verified_at: string | null;
+  cooperative_id: number;
+  created_at: string | null;
+};
+
+export type CertificationCreate = {
+  name: string;
+  issuing_org?: string | null;
+  issue_date?: string | null;
+  expiry_date?: string | null;
+  document?: string | null;
+};
+
+export type PortfolioItem = {
+  id: number;
+  worker_id: number;
+  image_url: string;
+  caption: string | null;
+  category: string | null;
+  verified: boolean;
+  verified_by: number | null;
+  verified_at: string | null;
+  cooperative_id: number;
+  created_at: string | null;
+};
+
+export type PortfolioItemCreate = {
+  image_url: string;
+  caption?: string | null;
+  category?: string | null;
+};
+
+export type WorkerDocument = {
+  id: number;
+  worker_id: number;
+  document_type: string;
+  file_url: string;
+  uploaded_at: string | null;
+  cooperative_id: number;
+};
+
+export type WorkerDocumentCreate = {
+  document_type: string;
+  file_url: string;
+};
+
+// ── Welfare / grievances (Phase E) ─────────────────────────────────────────
+
+export type Benefit = {
+  id: number;
+  worker_id: number;
+  kind: "pension" | "medical" | "disability" | "other";
+  name: string;
+  description: string | null;
+  eligible: boolean;
+  claimed: boolean;
+  amount_rupees: number | null;
+  start_date: string | null;
+  end_date: string | null;
+  document: string | null;
+  cooperative_id: number;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type BenefitCreate = {
+  worker_id: number;
+  kind?: Benefit["kind"];
+  name: string;
+  description?: string | null;
+  eligible?: boolean;
+  claimed?: boolean;
+  amount_rupees?: number | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  document?: string | null;
+};
+
+export type InsurancePolicy = {
+  id: number;
+  name: string;
+  kind: "health" | "accident" | "life" | "liability" | "other";
+  insurer: string | null;
+  policy_number: string | null;
+  premium_rupees: number;
+  premium_paid: boolean;
+  coverage_paise: number;
+  start_date: string | null;
+  end_date: string | null;
+  active: boolean;
+  cooperative_id: number;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type InsurancePolicyCreate = {
+  name: string;
+  kind?: InsurancePolicy["kind"];
+  insurer?: string | null;
+  policy_number?: string | null;
+  premium_rupees: number;
+  premium_paid?: boolean;
+  coverage_paise: number;
+  start_date?: string | null;
+  end_date?: string | null;
+  active?: boolean;
+};
+
+export type Grievance = {
+  id: number;
+  worker_id: number | null;
+  raised_by_user_id: number | null;
+  kind: "wage" | "safety" | "equipment" | "assignment" | "other";
+  title: string;
+  description: string;
+  status: "open" | "triaged" | "in_progress" | "resolved" | "rejected";
+  resolution: string | null;
+  priority: "low" | "normal" | "high";
+  cooperative_id: number;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type GrievanceCreate = {
+  worker_id?: number | null;
+  kind?: Grievance["kind"];
+  title: string;
+  description: string;
+  priority?: "low" | "normal" | "high";
+};
+
+export type ProfileSummary = {
+  worker_id: number;
+  skills: Skill[];
+  certifications: Certification[];
+  portfolio: PortfolioItem[];
+  documents: WorkerDocument[];
+  completeness: number;
+};
+
 export type Worker = {
   id: number;
   name: string;
@@ -325,12 +494,15 @@ export type Forecast = {
 // ── Sabha: cooperative profile, overview, disputes ─────────────────────
 
 export type Cooperative = {
+  id: number;
+  code: string;
   name: string;
   short_name: string;
   registration_id: string | null;
   established: number | null;
   area: string | null;
   radius_km: number | null;
+  region: string | null;
   verified: boolean;
   worker_kyc: boolean;
   payments_verified: boolean;
@@ -339,6 +511,7 @@ export type Cooperative = {
   last_meeting: string | null;
   weekly_job_limit: number;
   fund_allocation: Record<string, number>;
+  created_at: string | null;
   updated_at: string | null;
 };
 
@@ -447,6 +620,7 @@ export type User = {
   role: string | null;
   worker_id: number | null;
   languages: string[];
+  is_council: boolean;
   created_at: string | null;
 };
 
@@ -512,6 +686,19 @@ export const API_BASE_URL = (
 ).replace(/\/$/, "");
 
 const SESSION_TOKEN_KEY = "sahakarsetu_session_token";
+const COOPERATIVE_ID_KEY = "sahakarsetu_cooperative_id";
+
+export function getCooperativeId(): number | null {
+  const raw = storageGet(COOPERATIVE_ID_KEY);
+  if (!raw) return null;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function setCooperativeId(id: number | null): void {
+  if (id) storageSet(COOPERATIVE_ID_KEY, String(id));
+  else storageRemove(COOPERATIVE_ID_KEY);
+}
 
 export function getSessionToken(): string | null {
   return storageGet(SESSION_TOKEN_KEY);
@@ -536,6 +723,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   if (body !== undefined) headers["content-type"] = "application/json";
   const token = getSessionToken();
   if (token) headers.Authorization = `Bearer ${token}`;
+  const coop = storageGet(COOPERATIVE_ID_KEY);
+  if (coop) headers["X-Cooperative-Id"] = coop;
   let response: Response;
   try {
     response = await fetch(targetUrl, {
@@ -614,6 +803,31 @@ export const api = {
     get: (id: number) => get<Worker>(`/workers/${id}`),
     create: (body: Omit<Worker, "id" | "jobs_this_week" | "created_at" | "availability" | "phone" | "rating"> & Partial<Worker>) =>
       post<Worker>("/workers", body),
+    profile: (workerId: number) => get<ProfileSummary>(`/workers/${workerId}/profile`),
+    skills: {
+      list: (workerId: number) => get<Skill[]>(`/workers/${workerId}/skills`),
+      add: (workerId: number, body: { name: string; level?: SkillLevel }) => post<Skill>(`/workers/${workerId}/skills`, body),
+      edit: (workerId: number, id: number, body: { name: string; level: SkillLevel }) => patch<Skill>(`/workers/${workerId}/skills/${id}`, body),
+      remove: (workerId: number, id: number) => del<void>(`/workers/${workerId}/skills/${id}`),
+      verify: (workerId: number, id: number, verified: boolean) => post<{ verified: boolean }>(`/workers/${workerId}/verify/skills/${id}`, { verified }),
+    },
+    certifications: {
+      list: (workerId: number) => get<Certification[]>(`/workers/${workerId}/certifications`),
+      add: (workerId: number, body: CertificationCreate) => post<Certification>(`/workers/${workerId}/certifications`, body),
+      edit: (workerId: number, id: number, body: CertificationCreate) => put<Certification>(`/workers/${workerId}/certifications/${id}`, body),
+      remove: (workerId: number, id: number) => del<void>(`/workers/${workerId}/certifications/${id}`),
+      verify: (workerId: number, id: number, verified: boolean) => post<{ verified: boolean }>(`/workers/${workerId}/verify/certifications/${id}`, { verified }),
+    },
+    portfolio: {
+      list: (workerId: number) => get<PortfolioItem[]>(`/workers/${workerId}/portfolio`),
+      add: (workerId: number, body: PortfolioItemCreate) => post<PortfolioItem>(`/workers/${workerId}/portfolio`, body),
+      remove: (workerId: number, id: number) => del<void>(`/workers/${workerId}/portfolio/${id}`),
+      verify: (workerId: number, id: number, verified: boolean) => post<{ verified: boolean }>(`/workers/${workerId}/verify/portfolio_items/${id}`, { verified }),
+    },
+    documents: {
+      list: (workerId: number) => get<WorkerDocument[]>(`/workers/${workerId}/documents`),
+      add: (workerId: number, body: WorkerDocumentCreate) => post<WorkerDocument>(`/workers/${workerId}/documents`, body),
+    },
     setAvailabilityByVoice: (id: number, transcript: string, replace = true, referenceDate?: string, confirmed = false) =>
       post<{ parsed: VoiceParse; worker: Worker }>(`/workers/${id}/availability/voice`, {
         transcript,
@@ -743,6 +957,10 @@ export const api = {
       post<Settlement>(`/bookings/${bookingId}/settlement/resolve`, { amount_rupees, resolution }),
     list: (status?: SettlementStatus | "open") => get<Settlement[]>(`/settlements${status ? `?status=${status}` : ""}`),
   },
+  invoicing: {
+    invoiceUrl: (bookingId: number) => `${API_BASE_URL}/bookings/${bookingId}/invoice`,
+    markPaid: (bookingId: number) => post<{ booking_id: number; status: string; split: Record<string, number> }>(`/bookings/${bookingId}/mark-paid`, {}),
+  },
   events: (after = 0) => get<LiveEvent[]>(`/events?after=${after}`),
   stats: () => get<PublicStats>("/stats"),
   feedback: {
@@ -756,6 +974,15 @@ export const api = {
   },
   staffing: (trade: string, days = 7, area?: string) =>
     get<StaffingForecast>(`/forecast/staffing?trade=${encodeURIComponent(trade)}&days=${days}${area ? `&area=${encodeURIComponent(area)}` : ""}`),
+  welfare: {
+    benefits: (workerId?: number) => get<Benefit[]>(`/benefits${workerId ? `?worker_id=${workerId}` : ""}`),
+    addBenefit: (body: BenefitCreate) => post<Benefit>("/benefits", body),
+    policies: () => get<InsurancePolicy[]>("/insurance-policies"),
+    addPolicy: (body: InsurancePolicyCreate) => post<InsurancePolicy>("/insurance-policies", body),
+    grievances: (status?: string) => get<Grievance[]>(`/grievances${status ? `?status=${status}` : ""}`),
+    raiseGrievance: (body: GrievanceCreate) => post<Grievance>("/grievances", body),
+    updateGrievance: (id: number, body: GrievanceStatusUpdate) => patch<Grievance>(`/grievances/${id}`, body),
+  },
   forecast: (trade?: string, days = 7) =>
     get<Forecast>(`/forecast?days=${days}${trade ? `&trade=${encodeURIComponent(trade)}` : ""}`),
   forecastML: (trade = "general", wardId = "1") =>
@@ -773,7 +1000,20 @@ export const api = {
         recommended_rate_inr: number;
       }>;
       insights: string;
-    }>(`/forecast/ml?trade=${encodeURIComponent(trade)}&ward_id=${encodeURIComponent(wardId)}`),
+     }>(`/forecast/ml?trade=${encodeURIComponent(trade)}&ward_id=${encodeURIComponent(wardId)}`),
+  dynamicPricing: (trade = "general", horizon = 7) =>
+    get<{
+      trade: string;
+      model: string;
+      price_bands: Array<{
+        date: string;
+        day_name: string;
+        is_weekend: boolean;
+        predicted_bookings: number;
+        floor_rate_inr: number;
+        recommended_rate_inr: number;
+      }>;
+    }>(`/forecast/dynamic-pricing?trade=${encodeURIComponent(trade)}&horizon_days=${horizon}`),
 };
 
 export function errorMessage(error: unknown): string {

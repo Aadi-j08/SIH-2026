@@ -12,7 +12,7 @@
 import { useEffect, useState } from "react";
 
 import { api, errorMessage, formatRupees, titleCase, type Dispute, type LedgerEntry, type PaidVia, type Quote, type Rate, type Settlement } from "../api";
-import { Check, Scale } from "./Icons";
+import { Check, Receipt, Scale } from "./Icons";
 import { DiscrepancyModal } from "./DiscrepancyModal";
 
 const PARTY_LABEL: Record<LedgerEntry["party"], string> = { worker: "To the worker", welfare_fund: "Workers' welfare fund", platform_operations: "Platform operations" };
@@ -410,7 +410,28 @@ export function SettlementCard({ settlement: s, role, onChange }: { settlement: 
               <Check size={18} />
               {busy ? "Saving…" : `Agree ${formatRupees(onTable)}`}
             </button>
-            {role === "customer" && (
+         {s.ledger.length === 0 && role === "customer" && !s.paid_via && (
+           <button
+             type="button"
+             className="btn"
+             style={{ minHeight: 44, width: "100%", marginTop: 8 }}
+             onClick={async () => {
+               try {
+                 const res = await api.invoicing.markPaid(s.booking_id);
+                 await onChange();
+                 alert(`Marked paid. ${JSON.stringify(res.split)}`);
+               } catch (e) { alert(errorMessage(e)); } }}
+           >
+             ✅ I've paid — mark as settled (demo only)
+           </button>
+         )}
+         {s.ledger.length > 0 && (
+           <a href={api.invoicing.invoiceUrl(s.booking_id)} target="_blank" rel="noreferrer" className="row small" style={{ gap: 6, alignItems: "center" }}>
+             <Receipt size={16} />
+             <span>Open PDF invoice / UPI QR</span>
+           </a>
+         )}
+         {role === "customer" && (
               <button type="button" className="btn outline" style={{ minHeight: 50 }} onClick={() => setMode("counter")} disabled={busy}>
                 Suggest different
               </button>

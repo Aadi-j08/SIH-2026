@@ -8,6 +8,42 @@ import "./styles.css";
 
 registerSW({ immediate: true });
 
+// ── Phase H: PWA A2HS (Add to Home Screen) install prompt capture ─────────
+type InstallEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+let deferredPrompt: InstallEvent | null = null;
+const isStandalone = () =>
+  window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone === true;
+
+window.addEventListener(
+  "beforeinstallprompt",
+  (e: Event) => {
+    const ev = e as InstallEvent;
+    ev.preventDefault();
+    deferredPrompt = ev;
+    (window as any).__sahakarsetuInstallable = true;
+  },
+  { passive: true },
+);
+if (isStandalone()) {
+  (window as any).__sahakarsetuInstalled = true;
+}
+export async function triggerInstall(): Promise<boolean> {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    const choice = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    return choice.outcome === "accepted";
+  }
+  return false;
+}
+export function installable(): boolean {
+  return (window as any).__sahakarsetuInstallable === true;
+}
+
+
 class AppErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
 

@@ -19,10 +19,12 @@ import Profile from "./pages/sabha/Profile";
 import Reports from "./pages/sabha/Reports";
 import Settings from "./pages/sabha/Settings";
 import SabhaWorkers from "./pages/sabha/Workers";
+import Verification from "./pages/sabha/Verification";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import Worker from "./pages/Worker";
 import WorkerJobs from "./pages/WorkerJobs";
+import WorkerProfile from "./pages/kaam/Profile";
 import WorkerWeek from "./pages/WorkerWeek";
 
 /** Every private Sabha page: signed-in council member, inside the Sabha frame. */
@@ -92,6 +94,16 @@ export default function App() {
             </RequireAuth>
           }
         />
+        <Route
+          path="/kaam/profile"
+          element={
+            <RequireAuth portal="kaam">
+              <PortalShell portal="kaam">
+                <WorkerProfile />
+              </PortalShell>
+            </RequireAuth>
+          }
+        />
 
         {/* Sabha · Council */}
         <Route path="/sabha" element={<PortalLanding portal="sabha" />} />
@@ -100,7 +112,8 @@ export default function App() {
         <Route element={<SabhaArea />}>
           <Route path="/sabha/home" element={<Overview />} />
           <Route path="/sabha/demands" element={<Demands />} />
-          <Route path="/sabha/workers" element={<SabhaWorkers />} />
+           <Route path="/sabha/workers" element={<SabhaWorkers />} />
+           <Route path="/sabha/verification" element={<Verification />} />
           <Route path="/sabha/customers" element={<Customers />} />
           <Route path="/sabha/payments" element={<Payments />} />
           <Route path="/sabha/fund" element={<Fund />} />

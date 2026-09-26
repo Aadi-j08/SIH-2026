@@ -1,7 +1,7 @@
 /** The cooperative fund: how much there is, how it is allocated, and the council's lever to change the policy. */
 import { useEffect, useState, type FormEvent } from "react";
 
-import { api, errorMessage, formatRupees } from "../../api";
+import { api, errorMessage, formatRupees, type Benefit, type InsurancePolicy } from "../../api";
 import { FundPie } from "../../components/sabha/FundPie";
 import { useSabha } from "../../components/SabhaShell";
 
@@ -80,7 +80,64 @@ export default function Fund() {
           </div>
           {note && <div className={`notice ${note.kind}`}>{note.text}</div>}
         </form>
+        <BenefitsPanel onSaved={reload} />
+        <InsurancePanel onSaved={reload} />
       </div>
     </div>
   );
 }
+
+function BenefitsPanel({ onSaved }: { onSaved: () => void }) {
+  const [items, setItems] = useState<Benefit[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = () => api.welfare.benefits().then(setItems).catch((e) => setErr(errorMessage(e)));
+  useEffect(() => { void load(); }, []);
+
+  const add = async () => {
+    const name = window.prompt("Benefit name");
+    if (!name) return;
+    try {
+      await api.welfare.addBenefit({ worker_id: 0, name });
+      await reloadSafe(onSaved);
+      void load();
+    } catch (e) { setErr(errorMessage(e)); }
+  };
+
+  return (
+    <div className="panel">
+      <div className="row between"><h2>Benefits</h2><button className="chip small" onClick={add}>+ Add</button></div>
+      {err && <div className="notice error">{err}</div>}
+      {items.length === 0 && <div className="small muted">No benefits registered yet.</div>}
+      {items.map((b) => (
+        <div key={b.id} className="row small" style={{ padding: "4px 0" }}>
+          <span className="grow">{b.name} — {b.worker_id} — {b.kind}</span>
+          <span>{b.eligible ? "eligible" : "not yet"}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function InsurancePanel({ onSaved }: { onSaved: () => void }) {
+  void onSaved;
+  const [items, setItems] = useState<InsurancePolicy[]>([]);
+  const load = () => api.welfare.policies().then(setItems).catch(() => undefined);
+  useEffect(() => { void load(); }, []);
+
+  return (
+    <div className="panel">
+      <h2>Insurance policies</h2>
+      {items.length === 0 && <div className="small muted">No policies on file.</div>}
+      {items.map((p) => (
+        <div key={p.id} className="row small" style={{ padding: "4px 0" }}>
+          <span className="grow">{p.name} ({p.kind}) via {p.insurer ?? "—"}</span>
+          <span>{formatRupees(p.premium_rupees)} / yr · {p.active ? "active" : "inactive"}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+async function reloadSafe(fn: () => void) { try { fn(); } catch { /* ignore */ } }
+

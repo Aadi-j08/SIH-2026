@@ -25,7 +25,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app import rates
+from app import rates, tenancy
 from app.auth import User
 from app.booking_flow_db import booking_flow_connection, immediate_transaction
 from app.services import booking_flow
@@ -105,7 +105,7 @@ _SELECT = """
 
 
 def _row(conn: sqlite3.Connection, booking_id: int) -> sqlite3.Row | None:
-    return conn.execute(_SELECT + " WHERE s.booking_id = ?", (booking_id,)).fetchone()
+    return conn.execute(_SELECT + " WHERE s.booking_id = ? AND s.cooperative_id = ?", (booking_id, tenancy.tenant_id())).fetchone()
 
 
 def _model(conn: sqlite3.Connection, row: sqlite3.Row) -> Settlement:
@@ -130,10 +130,15 @@ def _model(conn: sqlite3.Connection, row: sqlite3.Row) -> Settlement:
 
 
 def _assigned_worker(conn: sqlite3.Connection, booking_id: int) -> tuple[sqlite3.Row, int]:
-    booking = conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    booking = conn.execute(
+        "SELECT * FROM bookings WHERE id = ? AND cooperative_id = ?", (booking_id, tenancy.tenant_id())
+    ).fetchone()
     if booking is None:
         raise SettlementError(404, f"Booking {booking_id} not found")
-    assignment = conn.execute("SELECT worker_id FROM assignments WHERE booking_id = ? ORDER BY id DESC LIMIT 1", (booking_id,)).fetchone()
+    assignment = conn.execute(
+        "SELECT worker_id FROM assignments WHERE booking_id = ? AND cooperative_id = ? ORDER BY id DESC LIMIT 1",
+        (booking_id, tenancy.tenant_id()),
+    ).fetchone()
     if booking["status"] != "assigned" or assignment is None:
         raise SettlementError(409, f"Booking {booking_id} is '{booking['status']}'; a price is agreed on an assigned job")
     return booking, assignment["worker_id"]
@@ -155,12 +160,15 @@ def _in_band(amount_paise: int, standard_paise: int, band_percent: int) -> bool:
 
 
 def _open_dispute(conn: sqlite3.Connection, booking_id: int, user: User, amount_paise: int, note: str | None) -> int:
-    existing = conn.execute("SELECT id FROM disputes WHERE booking_id = ? AND status = 'open'", (booking_id,)).fetchone()
+    existing = conn.execute(
+        "SELECT id FROM disputes WHERE booking_id = ? AND cooperative_id = ? AND status = 'open'", (booking_id, tenancy.tenant_id())
+    ).fetchone()
     if existing is not None:
         return existing["id"]
     cursor = conn.execute(
-        "INSERT INTO disputes (booking_id, kind, raised_by, raised_by_user_id, amount_paise, description) VALUES (?, 'payment', ?, ?, ?, ?)",
-        (booking_id, user.access_role, user.id, amount_paise, (note or "").strip() or "Could not agree the price of the job; asked the Sabha to decide."),
+        "INSERT INTO disputes (booking_id, kind, raised_by, raised_by_user_id, amount_paise, description, cooperative_id) VALUES (?, 'payment', ?, ?, ?, ?, ?)",
+        (booking_id, user.access_role, user.id, amount_paise, (note or "").strip() or "Could not agree the price of the job; asked the Sabha to decide.",
+         tenancy.tenant_id()),
     )
     return int(cursor.lastrowid)
 
@@ -211,10 +219,10 @@ def propose(user: User, booking_id: int, data: Propose) -> Settlement:
                          f"the community set for this job. Propose within it, or ask the Sabha."
                 )
             conn.execute(
-                "INSERT INTO settlements (booking_id, worker_id, hours_worked, materials_paise, work_note, standard_paise, proposed_paise) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (booking_id, worker_id, data.hours_worked, rupees_to_paise(data.materials_rupees), (data.work_note or "").strip() or None,
-                 standard_paise, proposed_paise),
+                "INSERT INTO settlements (booking_id, worker_id, hours_worked, materials_paise, work_note, standard_paise, proposed_paise, cooperative_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (booking_id, worker_id, data.hours_worked, rupees_to_paise(data.materials_rupees),
+                 (data.work_note or "").strip() or None, standard_paise, proposed_paise, tenancy.tenant_id()),
             )
         log.info("settlement proposed on booking %s: %s paise by %s #%s", booking_id, proposed_paise, user.access_role, user.id)
         return _model(conn, _row(conn, booking_id))
@@ -242,8 +250,9 @@ def respond(user: User, booking_id: int, data: Respond) -> Settlement:
                 agreed_paise = on_table
                 conn.execute(
                     "UPDATE settlements SET status = 'agreed', agreed_paise = ?, paid_via = COALESCE(?, paid_via), "
-                    "customer_note = COALESCE(?, customer_note), responded_at = CURRENT_TIMESTAMP, agreed_at = CURRENT_TIMESTAMP WHERE booking_id = ?",
-                    (agreed_paise, data.paid_via, (data.note or "").strip() or None, booking_id),
+                    "customer_note = COALESCE(?, customer_note), responded_at = CURRENT_TIMESTAMP, agreed_at = CURRENT_TIMESTAMP "
+                    "WHERE booking_id = ? AND cooperative_id = ?",
+                    (agreed_paise, data.paid_via, (data.note or "").strip() or None, booking_id, tenancy.tenant_id()),
                 )
             elif data.action == "counter":
                 if side != "customer" and side != "council":
@@ -260,14 +269,16 @@ def respond(user: User, booking_id: int, data: Respond) -> Settlement:
                 if status == "countered":
                     raise SettlementError(409, "A counter is already on the table; wait for the worker's reply")
                 conn.execute(
-                    "UPDATE settlements SET status = 'countered', counter_paise = ?, customer_note = ?, responded_at = CURRENT_TIMESTAMP WHERE booking_id = ?",
-                    (counter_paise, (data.note or "").strip() or None, booking_id),
+                    "UPDATE settlements SET status = 'countered', counter_paise = ?, customer_note = ?, responded_at = CURRENT_TIMESTAMP "
+                    "WHERE booking_id = ? AND cooperative_id = ?",
+                    (counter_paise, (data.note or "").strip() or None, booking_id, tenancy.tenant_id()),
                 )
             else:  # dispute → the Sabha decides
                 dispute_id = _open_dispute(conn, booking_id, user, on_table, data.note)
                 conn.execute(
-                    "UPDATE settlements SET status = 'disputed', dispute_id = ?, customer_note = COALESCE(?, customer_note), responded_at = CURRENT_TIMESTAMP WHERE booking_id = ?",
-                    (dispute_id, (data.note or "").strip() or None, booking_id),
+                    "UPDATE settlements SET status = 'disputed', dispute_id = ?, customer_note = COALESCE(?, customer_note), responded_at = CURRENT_TIMESTAMP "
+                    "WHERE booking_id = ? AND cooperative_id = ?",
+                    (dispute_id, (data.note or "").strip() or None, booking_id, tenancy.tenant_id()),
                 )
         if agreed_paise is not None:
             _complete(conn, booking_id, agreed_paise)
@@ -286,13 +297,15 @@ def resolve(user: User, booking_id: int, data: Resolve) -> Settlement:
             if row["status"] == "agreed":
                 raise SettlementError(409, "This settlement is already agreed")
             conn.execute(
-                "UPDATE settlements SET status = 'agreed', agreed_paise = ?, responded_at = CURRENT_TIMESTAMP, agreed_at = CURRENT_TIMESTAMP WHERE booking_id = ?",
-                (amount_paise, booking_id),
+                "UPDATE settlements SET status = 'agreed', agreed_paise = ?, responded_at = CURRENT_TIMESTAMP, agreed_at = CURRENT_TIMESTAMP "
+                "WHERE booking_id = ? AND cooperative_id = ?",
+                (amount_paise, booking_id, tenancy.tenant_id()),
             )
             if row["dispute_id"] is not None:
                 conn.execute(
-                    "UPDATE disputes SET status = 'resolved', resolution = ?, resolved_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'open'",
-                    (data.resolution.strip(), row["dispute_id"]),
+                    "UPDATE disputes SET status = 'resolved', resolution = ?, resolved_at = CURRENT_TIMESTAMP "
+                    "WHERE id = ? AND cooperative_id = ? AND status = 'open'",
+                    (data.resolution.strip(), row["dispute_id"], tenancy.tenant_id()),
                 )
         _complete(conn, booking_id, amount_paise)
         log.info("settlement on booking %s resolved by council #%s at %s paise", booking_id, user.id, amount_paise)
@@ -300,15 +313,18 @@ def resolve(user: User, booking_id: int, data: Resolve) -> Settlement:
 
 
 def list_all(status: str | None = None, limit: int = 100) -> list[Settlement]:
-    where = ""
-    params: tuple[Any, ...] = ()
+    coop = tenancy.tenant_id()
+    where = " WHERE s.cooperative_id = ?"
+    params: tuple[Any, ...] = (coop,)
     if status == "open":
-        where = " WHERE s.status IN ('proposed', 'countered', 'disputed')"
+        where += " AND s.status IN ('proposed', 'countered', 'disputed')"
     elif status:
-        where, params = " WHERE s.status = ?", (status,)
+        where += " AND s.status = ?"
+        params = (coop, status)
     with booking_flow_connection() as conn:
         rows = conn.execute(
-            _SELECT + where + " ORDER BY (s.status = 'agreed'), COALESCE(s.responded_at, s.created_at) DESC, s.id DESC LIMIT ?", (*params, limit)
+            _SELECT + where + " ORDER BY (s.status = 'agreed'), COALESCE(s.responded_at, s.created_at) DESC, s.id DESC LIMIT ?",
+            (*params, limit),
         ).fetchall()
         return [_model(conn, r) for r in rows]
 
@@ -316,7 +332,8 @@ def list_all(status: str | None = None, limit: int = 100) -> list[Settlement]:
 def open_settlements(conn: sqlite3.Connection, older_than_hours: float | None = None) -> list[dict[str, Any]]:
     """Settlements still waiting on someone (for the Sabha's attention list)."""
     rows = conn.execute(
-        _SELECT + " WHERE s.status IN ('proposed', 'countered') ORDER BY s.created_at"
+        _SELECT + " WHERE s.cooperative_id = ? AND s.status IN ('proposed', 'countered') ORDER BY s.created_at",
+        (tenancy.tenant_id(),),
     ).fetchall()
     if older_than_hours is None:
         return [dict(r) for r in rows]
