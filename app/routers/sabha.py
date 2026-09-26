@@ -23,6 +23,8 @@ from app import repository
 from app.auth import User, require_council, require_user
 from app.booking_flow_db import booking_flow_connection
 from app.database import connection
+from app import profile
+from app.routers.workers import _resolve_worker
 from app.schemas import Worker
 from app.cooperative import Cooperative, CooperativeUpdate, get_cooperative, update_cooperative
 from app.database import connection
@@ -76,8 +78,13 @@ def pending_workers(_: User = Depends(require_council)) -> list[Worker]:
 
 @router.post("/workers/{worker_id}/approve", response_model=Worker)
 def approve_worker(worker_id: int, body: WorkerApproval, user: User = Depends(require_council)) -> Worker:
-    """Council verification: activate a pending worker, or reject them."""
+    """Council verification: activate a pending worker, or reject them.
+
+    Demo KYC gate: a worker may only be activated once they have uploaded an
+    Aadhaar document. (Reject always works.)"""
     _resolve_worker(user, worker_id)
+    if body.status == "active" and not profile.has_aadhaar(worker_id):
+        raise HTTPException(status_code=409, detail="Upload Aadhaar proof before activating this worker")
     updated = set_worker_status(worker_id, body.status)
     if updated is None:
         raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")

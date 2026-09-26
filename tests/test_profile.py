@@ -76,3 +76,22 @@ def test_profile_is_tenant_scoped(worker, client, db_path):
     # The worker exists in tenant 1; asking the API to act as Indore is a 403 for the user.
     r = worker.get(f"/workers/{wid}/profile", headers={"X-Cooperative-Id": str(indore.id)})
     assert r.status_code == 403
+
+
+def test_council_cannot_activate_worker_without_aadhaar(council, make_client):
+    pending = make_client("worker", name="Unverified Worker", phone="9200000002", trade="plumbing")
+    wid = pending.user["worker_id"]
+    # Council tries to activate without Aadhaar uploaded -> 409
+    r = council.post(f"/workers/{wid}/approve", json={"status": "active"})
+    assert r.status_code == 409, r.text
+    assert "Aadhaar" in r.json()["detail"]
+    # Worker uploads an Aadhaar document
+    doc = pending.post(f"/workers/{wid}/documents", json={"document_type": "aadhaar", "file_url": "uploads/aadhaar.jpg"}).json()
+    assert doc["document_type"] == "aadhaar"
+    # Now council can activate
+    r2 = council.post(f"/workers/{wid}/approve", json={"status": "active"})
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["status"] == "active"
+    # ...and the worker's /me reports active
+    me = pending.get("/auth/me").json()["user"]
+    assert me["worker_status"] == "active"

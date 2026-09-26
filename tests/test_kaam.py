@@ -26,23 +26,25 @@ def test_new_kaam_signup_is_pending_until_the_council_approves(make_client, coun
     worker_id = ravi.user["worker_id"]
     assert ravi.get(f"/workers/{worker_id}").json()["status"] == "pending"
     assert ravi.get("/workers/me/summary").json()["status"] == "pending"
-    assert [w["id"] for w in council.get("/workers/pending").json()] == [worker_id]
+    assert [w["id"] for w in council.get("/admin/workers/pending").json()] == [worker_id]
 
     # the engine does not offer a pending worker any work
     booking_id = place_booking(customer)
     assert council.post(f"/bookings/{booking_id}/assign").status_code == 409
     assert council.get(f"/bookings/{booking_id}/recommendations").json() == []
 
-    approved = council.post(f"/workers/{worker_id}/approve")
+    # council can only activate once the worker has uploaded an Aadhaar
+    ravi.post(f"/workers/{worker_id}/documents", json={"document_type": "aadhaar", "file_url": "uploads/aadhaar.jpg"})
+    approved = council.post(f"/workers/{worker_id}/approve", json={"status": "active"})
     assert approved.status_code == 200 and approved.json()["status"] == "active"
-    assert council.get("/workers/pending").json() == []
+    assert council.get("/admin/workers/pending").json() == []
     assert council.post(f"/bookings/{booking_id}/assign").json()["worker"]["id"] == worker_id
 
 
 def test_only_the_council_approves(worker, customer):
     for c in (worker, customer):
-        assert c.get("/workers/pending").status_code == 403
-        assert c.post(f"/workers/{worker.user['worker_id']}/approve").status_code == 403
+        assert c.get("/admin/workers/pending").status_code == 403
+        assert c.post(f"/workers/{worker.user['worker_id']}/approve", json={"status": "active"}).status_code == 403
 
 
 def test_council_registered_workers_are_active_at_once(council):

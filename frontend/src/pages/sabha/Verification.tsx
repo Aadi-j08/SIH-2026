@@ -7,6 +7,7 @@ import { Check, Cross } from "../../components/Icons";
 export default function Verification() {
    const [workers, setWorkers] = useState<Worker[] | null>(null);
   const [pendingWorkers, setPendingWorkers] = useState<Worker[] | null>(null);
+  const [aadhaarByWorker, setAadhaarByWorker] = useState<Record<number, boolean>>({});
   const [items, setItems] = useState<ProfileItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,6 +18,17 @@ export default function Verification() {
       setWorkers(ws);
       const pending = await api.workers.pending();
       setPendingWorkers(pending);
+      // Verify each pending worker has uploaded an Aadhaar (required to activate).
+      const aadhaarMap: Record<number, boolean> = {};
+      for (const w of pending) {
+        try {
+          const docs = await api.workers.documents.list(w.id);
+          aadhaarMap[w.id] = docs.some((d) => d.document_type === "aadhaar");
+        } catch {
+          aadhaarMap[w.id] = false;
+        }
+      }
+      setAadhaarByWorker(aadhaarMap);
       const collected: ProfileItem[] = [];
       for (const w of ws) {
         const p = await api.workers.profile(w.id);
@@ -54,6 +66,10 @@ export default function Verification() {
   };
 
   const approve = async (id: number) => {
+    if (!aadhaarByWorker[id]) {
+      alert("This worker must upload an Aadhaar document before being activated.");
+      return;
+    }
     setLoading(true);
     try {
       await api.workers.approve(id, "active");
@@ -129,8 +145,11 @@ export default function Verification() {
               <div className="trow t4" key={w.id}>
                 <span>{w.name}</span>
                 <span className="small muted">{w.trade} · {w.phone ?? "—"}</span>
+                <span className="small">
+                  {aadhaarByWorker[w.id] ? "✓ Aadhaar uploaded" : "✗ pending Aadhaar"}
+                </span>
                 <div className="row" style={{ justifyContent: "flex-end", gap: 6 }}>
-                  <button className="chip on" onClick={() => approve(w.id)} disabled={loading} title="Approve"><Check /></button>
+                  <button className="chip on" onClick={() => approve(w.id)} disabled={loading || !aadhaarByWorker[w.id]} title={aadhaarByWorker[w.id] ? "Approve" : "Needs Aadhaar first"}><Check /></button>
                   <button className="chip off" onClick={() => reject(w.id)} disabled={loading} title="Reject"><Cross /></button>
                 </div>
               </div>
