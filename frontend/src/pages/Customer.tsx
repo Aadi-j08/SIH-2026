@@ -14,6 +14,7 @@ import {
   type BookingDetail,
   type Settlement,
 } from "../api";
+import { LocationMap } from "../lib/map";
 import { useAuth } from "../lib/auth";
 import { useLive } from "../lib/live";
 import { ArrowRight, Check, Clock, Locate, Pin, Star, TRADE_ICONS } from "../components/Icons";
@@ -377,6 +378,13 @@ function BookingStatus({ bookingId }: { bookingId: number }) {
           {booking.address ? ` · ${booking.address}` : ""}
         </div>
       </div>
+
+      <LocationMap
+        center={[booking.latitude, booking.longitude]}
+        markers={[{ lat: booking.latitude, lng: booking.longitude, label: booking.customer_name || "You", color: "red" }]}
+        height={170}
+        interactive={false}
+      />
 
       {isAsap && (
         <StatusTracker

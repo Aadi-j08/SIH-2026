@@ -12,6 +12,7 @@ import { FundPie } from "../../components/sabha/FundPie";
 import { SabhaLoop } from "../../components/sabha/SabhaLoop";
 import AssistantPanel from "../../components/AssistantPanel";
 import { AIDemandWidget } from "../../components/AIDemandWidget";
+import { PriceCard } from "../../components/PriceCard";
 import { useSabha } from "../../components/SabhaShell";
 
 export default function Overview() {
@@ -54,6 +55,7 @@ export default function Overview() {
 
       <Metrics o={o} />
       <AIDemandWidget />
+      <PriceCard trade="plumber" />
       <AssistantPanel role="council" />
       <Attention items={o.attention} />
       <div className="sabha-grid">

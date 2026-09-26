@@ -21,7 +21,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app import repository
+from app import repository, tenancy
 from app.booking_flow_db import booking_flow_connection, immediate_transaction
 from app.database import connection
 from app.schemas import AvailabilityWindow, Worker
@@ -154,28 +154,29 @@ def summary(worker_id: int) -> WorkerSummary:
         raise KaamError(404, f"Worker {worker_id} not found")
     today = dt.datetime.now(_IST).date()
     month_start = today.replace(day=1).isoformat()
+    coop = tenancy.tenant_id()
     with booking_flow_connection() as conn:
         row = conn.execute(
             """SELECT COUNT(*) AS completed_jobs,
                       COALESCE(SUM(amount_paise), 0) AS share_paise,
                       COALESCE(SUM(CASE WHEN DATE(created_at, '+330 minutes') >= ? THEN amount_paise END), 0) AS month_share_paise,
                       COUNT(DISTINCT DATE(created_at, '+330 minutes')) AS engagement_days
-               FROM payment_ledger WHERE party = 'worker' AND worker_id = ?""",
-            (month_start, worker_id),
+               FROM payment_ledger WHERE party = 'worker' AND worker_id = ? AND cooperative_id = ?""",
+            (month_start, worker_id, coop),
         ).fetchone()
         billed = conn.execute(
             """SELECT COALESCE(SUM(l.amount_paise), 0) FROM payment_ledger l
-               WHERE l.booking_id IN (SELECT booking_id FROM payment_ledger WHERE party = 'worker' AND worker_id = ?
+               WHERE l.cooperative_id = ? AND l.booking_id IN (SELECT booking_id FROM payment_ledger WHERE party = 'worker' AND worker_id = ? AND cooperative_id = ?
                                       AND DATE(created_at, '+330 minutes') >= ?)""",
-            (worker_id, month_start),
+            (coop, worker_id, coop, month_start),
         ).fetchone()[0]
         rating_count = conn.execute(
-            "SELECT COUNT(*) FROM booking_ratings WHERE worker_id = ?", (worker_id,)
+            "SELECT COUNT(*) FROM booking_ratings WHERE worker_id = ? AND cooperative_id = ?", (worker_id, coop)
         ).fetchone()[0]
         awaiting = conn.execute(
             """SELECT COUNT(*) FROM assignments a JOIN bookings b ON b.id = a.booking_id
-               WHERE a.worker_id = ? AND b.status = 'assigned' AND a.accepted_at IS NULL""",
-            (worker_id,),
+               WHERE a.cooperative_id = ? AND a.worker_id = ? AND b.status = 'assigned' AND a.accepted_at IS NULL""",
+            (coop, worker_id),
         ).fetchone()[0]
     days = row["engagement_days"]
     return WorkerSummary(
@@ -200,16 +201,17 @@ def summary(worker_id: int) -> WorkerSummary:
 def jobs(worker_id: int) -> list[WorkerJob]:
     """Newest first: current assignments, completed jobs with money and rating, jobs passed on."""
     out: list[WorkerJob] = []
+    coop = tenancy.tenant_id()
     with booking_flow_connection() as conn:
         for r in conn.execute(
             """SELECT b.*, a.created_at AS assigned_at, a.accepted_at, a.start_selfie_url, a.started_at, a.end_photo_url, a.explanation,
                       l.amount_paise AS share_paise, r.rating, r.comment
                FROM assignments a
-               JOIN bookings b ON b.id = a.booking_id
-               LEFT JOIN payment_ledger l ON l.booking_id = b.id AND l.party = 'worker'
-               LEFT JOIN booking_ratings r ON r.booking_id = b.id
-               WHERE a.worker_id = ? ORDER BY a.id DESC""",
-            (worker_id,),
+               JOIN bookings b ON b.id = a.booking_id AND b.cooperative_id = a.cooperative_id
+               LEFT JOIN payment_ledger l ON l.booking_id = b.id AND l.cooperative_id = b.cooperative_id AND l.party = 'worker'
+               LEFT JOIN booking_ratings r ON r.booking_id = b.id AND r.cooperative_id = b.cooperative_id
+               WHERE a.worker_id = ? AND a.cooperative_id = ? ORDER BY a.id DESC""",
+            (worker_id, coop),
         ):
             row = dict(r)
             billed = None
@@ -294,13 +296,16 @@ def patch_window(worker_id: int, index: int, patch: WindowPatch) -> Worker:
 # ── accept / decline ─────────────────────────────────────────────────────
 
 def _assignment_for(conn: sqlite3.Connection, booking_id: int, worker_id: int) -> dict[str, Any]:
-    booking = conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    booking = conn.execute(
+        "SELECT * FROM bookings WHERE id = ? AND cooperative_id = ?", (booking_id, tenancy.tenant_id())
+    ).fetchone()
     if booking is None:
         raise KaamError(404, f"Booking {booking_id} not found")
     if booking["status"] not in ("assigned", "in_progress"):
         raise KaamError(409, f"Booking {booking_id} is '{booking['status']}'; only an assigned or in-progress job can be acted upon")
     assignment = conn.execute(
-        "SELECT * FROM assignments WHERE booking_id = ? ORDER BY id DESC LIMIT 1", (booking_id,)
+        "SELECT * FROM assignments WHERE booking_id = ? AND worker_id = ? AND cooperative_id = ? ORDER BY id DESC LIMIT 1",
+        (booking_id, worker_id, tenancy.tenant_id()),
     ).fetchone()
     if assignment is None or assignment["worker_id"] != worker_id:
         raise KaamError(403, "This job is assigned to another worker")
@@ -361,24 +366,25 @@ def decline(booking_id: int, worker_id: int, body: DeclineRequest) -> ReplyResul
         with immediate_transaction(conn):
             _assignment_for(conn, booking_id, worker_id)
             conn.execute(
-                "INSERT INTO declines (booking_id, worker_id, reason, note) VALUES (?, ?, ?, ?)",
-                (booking_id, worker_id, body.reason, (body.note or "").strip() or None),
+                "INSERT INTO declines (booking_id, worker_id, reason, note, cooperative_id) VALUES (?, ?, ?, ?, ?)",
+                (booking_id, worker_id, body.reason, (body.note or "").strip() or None, tenancy.tenant_id()),
             )
-            conn.execute("DELETE FROM assignments WHERE booking_id = ?", (booking_id,))
-            conn.execute("UPDATE bookings SET status = 'pending' WHERE id = ? AND status = 'assigned'", (booking_id,))
+            conn.execute("DELETE FROM assignments WHERE booking_id = ? AND cooperative_id = ?", (booking_id, tenancy.tenant_id()))
+            conn.execute("UPDATE bookings SET status = 'pending' WHERE id = ? AND cooperative_id = ? AND status = 'assigned'", (booking_id, tenancy.tenant_id()))
             conn.execute(
-                "UPDATE workers SET jobs_this_week = MAX(0, jobs_this_week - 1) WHERE id = ?", (worker_id,)
+                "UPDATE workers SET jobs_this_week = MAX(0, jobs_this_week - 1) WHERE id = ? AND cooperative_id = ?", (worker_id, tenancy.tenant_id())
             )
             if body.mark_busy_today:
-                row = conn.execute("SELECT availability FROM workers WHERE id = ?", (worker_id,)).fetchone()
+                row = conn.execute("SELECT availability FROM workers WHERE id = ? AND cooperative_id = ?", (worker_id, tenancy.tenant_id())).fetchone()
                 windows = json.loads(row["availability"] or "[]")
                 now = dt.datetime.now(_IST)
                 windows.append(AvailabilityWindow(
                     date=now.date().isoformat(), start=now.strftime("%H:%M"), end="23:59", available=False,
                 ).model_dump(mode="json"))
-                conn.execute("UPDATE workers SET availability = ? WHERE id = ?", (json.dumps(windows), worker_id))
+                conn.execute("UPDATE workers SET availability = ? WHERE id = ? AND cooperative_id = ?", (json.dumps(windows), worker_id, tenancy.tenant_id()))
             excluded = tuple(r["worker_id"] for r in conn.execute(
-                "SELECT DISTINCT worker_id FROM declines WHERE booking_id = ? ORDER BY worker_id", (booking_id,)
+                "SELECT DISTINCT worker_id FROM declines WHERE booking_id = ? AND cooperative_id = ? ORDER BY worker_id",
+                (booking_id, tenancy.tenant_id()),
             ))
         try:
             result = booking_flow.assign_booking(conn, booking_id, exclude_worker_ids=excluded)

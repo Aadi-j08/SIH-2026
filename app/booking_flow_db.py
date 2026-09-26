@@ -32,6 +32,7 @@ _NEW_TABLES = {
             party TEXT NOT NULL CHECK (party IN ('worker', 'welfare_fund', 'platform_operations')),
             share_percent INTEGER NOT NULL,
             amount_paise INTEGER NOT NULL CHECK (amount_paise >= 0),
+            cooperative_id INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (booking_id, party)
         )
@@ -43,6 +44,7 @@ _NEW_TABLES = {
             worker_id INTEGER NOT NULL REFERENCES workers(id),
             rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
             comment TEXT,
+            cooperative_id INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """,
@@ -50,6 +52,8 @@ _NEW_TABLES = {
 _NEW_INDEXES = (
     "CREATE INDEX IF NOT EXISTS idx_payment_ledger_worker ON payment_ledger (worker_id)",
     "CREATE INDEX IF NOT EXISTS idx_booking_ratings_worker ON booking_ratings (worker_id)",
+    "CREATE INDEX IF NOT EXISTS idx_payment_ledger_cooperative ON payment_ledger (cooperative_id)",
+    "CREATE INDEX IF NOT EXISTS idx_booking_ratings_cooperative ON booking_ratings (cooperative_id)",
 )
 
 
