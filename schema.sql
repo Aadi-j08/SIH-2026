@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS workers (
     jobs_this_week  INTEGER NOT NULL DEFAULT 0 CHECK (jobs_this_week >= 0),
     rating          REAL CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),
     availability    TEXT NOT NULL DEFAULT '[]',
-    status          VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('pending', 'active')),
+    status          VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('pending', 'active', 'rejected')),
     cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

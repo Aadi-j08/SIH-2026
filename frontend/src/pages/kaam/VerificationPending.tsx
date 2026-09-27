@@ -111,11 +111,19 @@ export default function VerificationPending() {
           </div>
         )}
 
-        <div className="notice" style={{ marginTop: 16 }}>
-          {verified
-            ? "You’ll get jobs as soon as the council approves your account. Use Re-check status below."
-            : "You’ll get jobs once the council approves your account. That usually takes a few minutes."}
-        </div>
+        {user?.worker_status === "rejected" ? (
+          <div className="notice error" style={{ marginTop: 16 }}>
+            <strong>The council did not approve this account.</strong> Your uploaded documents are still on
+            file, but no jobs are offered to a rejected applicant. Speak to the council office to find out
+            what is missing and have the account reviewed again.
+          </div>
+        ) : (
+          <div className="notice" style={{ marginTop: 16 }}>
+            {verified
+              ? "You’ll get jobs as soon as the council approves your account. Use Re-check status below."
+              : "You’ll get jobs once the council approves your account. That usually takes a few minutes."}
+          </div>
+        )}
 
         <div className="row" style={{ gap: 12, marginTop: 16, justifyContent: "center" }}>
           <button type="button" className="btn" onClick={recheck} disabled={polling}>

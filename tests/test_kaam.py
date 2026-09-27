@@ -43,6 +43,23 @@ def test_new_kaam_signup_is_pending_until_the_council_approves(make_client, coun
     assert council.post(f"/bookings/{booking_id}/assign").json()["worker"]["id"] == worker_id
 
 
+def test_council_can_reject_a_pending_worker(make_client, council, customer):
+    # The council needs no document to turn an applicant away, and the rejected
+    # status has to survive both the workers.status CHECK and the response model.
+    ravi = make_client("worker", name="Ravi", approved=False)
+    worker_id = ravi.user["worker_id"]
+
+    rejected = council.post(f"/workers/{worker_id}/approve", json={"status": "rejected"})
+    assert rejected.status_code == 200, rejected.text
+    assert rejected.json()["status"] == "rejected"
+    assert council.get(f"/workers/{worker_id}").json()["status"] == "rejected"
+
+    # a rejected worker is not offered work and no longer waits for approval
+    booking_id = place_booking(customer)
+    assert council.get(f"/bookings/{booking_id}/recommendations").json() == []
+    assert council.get("/admin/workers/pending").json() == []
+
+
 def test_only_the_council_approves(worker, customer):
     for c in (worker, customer):
         assert c.get("/admin/workers/pending").status_code == 403

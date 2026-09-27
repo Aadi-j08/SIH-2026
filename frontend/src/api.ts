@@ -650,7 +650,7 @@ export type User = {
   languages: string[];
   is_council: boolean;
   created_at: string | null;
-  worker_status: "pending" | "active" | null;
+  worker_status: "pending" | "active" | "rejected" | null;
 };
 
 export type SignupBody = {
