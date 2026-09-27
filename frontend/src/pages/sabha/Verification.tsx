@@ -1,7 +1,7 @@
 /** Council verification checklist: every unverified skill, certificate and portfolio item in the cooperative. */
 import { useCallback, useEffect, useState } from "react";
 
-import { api, errorMessage, titleCase, type Worker, type WorkerDocument } from "../../api";
+import { api, DOCUMENT_KIND_LABELS, errorMessage, titleCase, type Worker, type WorkerDocument } from "../../api";
 import { Check, Cross } from "../../components/Icons";
 
 export default function Verification() {
@@ -228,10 +228,25 @@ export default function Verification() {
                 reviewDocs.map((d) => (
                   <div className="row between" style={{ gap: 12, flexWrap: "wrap", padding: "8px 0", borderTop: "1px solid var(--line)" }} key={d.id}>
                     <div className="stack grow" style={{ gap: 2 }}>
-                      <span style={{ fontWeight: 700 }}>{d.document_type}</span>
-                      <a href={d.file_url} target="_blank" rel="noreferrer" className="small" style={{ wordBreak: "break-all" }}>
-                        {d.file_url}
-                      </a>
+                      <span style={{ fontWeight: 700 }}>
+                        {DOCUMENT_KIND_LABELS[d.document_type] ?? d.document_type}
+                        {d.byte_size ? ` · ${Math.max(1, Math.round(d.byte_size / 1024))} KB` : ""}
+                      </span>
+                      {d.has_content ? (
+                        <a
+                          href={api.workers.documents.fileUrl(d.id)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="small"
+                          style={{ wordBreak: "break-all" }}
+                        >
+                          {d.filename ?? "Open document"}
+                        </a>
+                      ) : (
+                        <span className="small muted" style={{ wordBreak: "break-all" }}>
+                          {d.file_url} · no file attached
+                        </span>
+                      )}
                       {d.verified ? (
                         <span className="small" style={{ color: "var(--green-d)" }}>
                           ✓ verified{d.verified_at ? ` · ${formatTimestamp(d.verified_at)}` : ""}
