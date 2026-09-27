@@ -34,6 +34,48 @@ from app.auth import hash_password
 load_dotenv()
 
 
+# Applicants whose Aadhaar is uploaded but not yet reviewed. The council cannot activate
+# anyone until a *verified* Aadhaar exists (app/routers/kaam.py), so without these rows the
+# Sabha verification page has nothing to act on. They make the intended flow demonstrable:
+# Review documents -> mark the Aadhaar verified -> Approve.
+PENDING_APPLICATIONS = [
+    ("Imran Qureshi", "9876543299", "plumbing", 23.2280, 77.4280),
+    ("Laxmi Baijal", "9876543289", "electrician", 23.2380, 77.4180),
+]
+
+
+def _seed_pending_applications(executor, demo_pass_hash, *, ph, returning, worker_id_after_insert):
+    """Insert pending worker applications, each with one unreviewed Aadhaar document.
+
+    ``executor`` is a psycopg cursor on Postgres and a sqlite3 connection locally; ``ph``
+    and ``worker_id_after_insert`` bridge the placeholder and lastrowid differences.
+    """
+    returning_id = " RETURNING id;" if returning else ";"
+    for name, phone, trade, lat, lon in PENDING_APPLICATIONS:
+        executor.execute(
+            f"""
+            INSERT INTO workers (name, phone, trade, latitude, longitude, jobs_this_week, rating, status, cooperative_id)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, 0, NULL, 'pending', 1){returning_id}
+            """,
+            (name, phone, trade, lat, lon),
+        )
+        worker_id = worker_id_after_insert(executor)
+        executor.execute(
+            f"""
+            INSERT INTO worker_documents (worker_id, document_type, file_url, verified, cooperative_id)
+            VALUES ({ph}, 'aadhaar', {ph}, 0, 1);
+            """,
+            (worker_id, f"uploads/{phone}-aadhaar.jpg"),
+        )
+        executor.execute(
+            f"""
+            INSERT INTO users (portal, phone, name, password_hash, locality, role, worker_id, cooperative_id)
+            VALUES ('kaam', {ph}, {ph}, {ph}, 'Bhopal', NULL, {ph}, 1);
+            """,
+            (phone, f"{name} (Worker)", demo_pass_hash, worker_id),
+        )
+
+
 def seed_postgres(db_url: str):
     import psycopg
 
@@ -91,6 +133,11 @@ def seed_postgres(db_url: str):
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1) RETURNING id;
                 """, (name, phone, trade, lat, lon, jobs, rating, status))
                 worker_ids[phone] = cur.fetchone()[0]
+
+            _seed_pending_applications(
+                cur, demo_pass_hash, ph="%s", returning=True,
+                worker_id_after_insert=lambda c: c.fetchone()[0],
+            )
 
             users = [
                 ("ghar", "9876543210", "Aarav Sharma (Customer)", "Arera Colony", None, None),
@@ -194,6 +241,11 @@ def seed_sqlite():
             VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 1)
             """, (name, phone, trade, lat, lon, jobs, rating))
             worker_ids[phone] = cur.lastrowid
+
+        _seed_pending_applications(
+            conn, demo_pass_hash, ph="?", returning=False,
+            worker_id_after_insert=lambda c: c.execute("SELECT last_insert_rowid()").fetchone()[0],
+        )
 
         users = [
             ("ghar", "9876543210", "Aarav Sharma (Customer)", "Arera Colony", None, None),
