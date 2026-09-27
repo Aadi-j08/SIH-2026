@@ -97,10 +97,15 @@ export default function Verification() {
     }
   };
 
-  const approve = async (id: number) => {
-    // Activation requires a *verified* Aadhaar document (not merely uploaded).
+  const approve = async (id: number, name: string) => {
+    // Activation requires a *verified* Aadhaar document (not merely uploaded). The button
+    // stays clickable so this explains itself instead of silently swallowing the click.
     if (!aadhaarByWorker[id]) {
-      alert("This worker must upload and have an Aadhaar document verified before being activated.");
+      alert(
+        `${name} cannot be activated yet.\n\n` +
+          "A verified Aadhaar document is required first. Open 'Review documents', mark the " +
+          "worker's Aadhaar as verified, then approve.",
+      );
       return;
     }
     setLoading(true);
@@ -185,7 +190,14 @@ export default function Verification() {
                   <button className="chip" onClick={() => reviewDocuments(w)} disabled={loading} title="Review uploaded documents">
                     Review documents
                   </button>
-                  <button className="chip on" onClick={() => approve(w.id)} disabled={loading || !aadhaarByWorker[w.id]} title={aadhaarByWorker[w.id] ? "Approve" : "Needs verified Aadhaar first"}><Check /></button>
+                  <button
+                    className="chip on"
+                    onClick={() => approve(w.id, w.name)}
+                    disabled={loading}
+                    title={aadhaarByWorker[w.id] ? "Approve" : "Needs a verified Aadhaar first — click for how"}
+                  >
+                    <Check />
+                  </button>
                   <button className="chip off" onClick={() => reject(w.id)} disabled={loading} title="Reject"><Cross /></button>
                 </div>
               </div>
@@ -221,7 +233,9 @@ export default function Verification() {
                         {d.file_url}
                       </a>
                       {d.verified ? (
-                        <span className="small" style={{ color: "var(--green-d)" }}>✓ verified{d.verified_at ? ` · {new Date(d.verified_at.replace(" ", "T") + "Z").toLocaleString("en-IN")}` : ""}</span>
+                        <span className="small" style={{ color: "var(--green-d)" }}>
+                          ✓ verified{d.verified_at ? ` · ${formatTimestamp(d.verified_at)}` : ""}
+                        </span>
                       ) : d.rejection_reason ? (
                         <span className="small" style={{ color: "var(--red)" }}>✗ rejected: {d.rejection_reason}</span>
                       ) : (
@@ -255,4 +269,11 @@ interface ProfileItem {
   workerName: string;
   id: number;
   label: string;
+}
+
+/** Postgres returns `2026-09-27 13:24:00+00:00`, SQLite `2026-09-27 13:24:00`. Normalise both. */
+function formatTimestamp(value: string): string {
+  const iso = /[Zz]|[+-]\d{2}:?\d{2}$/.test(value) ? value : `${value.replace(" ", "T")}Z`;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("en-IN");
 }
