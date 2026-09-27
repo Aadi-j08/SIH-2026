@@ -66,29 +66,13 @@ def federation_overview(_: User = Depends(require_council)) -> FederationRollup:
     return federation_rollup()
 
 
-class WorkerApproval(BaseModel):
-    status: Literal["active", "rejected"]
-
-
 @router.get("/admin/workers/pending", response_model=list[Worker])
 def pending_workers(_: User = Depends(require_council)) -> list[Worker]:
-    """Workers who have self-signed-up (status='pending') and are awaiting council verification."""
+    """Workers who have self-signed-up (status='pending') and are awaiting council verification.
+
+    The same data is exposed by the kaam router at GET /workers/pending so the
+    council UI can call api.kaam.pending(); this admin path is the canonical one."""
     return repository.list_pending_workers()
-
-
-@router.post("/workers/{worker_id}/approve", response_model=Worker)
-def approve_worker(worker_id: int, body: WorkerApproval, user: User = Depends(require_council)) -> Worker:
-    """Council verification: activate a pending worker, or reject them.
-
-    Demo KYC gate: a worker may only be activated once they have uploaded an
-    Aadhaar document. (Reject always works.)"""
-    _resolve_worker(user, worker_id)
-    if body.status == "active" and not profile.has_aadhaar(worker_id):
-        raise HTTPException(status_code=409, detail="Upload Aadhaar proof before activating this worker")
-    updated = set_worker_status(worker_id, body.status)
-    if updated is None:
-        raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")
-    return updated
 
 
 class CustomerRow(BaseModel):

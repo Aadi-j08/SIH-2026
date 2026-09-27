@@ -80,11 +80,20 @@ export type WorkerDocument = {
   file_url: string;
   uploaded_at: string | null;
   cooperative_id: number;
+  verified: boolean;
+  verified_by: number | null;
+  verified_at: string | null;
+  rejection_reason: string | null;
 };
 
 export type WorkerDocumentCreate = {
   document_type: string;
   file_url: string;
+};
+
+export type DocumentVerificationRequest = {
+  verified: boolean;
+  rejection_reason?: string | null;
 };
 
 // ── Welfare / grievances (Phase E) ─────────────────────────────────────────
@@ -830,6 +839,7 @@ export const api = {
     documents: {
       list: (workerId: number) => get<WorkerDocument[]>(`/workers/${workerId}/documents`),
       add: (workerId: number, body: WorkerDocumentCreate) => post<WorkerDocument>(`/workers/${workerId}/documents`, body),
+      verify: (documentId: number, body: DocumentVerificationRequest) => post<WorkerDocument>(`/documents/${documentId}/verify`, body),
     },
     setAvailabilityByVoice: (id: number, transcript: string, replace = true, referenceDate?: string, confirmed = false) =>
       post<{ parsed: VoiceParse; worker: Worker }>(`/workers/${id}/availability/voice`, {
@@ -890,7 +900,7 @@ export const api = {
       patch<Worker>(`/workers/${workerId}/availability/${index}`, change),
     removeWindow: (workerId: number, index: number) => del<Worker>(`/workers/${workerId}/availability/${index}`),
     pending: () => get<Worker[]>("/workers/pending"),
-    approve: (workerId: number) => post<Worker>(`/workers/${workerId}/approve`),
+    approve: (workerId: number) => post<Worker>(`/workers/${workerId}/approve`, { status: "active" }),
   },
   admin: {
     dashboard: () => get<Dashboard>("/admin/dashboard"),

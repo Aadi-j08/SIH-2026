@@ -712,6 +712,24 @@ def _migration_7_welfare_benefits_and_grievances(conn: sqlite3.Connection) -> No
         conn.execute(stmt)
 
 
+def _migration_8_document_verification(conn: sqlite3.Connection) -> None:
+    """Phase G: document verification. Workers upload Aadhaar / ID proof / insurance /
+    vehicle registration; the council reviews and marks each document verified or
+    rejected, with an audit trail (verified_by, verified_at, rejection_reason)."""
+    statements = [
+        # Add verification columns to worker_documents. SQLite ALTER TABLE ADD COLUMN
+        # is safe here because every row gets the DEFAULT; the UNIQUE index already
+        # exists and does not need to change (a document may be re-uploaded/rejected).
+        "ALTER TABLE worker_documents ADD COLUMN verified INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE worker_documents ADD COLUMN verified_by INTEGER REFERENCES users(id)",
+        "ALTER TABLE worker_documents ADD COLUMN verified_at TEXT",
+        "ALTER TABLE worker_documents ADD COLUMN rejection_reason TEXT",
+        "CREATE INDEX IF NOT EXISTS idx_worker_documents_verified ON worker_documents (verified)",
+    ]
+    for stmt in statements:
+        conn.execute(stmt)
+
+
 MIGRATIONS = (
     (1, _migration_1_customer_owner),
     (2, _migration_2_integrity_triggers),
@@ -720,6 +738,7 @@ MIGRATIONS = (
     (5, _migration_5_federation_tenants),
     (6, _migration_6_provider_profile_tables),
     (7, _migration_7_welfare_benefits_and_grievances),
+    (8, _migration_8_document_verification),
 )
 
 

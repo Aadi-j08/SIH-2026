@@ -65,6 +65,10 @@ class WorkerDocumentOut(BaseModel):
     file_url: str
     uploaded_at: str | None
     cooperative_id: int
+    verified: bool = False
+    verified_by: int | None = None
+    verified_at: str | None = None
+    rejection_reason: str | None = None
 
 
 class ProfileSummary(BaseModel):
@@ -244,11 +248,14 @@ def list_documents(worker_id: int) -> list[WorkerDocumentOut]:
 
 
 def has_aadhaar(worker_id: int) -> bool:
-    """At least one 'aadhaar' document has been uploaded for the worker."""
+    """At least one *verified* 'aadhaar' document has been uploaded for the worker.
+
+    A worker may have uploaded an Aadhaar but not yet had it reviewed; only a
+    verified document counts for activation."""
     with connection() as conn:
         row = conn.execute(
             "SELECT 1 FROM worker_documents WHERE worker_id = ? AND cooperative_id = ? "
-            "AND document_type = 'aadhaar' LIMIT 1",
+            "AND document_type = 'aadhaar' AND verified = 1 LIMIT 1",
             (worker_id, tenancy.tenant_id()),
         ).fetchone()
         return row is not None
@@ -331,7 +338,30 @@ def _portfolio(row: sqlite3.Row) -> PortfolioItemOut:
 
 def _doc(row: sqlite3.Row) -> WorkerDocumentOut:
     d = dict(row)
+    d["verified"] = bool(d.get("verified"))
     return WorkerDocumentOut.model_validate(d)
+
+
+def set_document_verification(
+    document_id: int, verified: bool, verified_by: int | None, rejection_reason: str | None = None
+) -> bool:
+    """Council review of a worker-uploaded document. Workers upload; council only
+    verifies (or rejects with a reason, or re-opens for correction)."""
+    now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None).isoformat(sep=" ", timespec="seconds")
+    with connection() as conn:
+        cur = conn.execute(
+            "UPDATE worker_documents SET verified = ?, verified_by = ?, verified_at = ?, rejection_reason = ? "
+            "WHERE id = ? AND cooperative_id = ?",
+            (
+                int(bool(verified)),
+                verified_by,
+                now if verified else None,
+                rejection_reason if not verified else None,
+                document_id,
+                tenancy.tenant_id(),
+            ),
+        )
+        return cur.rowcount > 0
 
 
 def _skill_row(conn: sqlite3.Connection, skill_id: int) -> SkillOut | None:

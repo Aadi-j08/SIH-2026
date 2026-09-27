@@ -1,7 +1,7 @@
 /** Council verification checklist: every unverified skill, certificate and portfolio item in the cooperative. */
 import { useCallback, useEffect, useState } from "react";
 
-import { api, errorMessage, type Worker } from "../../api";
+import { api, errorMessage, titleCase, type Worker, type WorkerDocument } from "../../api";
 import { Check, Cross } from "../../components/Icons";
 
 export default function Verification() {
@@ -18,12 +18,12 @@ export default function Verification() {
       setWorkers(ws);
       const pending = await api.workers.pending();
       setPendingWorkers(pending);
-      // Verify each pending worker has uploaded an Aadhaar (required to activate).
+      // Verify each pending worker has a *verified* Aadhaar (required to activate).
       const aadhaarMap: Record<number, boolean> = {};
       for (const w of pending) {
         try {
           const docs = await api.workers.documents.list(w.id);
-          aadhaarMap[w.id] = docs.some((d) => d.document_type === "aadhaar");
+          aadhaarMap[w.id] = docs.some((d) => d.document_type === "aadhaar" && d.verified);
         } catch {
           aadhaarMap[w.id] = false;
         }
@@ -47,6 +47,38 @@ export default function Verification() {
     void load();
   }, [load]);
 
+  const [reviewingWorker, setReviewingWorker] = useState<Worker | null>(null);
+  const [reviewDocs, setReviewDocs] = useState<WorkerDocument[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [verifyingDoc, setVerifyingDoc] = useState<number | null>(null);
+
+  const reviewDocuments = async (w: Worker) => {
+    setReviewingWorker(w);
+    setLoadingDocs(true);
+    try {
+      setReviewDocs(await api.workers.documents.list(w.id));
+    } catch (e) {
+      alert(errorMessage(e));
+      setReviewDocs([]);
+    } finally {
+      setLoadingDocs(false);
+    }
+  };
+
+  const verifyDocument = async (docId: number, verified: boolean) => {
+    if (!reviewingWorker) return;
+    setVerifyingDoc(docId);
+    try {
+      const reason = verified ? undefined : window.prompt("Reason for rejection (optional):", "") ?? undefined;
+      await api.workers.documents.verify(docId, { verified, rejection_reason: reason });
+      await load();
+    } catch (e) {
+      alert(errorMessage(e));
+    } finally {
+      setVerifyingDoc(null);
+    }
+  };
+
   const verify = async (w: Worker, kind: "skill" | "cert" | "portfolio", id: number) => {
     setLoading(true);
     try {
@@ -66,8 +98,9 @@ export default function Verification() {
   };
 
   const approve = async (id: number) => {
+    // Activation requires a *verified* Aadhaar document (not merely uploaded).
     if (!aadhaarByWorker[id]) {
-      alert("This worker must upload an Aadhaar document before being activated.");
+      alert("This worker must upload and have an Aadhaar document verified before being activated.");
       return;
     }
     setLoading(true);
@@ -146,16 +179,71 @@ export default function Verification() {
                 <span>{w.name}</span>
                 <span className="small muted">{w.trade} · {w.phone ?? "—"}</span>
                 <span className="small">
-                  {aadhaarByWorker[w.id] ? "✓ Aadhaar uploaded" : "✗ pending Aadhaar"}
+                  {aadhaarByWorker[w.id] ? "✓ Aadhaar verified" : "✗ Aadhaar not verified"}
                 </span>
                 <div className="row" style={{ justifyContent: "flex-end", gap: 6 }}>
-                  <button className="chip on" onClick={() => approve(w.id)} disabled={loading || !aadhaarByWorker[w.id]} title={aadhaarByWorker[w.id] ? "Approve" : "Needs Aadhaar first"}><Check /></button>
+                  <button className="chip" onClick={() => reviewDocuments(w)} disabled={loading} title="Review uploaded documents">
+                    Review documents
+                  </button>
+                  <button className="chip on" onClick={() => approve(w.id)} disabled={loading || !aadhaarByWorker[w.id]} title={aadhaarByWorker[w.id] ? "Approve" : "Needs verified Aadhaar first"}><Check /></button>
                   <button className="chip off" onClick={() => reject(w.id)} disabled={loading} title="Reject"><Cross /></button>
                 </div>
               </div>
             ))}
           </div>
         </section>
+      )}
+
+      {reviewingWorker && (
+        <div className="modal-backdrop" onClick={() => setReviewingWorker(null)}>
+          <div className="card stack" style={{ width: "min(560px, 92vw)", margin: "24px auto", maxHeight: "80vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
+            <div className="row between" style={{ alignItems: "flex-start" }}>
+              <div className="stack" style={{ gap: 2 }}>
+                <h2 style={{ margin: 0 }}>{reviewingWorker.name}</h2>
+                <div className="small muted">{titleCase(reviewingWorker.trade)} · {reviewingWorker.phone ?? "no phone"}</div>
+              </div>
+              <button className="back" onClick={() => setReviewingWorker(null)} aria-label="Close">✕</button>
+            </div>
+            <p className="small muted" style={{ margin: "4px 0 12px" }}>
+              The worker uploaded these documents. Review each one and mark it verified or rejected. A verified Aadhaar is required before the worker can be activated.
+            </p>
+            {verifyingDoc !== null && <div className="small muted">Saving…</div>}
+            {loadingDocs && <div className="small muted">Loading documents…</div>}
+            <div className="stack" style={{ gap: 8 }}>
+              {reviewDocs.length === 0 ? (
+                <div className="small muted">No documents uploaded yet.</div>
+              ) : (
+                reviewDocs.map((d) => (
+                  <div className="row between" style={{ gap: 12, flexWrap: "wrap", padding: "8px 0", borderTop: "1px solid var(--line)" }} key={d.id}>
+                    <div className="stack grow" style={{ gap: 2 }}>
+                      <span style={{ fontWeight: 700 }}>{d.document_type}</span>
+                      <a href={d.file_url} target="_blank" rel="noreferrer" className="small" style={{ wordBreak: "break-all" }}>
+                        {d.file_url}
+                      </a>
+                      {d.verified ? (
+                        <span className="small" style={{ color: "var(--green-d)" }}>✓ verified{d.verified_at ? ` · {new Date(d.verified_at.replace(" ", "T") + "Z").toLocaleString("en-IN")}` : ""}</span>
+                      ) : d.rejection_reason ? (
+                        <span className="small" style={{ color: "var(--red)" }}>✗ rejected: {d.rejection_reason}</span>
+                      ) : (
+                        <span className="small muted">✗ not yet reviewed</span>
+                      )}
+                    </div>
+                    <div className="row" style={{ gap: 6 }}>
+                      {d.verified ? (
+                        <button className="chip off" onClick={() => verifyDocument(d.id, false)} disabled={verifyingDoc === d.id} title="Unverify / re-open">Unverify</button>
+                      ) : (
+                        <button className="chip on" onClick={() => verifyDocument(d.id, true)} disabled={verifyingDoc === d.id} title="Mark verified"><Check /></button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="row" style={{ justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+              <button className="btn outline small" onClick={() => setReviewingWorker(null)}>Close</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

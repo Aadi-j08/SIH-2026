@@ -16,14 +16,46 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from app import kaam, ownership
 from app.auth import User, require_council, require_worker
+from app import repository, profile
 from app.schemas import Worker
 from app import tenancy
 
 log = logging.getLogger("sahakarsetu.kaam")
 router = APIRouter(tags=["kaam"])
+
+
+# ── council: sign-ups waiting for approval ────────────────────────────────
+
+class WorkerApproval(BaseModel):
+    status: str  # "active" or "rejected"
+
+
+@router.get("/workers/pending", response_model=list[Worker])
+def pending_workers(_: User = Depends(require_council)) -> list[Worker]:
+    """Kaam sign-ups awaiting council verification. (The same data also lives
+    under /admin/workers/pending on the sabha router; this alias exists so the
+    council UI can call api.kaam.pending() without reaching for admin paths.)"""
+    return repository.list_pending_workers()
+
+
+@router.post("/workers/{worker_id}/approve", response_model=Worker)
+def approve_worker(worker_id: int, body: WorkerApproval, user: User = Depends(require_council)) -> Worker:
+    """Activate or reject a pending worker. Activation requires an Aadhaar
+    document first; rejection always works."""
+    from app.routers.workers import _resolve_worker
+    _resolve_worker(user, worker_id)
+    if body.status == "active" and not profile.has_aadhaar(worker_id):
+        raise HTTPException(status_code=409, detail="Upload Aadhaar proof before activating this worker")
+    if body.status not in ("active", "rejected"):
+        raise HTTPException(status_code=400, detail="status must be 'active' or 'rejected'")
+    updated = repository.set_worker_status(worker_id, body.status)
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")
+    return updated
 
 
 def _own_worker_id(user: User) -> int:

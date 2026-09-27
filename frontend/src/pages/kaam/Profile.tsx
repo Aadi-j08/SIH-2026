@@ -267,7 +267,7 @@ function DocumentsSection({ workerId, docs }: { workerId: number; docs: WorkerDo
     try {
       await api.workers.documents.add(workerId, { document_type: type, file_url: url });
       setUrl("");
-      alert("Document added");
+      alert("Document added. The council will review it.");
     } catch (err) { alert(errorMessage(err)); } finally { setSaving(false); }
   };
 
@@ -287,7 +287,10 @@ function DocumentsSection({ workerId, docs }: { workerId: number; docs: WorkerDo
       {docs.length === 0 && <div className="small muted">No documents on file.</div>}
       {docs.map((d) => (
         <div key={d.id} className="row between" style={{ padding: "4px 0" }}>
-          <span>{d.document_type} · <a href={d.file_url}>{d.file_url}</a></span>
+          <span>
+            {d.document_type} · <a href={d.file_url} target="_blank" rel="noreferrer">{d.file_url}</a>
+            {d.verified ? " ✓ verified" : d.rejection_reason ? ` ✗ rejected: ${d.rejection_reason}` : " · pending review"}
+          </span>
         </div>
       ))}
     </div>
