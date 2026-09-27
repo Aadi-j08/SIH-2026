@@ -126,7 +126,8 @@ export default function WorkerWeek() {
         </Link>
       </div>
 
-      <div className="stack" style={{ gap: 6 }}>
+      <div className="week-grid-wrap">
+        <div className="stack" style={{ gap: 6 }}>
         <div className="week-grid" style={{ alignItems: "end" }}>
           <div />
           {week.map((d) => (
@@ -179,6 +180,7 @@ export default function WorkerWeek() {
           <span><i className="legend-swatch job" style={{ height: 10, background: "var(--ink)" }} />Job</span>
           <span><i className="legend-swatch" style={{ height: 10, background: "var(--white)", border: "1.5px dashed var(--line)", boxSizing: "border-box" }} />Not set — tap to mark free</span>
         </div>
+      </div>
       </div>
 
       <div className="card soft row" style={{ gap: 12 }}>

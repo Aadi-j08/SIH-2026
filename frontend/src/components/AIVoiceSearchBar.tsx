@@ -133,60 +133,34 @@ export function AIVoiceSearchBar({ onSelectTrade, onSelectUrgency }: AIVoiceSear
         Speak or type naturally in Hindi/English (e.g. <i>"Ghar me tap leak ho raha hai plumber chahiye"</i>)
       </p>
 
-      <div style={{ display: "flex", gap: "8px" }}>
+      <div className="ai-voice-search-controls">
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleAIParse()}
           placeholder="Speak or describe what you need help with..."
-          style={{
-            flex: 1,
-            padding: "12px 16px",
-            borderRadius: "10px",
-            border: "1px solid #dcd6ce",
-            background: "#fff",
-            fontSize: "0.92rem",
-            outline: "none"
-          }}
+          className="ai-voice-input"
         />
 
-        <button
-          type="button"
-          onClick={handleSpeech}
-          style={{
-            padding: "10px 18px",
-            borderRadius: "10px",
-            background: isListening ? "#dc2626" : "var(--terracotta, #C65D26)",
-            color: "#fff",
-            border: "none",
-            fontWeight: 600,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            transition: "all 0.2s ease"
-          }}
-        >
-          {isListening ? "🔴 Listening..." : "🎙️ Speak"}
-        </button>
+        <div className="ai-voice-buttons">
+          <button
+            type="button"
+            onClick={handleSpeech}
+            className={`ai-btn-speak ${isListening ? "listening" : ""}`}
+          >
+            {isListening ? "🔴 Listening..." : "🎙️ Speak"}
+          </button>
 
-        <button
-          type="button"
-          onClick={() => handleAIParse()}
-          disabled={loading}
-          style={{
-            padding: "10px 18px",
-            borderRadius: "10px",
-            background: "var(--indigo, #5E78D9)",
-            color: "#fff",
-            border: "none",
-            fontWeight: 600,
-            cursor: "pointer"
-          }}
-        >
-          {loading ? "Analyzing..." : "🔍 Find"}
-        </button>
+          <button
+            type="button"
+            onClick={() => handleAIParse()}
+            disabled={loading}
+            className="ai-btn-find"
+          >
+            {loading ? "Analyzing..." : "🔍 Find"}
+          </button>
+        </div>
       </div>
 
       {/* Real Live / Final STT Transcript */}

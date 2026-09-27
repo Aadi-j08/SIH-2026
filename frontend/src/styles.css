@@ -846,3 +846,150 @@ button.rate-row:hover { background: var(--paper-2); }
 .proof-photo-wrapper:hover img {
   transform: scale(1.02);
 }
+
+/* ── Mobile Layout & Responsiveness Enhancements ───────────────────── */
+
+.ai-voice-search-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ai-voice-input {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid #dcd6ce;
+  background: #fff;
+  font-size: 0.92rem;
+  outline: none;
+}
+
+.ai-voice-buttons {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ai-btn-speak {
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: var(--terracotta, #C65D26);
+  color: #fff;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.ai-btn-speak.listening {
+  background: #dc2626;
+}
+
+.ai-btn-find {
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: var(--indigo, #5E78D9);
+  color: #fff;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Mobile Adjustments (< 640px) */
+@media (max-width: 640px) {
+  .topbar {
+    padding: 10px 14px;
+    gap: 8px;
+  }
+  
+  .wordmark small {
+    font-size: 10px;
+  }
+  
+  .ai-voice-search-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .ai-voice-buttons {
+    width: 100%;
+  }
+
+  .ai-btn-speak, .ai-btn-find {
+    flex: 1;
+    justify-content: center;
+    padding: 10px 12px;
+  }
+
+  .grid-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .job-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .job-actions a, .job-actions button {
+    height: 52px;
+    font-size: 11px;
+    padding: 2px 4px;
+  }
+
+  /* Keep feedback floating button from overlapping sticky footer buttons */
+  .feedback-fab {
+    bottom: 85px;
+    right: 16px;
+    width: 46px;
+    height: 46px;
+  }
+
+  .sticky-cta {
+    padding: 12px 16px 16px;
+    margin-bottom: -32px;
+  }
+
+  /* Make worker week grid horizontally scrollable if needed */
+  .week-grid-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 8px;
+  }
+
+  .week-grid {
+    min-width: 520px;
+  }
+}
+
+@media (max-width: 480px) {
+  .display {
+    word-break: break-word;
+  }
+
+  .brand .mark {
+    width: 24px;
+    height: 24px;
+  }
+
+  .wordmark {
+    font-size: 17px;
+  }
+
+  .sabha-header {
+    padding: 10px 12px;
+  }
+
+  .sabha-title {
+    font-size: 14px;
+  }
+}
+
