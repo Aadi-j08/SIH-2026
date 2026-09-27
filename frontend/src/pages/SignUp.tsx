@@ -1,11 +1,15 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 
-import { api, errorMessage, titleCase, TRADES, type PortalId, type SignupBody } from "../api";
+import {
+  api, errorMessage, titleCase, TRADES, UPLOAD_ACCEPT, UPLOAD_MAX_BYTES_LABEL,
+  type PortalId, type SignupBody,
+} from "../api";
 import { AuthShell, Field, PasswordField, PhoneField } from "../components/AuthForm";
 import { ArrowRight, Check, ChevronDown, Locate, Lock, Pin, TRADE_ICONS } from "../components/Icons";
 import { BrandMark, PORTALS, PortalTag, Wordmark } from "../components/PortalShell";
 import { useAuth } from "../lib/auth";
+import { describeFile, validateDocumentFile } from "../lib/uploads";
 
 const LANGUAGES: { code: string; label: string; hi?: boolean }[] = [
   { code: "hi", label: "हिंदी", hi: true },
@@ -33,6 +37,14 @@ export default function SignUp({ portal }: { portal: PortalId }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Kaam is a two-step sign-up: the council cannot activate anyone without a
+  // verified Aadhaar, so the document is collected before the profile is finalised
+  // rather than being left to a later, easy-to-miss screen.
+  const isKaam = portal === "kaam";
+  const [step, setStep] = useState<1 | 2>(1);
+  const [document, setDocument] = useState<File | null>(null);
+  const [documentError, setDocumentError] = useState<string | null>(null);
+
   if (ready && user?.portal === portal) return <Navigate to={p.home} replace />;
 
   const useGps = () => {
@@ -51,13 +63,22 @@ export default function SignUp({ portal }: { portal: PortalId }) {
   const toggleLanguage = (code: string) =>
     setLanguages((current) => (current.includes(code) ? current.filter((c) => c !== code) : [...current, code]));
 
+  const pickDocument = (file: File | null) => {
+    setDocument(file);
+    setDocumentError(file ? validateDocumentFile(file) : null);
+  };
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (isKaam && step === 1) {
+      setStep(2);
+      return;
+    }
     setBusy(true);
     setError(null);
     const body: SignupBody = { portal, name: name.trim(), phone, password };
     if (portal === "ghar") body.locality = locality.trim() || null;
-    if (portal === "kaam") {
+    if (isKaam) {
       body.locality = locality.trim() || null;
       body.trade = trade;
       body.languages = languages;
@@ -69,7 +90,21 @@ export default function SignUp({ portal }: { portal: PortalId }) {
     }
     try {
       const { user: created } = await api.auth.signup(body);
+      if (!created) throw new Error("Your account could not be created. Please try again.");
       setUser(created);
+
+      // The account exists from here on, so an upload failure must not leave the
+      // worker on a step that would try to sign them up a second time. Hand them to
+      // the verification page, which is the recovery path, carrying the reason.
+      const workerId = created.worker_id;
+      if (isKaam && document && workerId) {
+        try {
+          await api.workers.documents.upload(workerId, document, "aadhaar");
+        } catch (err) {
+          navigate("/kaam/verification", { replace: true, state: { uploadError: errorMessage(err) } });
+          return;
+        }
+      }
       navigate(p.home, { replace: true });
     } catch (err) {
       setError(errorMessage(err));
@@ -78,7 +113,11 @@ export default function SignUp({ portal }: { portal: PortalId }) {
     }
   };
 
-  const canSubmit = name.trim() && phone.trim() && password.length >= 6 && (portal !== "sabha" || councilCode.trim());
+  const detailsComplete =
+    name.trim() && phone.trim() && password.length >= 6 && (portal !== "sabha" || councilCode.trim());
+  // On Kaam's second step the document is the required field, so the button stays
+  // disabled until a file has passed the client-side check.
+  const canSubmit = step === 1 ? detailsComplete : Boolean(document) && !documentError;
 
   const nameField = (
     <Field label={portal === "kaam" ? "Your name · आपका नाम" : "Your name"}>
@@ -220,49 +259,100 @@ export default function SignUp({ portal }: { portal: PortalId }) {
   return (
     <AuthShell portal={portal}>
       <form className="stack-lg auth-form" onSubmit={submit}>
-        {heading}
-        {nameField}
-        {phoneField}
-        {portal === "kaam" && (
-          <Field label="What work do you do? · काम" hint="Pick your main trade. The cooperative can change it later.">
-            <div className="chips" role="radiogroup" aria-label="Trade">
-              {TRADES.map((t) => {
-                const IconFor = TRADE_ICONS[t];
-                const on = trade === t;
-                return (
-                  <button type="button" key={t} className={`chip${on ? " on" : ""}`} onClick={() => setTrade(t)} role="radio" aria-checked={on}>
-                    {on ? <Check size={14} /> : <IconFor size={14} />}
-                    {titleCase(t)}
-                  </button>
-                );
-              })}
+        {isKaam && step === 2 ? (
+          <>
+            <div className="stack" style={{ gap: 6, paddingTop: 12 }}>
+              <div className="small muted">Step 2 of 2</div>
+              <h1 style={{ fontSize: 26 }}>Add your Aadhaar</h1>
+              <div className="sub">
+                Your cooperative’s council checks this before you get any work. It stays
+                private — only your council can open it.
+              </div>
             </div>
-          </Field>
-        )}
-        {localityField}
-        {portal === "kaam" && (
-          <Field label="Languages · भाषा">
-            <div className="chips" role="group" aria-label="Languages">
-              {LANGUAGES.map((l) => {
-                const on = languages.includes(l.code);
-                return (
-                  <button type="button" key={l.code} className={`chip${on ? " on" : ""}${l.hi ? " hi" : ""}`} onClick={() => toggleLanguage(l.code)} aria-pressed={on}>
-                    {l.label}
-                  </button>
-                );
-              })}
+            <Field
+              label="Aadhaar card · आधार <span style={{ color: 'var(--red)' }}>*</span>"
+              hint={`A clear photo or scan. PDF, JPG or PNG, up to ${UPLOAD_MAX_BYTES_LABEL}.`}
+            >
+              <label className="field" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+                <input
+                  type="file"
+                  accept={UPLOAD_ACCEPT}
+                  onChange={(e) => pickDocument(e.target.files?.[0] ?? null)}
+                  style={{ fontSize: 15 }}
+                  aria-label="Aadhaar document"
+                />
+                {document && !documentError && (
+                  <span className="small" style={{ color: "var(--green-d)" }}>
+                    ✓ {describeFile(document)}
+                  </span>
+                )}
+              </label>
+            </Field>
+            {documentError && <div className="notice error">{documentError}</div>}
+            {error && <div className="notice error">{error}</div>}
+            <div className="row" style={{ gap: 10 }}>
+              <button type="button" className="btn outline" onClick={() => setStep(1)} disabled={busy}>
+                Back
+              </button>
+              <div className="grow" />
+              <button type="submit" className="btn primary block" disabled={busy || !document || !!documentError}>
+                {busy ? "Creating your account…" : "Finish and send for review"}
+                {!busy && <ArrowRight size={20} />}
+              </button>
             </div>
-          </Field>
+            <div className="tiny muted" style={{ textAlign: "center", lineHeight: 1.5 }}>
+              <span style={{ color: "var(--red)" }}>*</span> Required. The council marks it
+              verified, then activates your account.
+            </div>
+            {switchLine("Already on Kaam?")}
+          </>
+        ) : (
+          <>
+            {heading}
+            {nameField}
+            {phoneField}
+            {isKaam && (
+              <Field label="What work do you do? · काम" hint="Pick your main trade. The cooperative can change it later.">
+                <div className="chips" role="radiogroup" aria-label="Trade">
+                  {TRADES.map((t) => {
+                    const IconFor = TRADE_ICONS[t];
+                    const on = trade === t;
+                    return (
+                      <button type="button" key={t} className={`chip${on ? " on" : ""}`} onClick={() => setTrade(t)} role="radio" aria-checked={on}>
+                        {on ? <Check size={14} /> : <IconFor size={14} />}
+                        {titleCase(t)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+            )}
+            {localityField}
+            {isKaam && (
+              <Field label="Languages · भाषा">
+                <div className="chips" role="group" aria-label="Languages">
+                  {LANGUAGES.map((l) => {
+                    const on = languages.includes(l.code);
+                    return (
+                      <button type="button" key={l.code} className={`chip${on ? " on" : ""}${l.hi ? " hi" : ""}`} onClick={() => toggleLanguage(l.code)} aria-pressed={on}>
+                        {l.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+            )}
+            {passwordField}
+            {error && <div className="notice error">{error}</div>}
+            {submitButton(isKaam ? "Next · add your Aadhaar" : "Create account")}
+            {portal === "ghar" && (
+              <div className="tiny muted" style={{ textAlign: "center", lineHeight: 1.5 }}>
+                By creating an account you agree that your bookings and ratings are visible to your cooperative’s council.
+              </div>
+            )}
+            {switchLine(isKaam ? "Already on Kaam?" : "Already have a Ghar account?")}
+          </>
         )}
-        {passwordField}
-        {error && <div className="notice error">{error}</div>}
-        {submitButton(portal === "kaam" ? "Create my worker account" : "Create account")}
-        {portal === "ghar" && (
-          <div className="tiny muted" style={{ textAlign: "center", lineHeight: 1.5 }}>
-            By creating an account you agree that your bookings and ratings are visible to your cooperative’s council.
-          </div>
-        )}
-        {switchLine(portal === "kaam" ? "Already on Kaam?" : "Already have a Ghar account?")}
       </form>
     </AuthShell>
   );

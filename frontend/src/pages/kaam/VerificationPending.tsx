@@ -9,13 +9,21 @@
  * has to live on this page — otherwise onboarding deadlocks.
  */
 import { useCallback, useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 
-import { api, errorMessage, type WorkerDocument } from "../../api";
+import {
+  api, DOCUMENT_KIND_LABELS, errorMessage, UPLOAD_ACCEPT, UPLOAD_MAX_BYTES_LABEL,
+  type DocumentKind, type WorkerDocument,
+} from "../../api";
 import { Lock, Refresh, ShieldCheck } from "../../components/Icons";
 import { useAuth } from "../../lib/auth";
+import { describeFile, validateDocumentFile } from "../../lib/uploads";
 
 export default function VerificationPending() {
   const { user, refresh } = useAuth();
+  const location = useLocation();
+  // Sign-up hands the worker over here when its upload failed, carrying the reason.
+  const carriedError = (location.state as { uploadError?: string } | null)?.uploadError ?? null;
   const [polling, setPolling] = useState(false);
   const [docs, setDocs] = useState<WorkerDocument[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
@@ -93,6 +101,7 @@ export default function VerificationPending() {
                   ? "Your Aadhaar is with the council. They mark it verified, then approve you."
                   : "The council can only approve you once an Aadhaar is on file and verified. Add it below."}
             </div>
+            {carriedError && <div className="notice error">Your Aadhaar did not upload: {carriedError}</div>}
             <UploadSection workerId={workerId} docs={docs} onAdded={loadDocs} />
           </div>
         ) : (
@@ -131,20 +140,29 @@ function UploadSection({
   docs: WorkerDocument[];
   onAdded: () => void | Promise<void>;
 }) {
-  const [type, setType] = useState("aadhaar");
-  const [url, setUrl] = useState("");
+  const [type, setType] = useState<DocumentKind>("aadhaar");
+  const [file, setFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const pick = (chosen: File | null) => {
+    setFile(chosen);
+    setError(null);
+    setFileError(chosen ? validateDocumentFile(chosen) : null);
+  };
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!url.trim()) return;
+    if (!file || fileError) return;
     setSaving(true);
+    setError(null);
     try {
-      await api.workers.documents.add(workerId, { document_type: type, file_url: url });
-      setUrl("");
+      await api.workers.documents.upload(workerId, file, type);
+      setFile(null);
       await onAdded();
     } catch (err) {
-      alert(errorMessage(err));
+      setError(errorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -152,22 +170,35 @@ function UploadSection({
 
   return (
     <div className="stack" style={{ gap: 10 }}>
-      <form className="row" style={{ gap: 8, alignItems: "flex-end", flexWrap: "wrap" }} onSubmit={add}>
-        <select className="chip" value={type} onChange={(e) => setType(e.target.value)}>
-          <option value="aadhaar">Aadhaar (required for approval)</option>
-          <option value="id_proof">ID proof</option>
-          <option value="insurance">Insurance</option>
-          <option value="vehicle">Vehicle registration</option>
-          <option value="other">Other</option>
+      <form className="stack" style={{ gap: 8 }} onSubmit={add}>
+        <select
+          className="chip"
+          value={type}
+          onChange={(e) => setType(e.target.value as DocumentKind)}
+          aria-label="Document type"
+          style={{ alignSelf: "flex-start" }}
+        >
+          {Object.entries(DOCUMENT_KIND_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
         </select>
-        <input
-          className="input grow"
-          placeholder="File URL (from your uploads)"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-        />
-        <button className="chip" type="submit" disabled={saving || !url.trim()}>
-          {saving ? "Adding…" : "Add"}
+        <div className="stack" style={{ gap: 6 }}>
+          <input
+            type="file"
+            accept={UPLOAD_ACCEPT}
+            onChange={(e) => pick(e.target.files?.[0] ?? null)}
+            aria-label={`${DOCUMENT_KIND_LABELS[type] ?? type} file`}
+            style={{ fontSize: 15 }}
+          />
+          <span className="tiny muted">PDF, JPG or PNG, up to {UPLOAD_MAX_BYTES_LABEL}.</span>
+          {file && !fileError && (
+            <span className="small" style={{ color: "var(--green-d)" }}>✓ {describeFile(file)}</span>
+          )}
+        </div>
+        {fileError && <div className="notice error">{fileError}</div>}
+        {error && <div className="notice error">{error}</div>}
+        <button className="chip" type="submit" disabled={saving || !file || !!fileError} style={{ alignSelf: "flex-start" }}>
+          {saving ? "Uploading…" : "Add document"}
         </button>
       </form>
       {docs.length === 0 ? (
@@ -176,7 +207,8 @@ function UploadSection({
         docs.map((d) => (
           <div key={d.id} className="row between" style={{ padding: "4px 0", gap: 12, flexWrap: "wrap" }}>
             <span className="small">
-              {d.document_type} · <a href={d.file_url} target="_blank" rel="noreferrer">{d.file_url}</a>
+              {DOCUMENT_KIND_LABELS[d.document_type] ?? d.document_type}
+              {d.has_content && d.filename ? ` · ${d.filename}` : ""}
             </span>
             <span
               className="small"

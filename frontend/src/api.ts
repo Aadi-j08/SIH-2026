@@ -73,6 +73,8 @@ export type PortfolioItemCreate = {
   category?: string | null;
 };
 
+export type DocumentKind = "id_proof" | "insurance" | "vehicle" | "aadhaar" | "other";
+
 export type WorkerDocument = {
   id: number;
   worker_id: number;
@@ -84,6 +86,23 @@ export type WorkerDocument = {
   verified_by: number | null;
   verified_at: string | null;
   rejection_reason: string | null;
+  /** Present for real uploads; null for the older URL-reference rows. */
+  filename: string | null;
+  content_type: string | null;
+  byte_size: number | null;
+  has_content: boolean;
+};
+
+/** Mirrors app/uploads.py: the server enforces both of these again regardless. */
+export const UPLOAD_ACCEPT = ".pdf,.jpg,.jpeg,.png";
+export const UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
+export const UPLOAD_MAX_BYTES_LABEL = "5 MB";
+export const DOCUMENT_KIND_LABELS: Record<string, string> = {
+  aadhaar: "Aadhaar (required for approval)",
+  id_proof: "ID proof",
+  insurance: "Insurance",
+  vehicle: "Vehicle registration",
+  other: "Other",
 };
 
 export type WorkerDocumentCreate = {
@@ -730,7 +749,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   const targetUrl = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
   const headers: Record<string, string> = {};
-  if (body !== undefined) headers["content-type"] = "application/json";
+  // FormData must set its own multipart Content-Type (with the boundary), so the
+  // header is only forced for plain JSON bodies.
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+  if (body !== undefined && !isFormData) headers["content-type"] = "application/json";
   const token = getSessionToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   const coop = storageGet(COOPERATIVE_ID_KEY);
@@ -740,7 +762,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     response = await fetch(targetUrl, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : isFormData ? (body as FormData) : JSON.stringify(body),
       signal: controller.signal,
       credentials: "include",
     });
@@ -839,6 +861,14 @@ export const api = {
     documents: {
       list: (workerId: number) => get<WorkerDocument[]>(`/workers/${workerId}/documents`),
       add: (workerId: number, body: WorkerDocumentCreate) => post<WorkerDocument>(`/workers/${workerId}/documents`, body),
+      /** Multipart upload of the real file. The server judges the bytes, not the browser's Content-Type. */
+      upload: (workerId: number, file: File, documentType: DocumentKind = "aadhaar") => {
+        const form = new FormData();
+        form.append("file", file);
+        form.append("document_type", documentType);
+        return post<WorkerDocument>(`/workers/${workerId}/documents/upload`, form);
+      },
+      fileUrl: (documentId: number) => `${API_BASE_URL}/documents/${documentId}/file`,
       verify: (documentId: number, body: DocumentVerificationRequest) => post<WorkerDocument>(`/documents/${documentId}/verify`, body),
     },
     setAvailabilityByVoice: (id: number, transcript: string, replace = true, referenceDate?: string, confirmed = false) =>
