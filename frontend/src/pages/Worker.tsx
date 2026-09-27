@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api, errorMessage, formatRupees, titleCase, type Worker as WorkerT, type WorkerJob, type WorkerSummary } from "../api";
@@ -21,6 +21,12 @@ export default function Worker() {
 
   const workerId = user?.worker_id ?? null;
 
+  // Tracks whether a load has ever succeeded. A ref, not state: it gates the error
+  // message without becoming a dependency of `refresh`. `refresh` sets `worker`,
+  // so depending on that state here would rebuild the callback, re-run the effect
+  // below, and re-fetch in a loop with no interval ever firing.
+  const loaded = useRef(false);
+
   // live: a new assignment, a customer's reply on a price, an approval — the page updates at once
   const { live } = useLive(() => void refresh(), { filter: (e) => e.topic !== "rates" && e.topic !== "cooperative" });
 
@@ -31,13 +37,14 @@ export default function Worker() {
       setWorker(w);
       setSummary(s);
       setJobs(j);
+      loaded.current = true;
       setError(null);
     } catch (e) {
       // Only show the error if no valid data has been loaded yet (initial load failure).
       // Background polling failures should not replace already-displayed data.
-      setError((prev) => prev !== null || worker === null ? errorMessage(e) : prev);
+      if (!loaded.current) setError(errorMessage(e));
     }
-  }, [workerId, worker]);
+  }, [workerId]);
 
   useEffect(() => {
     if (workerId === null) {
