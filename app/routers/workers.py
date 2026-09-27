@@ -15,20 +15,28 @@ Worker profile (Phase B): skills, certifications, portfolio and documents.
   DELETE /workers/{id}/portfolio/{item_id}                  worker (own), council
   GET    /workers/{id}/documents                            worker (own), council
   POST   /workers/{id}/documents                            worker (own), council
+  POST   /workers/{id}/documents/upload                     worker (own), council
+  GET    /documents/{id}/file                               owning worker, council
+  POST   /documents/{id}/verify                             council only
   POST   /workers/{id}/verify/{table}/{item_id}             council only
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from typing import get_args
 
-from app import ownership, repository, profile
-from app.auth import User, require_council, require_worker
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+
+from app import ownership, repository, profile, uploads
+from app.auth import User, require_council, require_user, require_worker
 from app.schemas import (
     CertificationCreate, SkillCreate, PortfolioItemCreate, WorkerDocumentCreate,
-    DocumentVerificationRequest, VerificationRequest,
+    DocumentType, DocumentVerificationRequest, VerificationRequest,
 )
 
 router = APIRouter(tags=["workers"])
+
+# DocumentType is a Literal alias; the upload endpoint needs the runtime set.
+DOCUMENT_TYPES = frozenset(get_args(DocumentType))
 
 
 def _resolve_worker(user: User, worker_id: int):
@@ -161,6 +169,70 @@ def list_documents(worker_id: int, user: User = Depends(require_worker)) -> list
 def add_document(worker_id: int, body: WorkerDocumentCreate, user: User = Depends(require_worker)) -> profile.WorkerDocumentOut:
     _resolve_worker(user, worker_id)
     return profile.add_document(worker_id, body.document_type, body.file_url)
+
+
+@router.post("/workers/{worker_id}/documents/upload", response_model=profile.WorkerDocumentOut, status_code=201)
+async def upload_document(
+    worker_id: int,
+    file: UploadFile = File(..., description="A PDF, JPG or PNG of the document"),
+    document_type: str = Form("aadhaar"),
+    user: User = Depends(require_worker),
+) -> profile.WorkerDocumentOut:
+    """Upload a document's bytes. This is what Kaam onboarding uses to satisfy the
+    council's Aadhaar requirement; POST /workers/{id}/documents remains for callers
+    that only hold an off-FS reference.
+
+    The bytes are read once, capped, and validated by app.uploads — the browser's
+    Content-Type is never trusted.
+    """
+    _resolve_worker(user, worker_id)
+    if document_type not in DOCUMENT_TYPES:
+        raise HTTPException(status_code=400, detail=f"document_type must be one of {sorted(DOCUMENT_TYPES)}")
+    if len(profile.list_documents(worker_id)) >= uploads.max_files():
+        cap = uploads.max_files()
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"You can keep at most {cap} document{'s' if cap != 1 else ''}. "
+                "Remove one before adding another."
+            ),
+        )
+
+    limit = uploads.max_bytes()
+    data = await file.read(limit + 1)
+    try:
+        # file.size is only used to phrase the oversize message; the accept/refuse
+        # decision is made on the bytes actually read above.
+        safe_name, content_type, file_url = uploads.validate_upload(file.filename, data, file.size)
+    except uploads.UploadRejected as exc:
+        # 415: the client sent something this endpoint cannot accept.
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+    return profile.add_document_upload(
+        worker_id, document_type, safe_name, content_type, data, file_url
+    )
+
+
+@router.get("/documents/{document_id}/file")
+def download_document(document_id: int, user: User = Depends(require_user)) -> Response:
+    """Stream a stored upload back. Only the owning worker or the council may read it;
+    the document is served with a neutral Content-Type and as an attachment, so an
+    uploaded HTML/SVG-ish file can never execute against the app's origin."""
+    row = _resolve_document(user, document_id)
+    _resolve_worker(user, row["worker_id"])
+    stored = profile.document_content(document_id)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="This document has no stored file, only a reference")
+    data, content_type, filename = stored
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+            "Cache-Control": "private, no-store",
+        },
+    )
 
 
 @router.post("/documents/{document_id}/verify", response_model=profile.WorkerDocumentOut)

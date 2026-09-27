@@ -730,6 +730,23 @@ def _migration_8_document_verification(conn: sqlite3.Connection) -> None:
         conn.execute(stmt)
 
 
+def _migration_9_document_blobs(conn: sqlite3.Connection) -> None:
+    """Worker documents can now carry the uploaded bytes themselves instead of only an
+    off-FS reference. The bytes live in the database (BYTEA on Postgres, BLOB on SQLite)
+    because the API host's filesystem is ephemeral on Render and Cloudflare Pages has
+    none at all, so a file written to disk would not survive a redeploy. `content` stays
+    NULL for the older URL-reference rows, which keep working unchanged."""
+    blob_type = "BYTEA" if use_postgres() else "BLOB"
+    statements = [
+        "ALTER TABLE worker_documents ADD COLUMN filename TEXT",
+        "ALTER TABLE worker_documents ADD COLUMN content_type TEXT",
+        "ALTER TABLE worker_documents ADD COLUMN byte_size INTEGER",
+        f"ALTER TABLE worker_documents ADD COLUMN content {blob_type}",
+    ]
+    for stmt in statements:
+        conn.execute(stmt)
+
+
 MIGRATIONS = (
     (1, _migration_1_customer_owner),
     (2, _migration_2_integrity_triggers),
@@ -739,6 +756,7 @@ MIGRATIONS = (
     (6, _migration_6_provider_profile_tables),
     (7, _migration_7_welfare_benefits_and_grievances),
     (8, _migration_8_document_verification),
+    (9, _migration_9_document_blobs),
 )
 
 

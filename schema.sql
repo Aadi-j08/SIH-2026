@@ -283,6 +283,8 @@ CREATE TABLE IF NOT EXISTS worker_documents (
     uploaded_at     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
     UNIQUE (worker_id, document_type, file_url)
+    -- filename / content_type / byte_size / content (BYTEA) are added by
+    -- _migration_9_document_blobs, like the verification columns.
 );
 
 CREATE INDEX IF NOT EXISTS idx_worker_skills_worker    ON worker_skills (worker_id);
