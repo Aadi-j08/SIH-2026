@@ -98,15 +98,11 @@ export default function Verification() {
   };
 
   const approve = async (id: number) => {
-    // Activation requires a *verified* Aadhaar document (not merely uploaded).
-    if (!aadhaarByWorker[id]) {
-      alert("This worker must upload and have an Aadhaar document verified before being activated.");
-      return;
-    }
     setLoading(true);
     try {
       await api.workers.approve(id, "active");
       setPendingWorkers((prev) => (prev ? prev.filter((w) => w.id !== id) : prev));
+      if (reviewingWorker?.id === id) setReviewingWorker(null);
     } catch (e) {
       alert(errorMessage(e));
     } finally {
@@ -185,8 +181,12 @@ export default function Verification() {
                   <button className="chip" onClick={() => reviewDocuments(w)} disabled={loading} title="Review uploaded documents">
                     Review documents
                   </button>
-                  <button className="chip on" onClick={() => approve(w.id)} disabled={loading || !aadhaarByWorker[w.id]} title={aadhaarByWorker[w.id] ? "Approve" : "Needs verified Aadhaar first"}><Check /></button>
-                  <button className="chip off" onClick={() => reject(w.id)} disabled={loading} title="Reject"><Cross /></button>
+                  <button className="chip on" onClick={() => approve(w.id)} disabled={loading} title="Approve Worker Directly">
+                    <Check /> Approve
+                  </button>
+                  <button className="chip off" onClick={() => reject(w.id)} disabled={loading} title="Reject">
+                    <Cross />
+                  </button>
                 </div>
               </div>
             ))}
@@ -205,13 +205,15 @@ export default function Verification() {
               <button className="back" onClick={() => setReviewingWorker(null)} aria-label="Close">✕</button>
             </div>
             <p className="small muted" style={{ margin: "4px 0 12px" }}>
-              The worker uploaded these documents. Review each one and mark it verified or rejected. A verified Aadhaar is required before the worker can be activated.
+              The worker uploaded these documents. Review each document or approve the worker profile directly.
             </p>
             {verifyingDoc !== null && <div className="small muted">Saving…</div>}
             {loadingDocs && <div className="small muted">Loading documents…</div>}
             <div className="stack" style={{ gap: 8 }}>
               {reviewDocs.length === 0 ? (
-                <div className="small muted">No documents uploaded yet.</div>
+                <div className="notice info small">
+                  No documents uploaded yet by this worker. You can still approve them directly using the button below.
+                </div>
               ) : (
                 reviewDocs.map((d) => (
                   <div className="row between" style={{ gap: 12, flexWrap: "wrap", padding: "8px 0", borderTop: "1px solid var(--line)" }} key={d.id}>
@@ -221,7 +223,7 @@ export default function Verification() {
                         {d.file_url}
                       </a>
                       {d.verified ? (
-                        <span className="small" style={{ color: "var(--green-d)" }}>✓ verified{d.verified_at ? ` · {new Date(d.verified_at.replace(" ", "T") + "Z").toLocaleString("en-IN")}` : ""}</span>
+                        <span className="small" style={{ color: "var(--green-d)" }}>✓ verified{d.verified_at ? ` · ${new Date(d.verified_at.replace(" ", "T") + "Z").toLocaleString("en-IN")}` : ""}</span>
                       ) : d.rejection_reason ? (
                         <span className="small" style={{ color: "var(--red)" }}>✗ rejected: {d.rejection_reason}</span>
                       ) : (
@@ -239,7 +241,15 @@ export default function Verification() {
                 ))
               )}
             </div>
-            <div className="row" style={{ justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+            <div className="row" style={{ justifyContent: "space-between", gap: 8, marginTop: 16 }}>
+              <button
+                type="button"
+                className="btn primary small"
+                onClick={() => approve(reviewingWorker.id)}
+                disabled={loading}
+              >
+                ✓ Approve Worker Account Now
+              </button>
               <button className="btn outline small" onClick={() => setReviewingWorker(null)}>Close</button>
             </div>
           </div>

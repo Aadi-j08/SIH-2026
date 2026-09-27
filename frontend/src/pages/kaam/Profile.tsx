@@ -256,9 +256,19 @@ function PortfolioSection({ workerId, items, isCouncil, onSaved }: {
 }
 
 function DocumentsSection({ workerId, docs }: { workerId: number; docs: WorkerDocument[] }) {
-  const [type, setType] = useState("id_proof");
+  const [type, setType] = useState<WorkerDocument["document_type"]>("aadhaar");
   const [url, setUrl] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -267,32 +277,68 @@ function DocumentsSection({ workerId, docs }: { workerId: number; docs: WorkerDo
     try {
       await api.workers.documents.add(workerId, { document_type: type, file_url: url });
       setUrl("");
-      alert("Document added. The council will review it.");
-    } catch (err) { alert(errorMessage(err)); } finally { setSaving(false); }
+      alert("Document added successfully. The council will review it.");
+    } catch (err) {
+      alert(errorMessage(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <div className="stack" style={{ gap: 10 }}>
-      <form className="row" style={{ gap: 8, alignItems: "flex-end" }} onSubmit={add}>
-        <select className="chip" value={type} onChange={(e) => setType(e.target.value)}>
-          <option value="id_proof">ID proof</option>
-          <option value="insurance">Insurance</option>
-          <option value="vehicle">Vehicle registration</option>
-          <option value="aadhaar">Aadhaar (required for approval)</option>
-          <option value="other">Other</option>
-        </select>
-        <input className="input" placeholder="File URL (from your uploads)" value={url} onChange={(e) => setUrl(e.target.value)} />
-        <button className="chip" type="submit" disabled={saving || !url.trim()}>Add</button>
-      </form>
-      {docs.length === 0 && <div className="small muted">No documents on file.</div>}
-      {docs.map((d) => (
-        <div key={d.id} className="row between" style={{ padding: "4px 0" }}>
-          <span>
-            {d.document_type} · <a href={d.file_url} target="_blank" rel="noreferrer">{d.file_url}</a>
-            {d.verified ? " ✓ verified" : d.rejection_reason ? ` ✗ rejected: ${d.rejection_reason}` : " · pending review"}
-          </span>
+    <div className="stack" style={{ gap: 14 }}>
+      <form className="card soft stack" style={{ gap: 12, padding: 14 }} onSubmit={add}>
+        <div className="row between" style={{ alignItems: "center" }}>
+          <span style={{ fontWeight: 700 }}>Upload New Verification Document</span>
         </div>
-      ))}
+        <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <select className="chip" value={type} onChange={(e) => setType(e.target.value as WorkerDocument["document_type"])}>
+            <option value="aadhaar">Aadhaar Card (Required)</option>
+            <option value="id_proof">ID Proof (Voter ID / License)</option>
+            <option value="insurance">Insurance</option>
+            <option value="vehicle">Vehicle Registration</option>
+            <option value="other">Skill Cert / Other</option>
+          </select>
+          <input type="file" accept="image/*,.pdf" onChange={handleFile} style={{ fontSize: 13 }} />
+        </div>
+        <input
+          className="field"
+          placeholder="Or paste file/image URL directly (https://...)"
+          value={url.startsWith("data:") ? "[Local Image File Selected]" : url}
+          onChange={(e) => setUrl(e.target.value)}
+          style={{ width: "100%", height: 38, padding: "0 10px", fontSize: 13 }}
+        />
+        <button className="btn primary small" type="submit" disabled={saving || !url.trim()} style={{ alignSelf: "flex-start" }}>
+          {saving ? "Uploading…" : "Upload Document"}
+        </button>
+      </form>
+
+      {docs.length === 0 && <div className="notice info small">No verification documents submitted yet.</div>}
+      <div className="stack" style={{ gap: 8 }}>
+        {docs.map((d) => (
+          <div key={d.id} className="card soft row between" style={{ padding: 10, alignItems: "center" }}>
+            <div className="stack" style={{ gap: 2 }}>
+              <span style={{ fontWeight: 700, textTransform: "capitalize" }}>
+                📄 {d.document_type.replace("_", " ")}
+              </span>
+              <a href={d.file_url} target="_blank" rel="noreferrer" className="link small">
+                View Uploaded File ↗
+              </a>
+            </div>
+            <div>
+              {d.verified ? (
+                <span className="pill green">✓ Verified</span>
+              ) : d.rejection_reason ? (
+                <span className="pill terracotta" title={d.rejection_reason}>
+                  ✗ Rejected ({d.rejection_reason})
+                </span>
+              ) : (
+                <span className="pill amber">⏳ Pending Review</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
