@@ -29,6 +29,22 @@ def use_postgres() -> bool:
     url = globals().get("DATABASE_URL") or ""
     return url.startswith(("postgres://", "postgresql://"))
 
+
+def active_engine() -> str:
+    """The engine `get_connection()` will actually hand out.
+
+    This is a different question from `use_postgres()`. A Neon DATABASE_URL
+    alongside SAHAKARSETU_DB is a configuration that *says* Postgres and
+    *runs* SQLite, because get_connection() only ever opens DB_PATH. Anything
+    that has to agree with the running app — the engine banner, and the seeders
+    that would otherwise write their rows into a database nothing reads — must
+    ask this instead.
+
+    Returns "postgresql" once a psycopg connection is really used; until then
+    SQLite, because that is what every query goes to.
+    """
+    return "sqlite"
+
 log = logging.getLogger("sahakarsetu.database")
 
 BOOKING_STATUSES: tuple[str, ...] = ("pending", "assigned", "completed", "cancelled")
@@ -884,7 +900,7 @@ def init_db() -> None:
 
 def get_database_engine_info() -> dict[str, str]:
     """Returns metadata about active database engine and storage driver."""
-    if DATABASE_URL and (DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")):
+    if active_engine() == "postgresql":
         return {
             "engine": "PostgreSQL",
             "provider": "Cloud Managed (Neon.tech / Supabase)",
@@ -894,5 +910,9 @@ def get_database_engine_info() -> dict[str, str]:
         "engine": "SQLite",
         "provider": "Local Embedded WAL Mode",
         "path": str(DB_PATH),
+        "persistence": (
+            "in-memory container filesystem — resets on every deploy. Attach a Render disk "
+            "mounted at the path above, or point the service at a Postgres database."
+        ),
         "concurrency": "Write-Ahead Logging (WAL)",
     }
