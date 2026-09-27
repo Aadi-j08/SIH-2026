@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Navigate } from "react-router-dom";
 
 import { api, errorMessage, type WorkerDocument } from "../../api";
 import { Check, Cross, Lock, Refresh, ShieldCheck } from "../../components/Icons";
@@ -9,6 +10,11 @@ export default function VerificationPending() {
   const [polling, setPolling] = useState(false);
   const workerId = user?.worker_id ?? null;
   const worker = workerId ? `worker #${workerId}` : "your worker account";
+
+  // Auto-redirect if worker has already been approved by council
+  if (user?.worker_status === "active") {
+    return <Navigate to="/kaam/home" replace />;
+  }
 
   const [docs, setDocs] = useState<WorkerDocument[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
@@ -33,7 +39,12 @@ export default function VerificationPending() {
 
   useEffect(() => {
     void loadDocuments();
-  }, [loadDocuments]);
+    // Poll auth status every 5 seconds so when council approves, page automatically unlocks
+    const timer = setInterval(() => {
+      void refresh();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [loadDocuments, refresh]);
 
   const recheck = async () => {
     setPolling(true);
@@ -115,7 +126,9 @@ export default function VerificationPending() {
             </div>
             <div className="stack" style={{ gap: 2 }}>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{user?.name}</div>
-              <div className="tiny muted">Status: Pending Verification</div>
+              <div className="tiny muted">
+                Status: {(user?.worker_status as string) === "active" ? "Active (Approved)" : "Pending Verification"}
+              </div>
             </div>
           </div>
 

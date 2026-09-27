@@ -77,11 +77,12 @@ export function RequireAuth({ portal, children }: { portal: PortalId; children: 
     return <Navigate to={PORTALS[portal].login} replace state={{ from: location.pathname, wrongPortal: user?.portal ?? null }} />;
   }
   // Kaam (worker) onboarding gate: pending workers see a verification screen.
-  // Only redirect when not already on the verification page — otherwise the
-  // guard redirects to itself forever (Safari: "something went wrong with this
-  // page"; Chrome: blank page).
   if (portal === "kaam" && user.worker_status === "pending" && location.pathname !== "/kaam/verification") {
     return <Navigate to="/kaam/verification" replace state={{ from: location.pathname }} />;
+  }
+  // If the worker has been approved (active), redirect them away from verification page to /kaam/home
+  if (portal === "kaam" && user.worker_status === "active" && location.pathname === "/kaam/verification") {
+    return <Navigate to="/kaam/home" replace />;
   }
   return <>{children}</>;
 }
