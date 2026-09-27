@@ -98,8 +98,23 @@ def _seed_pending_applications(executor, demo_pass_hash, *, ph, returning, worke
 
     ``executor`` is a psycopg cursor on Postgres and a sqlite3 connection locally; ``ph``
     and ``worker_id_after_insert`` bridge the placeholder and lastrowid differences.
+
+    The Postgres path truncates first, but the SQLite path is additive, so these
+    applicants are cleared by phone before being re-inserted. Without that, a
+    second run dies on users' UNIQUE (portal, phone) and leaves the SQLite demo
+    database un-resettable without hand-written SQL.
     """
     returning_id = " RETURNING id;" if returning else ";"
+    phones = tuple(entry[1] for entry in PENDING_APPLICATIONS)
+    phone_list = ", ".join([ph] * len(phones))
+    executor.execute(
+        f"DELETE FROM worker_documents WHERE worker_id IN "
+        f"(SELECT id FROM workers WHERE phone IN ({phone_list}))",
+        phones,
+    )
+    executor.execute(f"DELETE FROM users WHERE phone IN ({phone_list})", phones)
+    executor.execute(f"DELETE FROM workers WHERE phone IN ({phone_list})", phones)
+
     for name, phone, trade, lat, lon in PENDING_APPLICATIONS:
         executor.execute(
             f"""
