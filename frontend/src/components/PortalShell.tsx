@@ -72,10 +72,10 @@ export function Wordmark({ children }: { children?: ReactNode }) {
   );
 }
 
-export function PortalTag({ portal, style }: { portal: PortalId; style?: React.CSSProperties }) {
+export function PortalTag({ portal, style, className }: { portal: PortalId; style?: React.CSSProperties; className?: string }) {
   const p = PORTALS[portal];
   return (
-    <span className={`portal-tag ${portal}`} style={style}>
+    <span className={`portal-tag ${portal}${className ? ` ${className}` : ""}`} style={style}>
       {p.name} · {p.tag}
     </span>
   );
@@ -135,7 +135,7 @@ export default function PortalShell({ portal, children, sidebar }: { portal: Por
         </Wordmark>
       </Link>
       <div className="row" style={{ gap: 10 }}>
-        <PortalTag portal={portal} />
+        <PortalTag portal={portal} className="hide-narrow" />
         <UserMenu portal={portal} />
       </div>
     </header>
