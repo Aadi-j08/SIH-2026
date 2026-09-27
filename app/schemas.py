@@ -290,10 +290,21 @@ class WorkerDocument(WorkerDocumentBase):
     worker_id: int
     uploaded_at: str | None = None
     cooperative_id: int = 1
+    verified: bool = False
+    verified_by: int | None = None
+    verified_at: str | None = None
+    rejection_reason: str | None = None
 
 
 class WorkerDocumentCreate(WorkerDocumentBase):
     pass
+
+
+class DocumentVerificationRequest(BaseModel):
+    """Council review of a worker-uploaded document: approve, reject (with a reason)
+    or re-open for correction. Workers upload; council only verifies."""
+    verified: bool = True
+    rejection_reason: str | None = Field(default=None, max_length=400)
 
 
 class VerificationRequest(BaseModel):

@@ -25,7 +25,7 @@ from app import ownership, repository, profile
 from app.auth import User, require_council, require_worker
 from app.schemas import (
     CertificationCreate, SkillCreate, PortfolioItemCreate, WorkerDocumentCreate,
-    VerificationRequest,
+    DocumentVerificationRequest, VerificationRequest,
 )
 
 router = APIRouter(tags=["workers"])
@@ -38,6 +38,20 @@ def _resolve_worker(user: User, worker_id: int):
     if worker is None:
         raise HTTPException(status_code=404, detail=f"Worker {worker_id} not found")
     return worker
+
+
+def _resolve_document(user: User, document_id: int):
+    """The worker document the council may review. 404 if absent or outside the caller's tenant."""
+    from app.database import connection
+    from app import tenancy
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM worker_documents WHERE id = ? AND cooperative_id = ?",
+            (document_id, tenancy.tenant_id()),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Document {document_id} not found")
+    return row
 
 
 # ── profile overview ────────────────────────────────────────────────────
@@ -147,6 +161,25 @@ def list_documents(worker_id: int, user: User = Depends(require_worker)) -> list
 def add_document(worker_id: int, body: WorkerDocumentCreate, user: User = Depends(require_worker)) -> profile.WorkerDocumentOut:
     _resolve_worker(user, worker_id)
     return profile.add_document(worker_id, body.document_type, body.file_url)
+
+
+@router.post("/documents/{document_id}/verify", response_model=profile.WorkerDocumentOut)
+def verify_document(
+    document_id: int, body: DocumentVerificationRequest,
+    user: User = Depends(require_council),
+) -> profile.WorkerDocumentOut:
+    """Council review of a worker-uploaded document. Workers upload; council only
+    verifies (or rejects with a reason, or re-opens for correction)."""
+    row = _resolve_document(user, document_id)
+    worker_id = row["worker_id"]
+    _resolve_worker(user, worker_id)
+    if not profile.set_document_verification(document_id, body.verified, user.id, body.rejection_reason):
+        raise HTTPException(status_code=404, detail=f"Document {document_id} not found")
+    docs = profile.list_documents(worker_id)
+    for d in docs:
+        if d.id == document_id:
+            return d
+    raise HTTPException(status_code=404, detail=f"Document {document_id} not found")
 
 
 # ── verification (council only) ─────────────────────────────────────────

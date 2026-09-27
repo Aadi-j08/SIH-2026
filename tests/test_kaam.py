@@ -33,8 +33,10 @@ def test_new_kaam_signup_is_pending_until_the_council_approves(make_client, coun
     assert council.post(f"/bookings/{booking_id}/assign").status_code == 409
     assert council.get(f"/bookings/{booking_id}/recommendations").json() == []
 
-    # council can only activate once the worker has uploaded an Aadhaar
-    ravi.post(f"/workers/{worker_id}/documents", json={"document_type": "aadhaar", "file_url": "uploads/aadhaar.jpg"})
+    # council can only activate once the worker has uploaded an Aadhaar and the
+    # council has verified it
+    doc = ravi.post(f"/workers/{worker_id}/documents", json={"document_type": "aadhaar", "file_url": "uploads/aadhaar.jpg"}).json()
+    assert council.post(f"/documents/{doc['id']}/verify", json={"verified": True}).status_code == 200
     approved = council.post(f"/workers/{worker_id}/approve", json={"status": "active"})
     assert approved.status_code == 200 and approved.json()["status"] == "active"
     assert council.get("/admin/workers/pending").json() == []
