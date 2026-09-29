@@ -44,9 +44,12 @@ def pending_workers(_: User = Depends(require_council)) -> list[Worker]:
 
 @router.post("/workers/{worker_id}/approve", response_model=Worker)
 def approve_worker(worker_id: int, body: WorkerApproval, user: User = Depends(require_council)) -> Worker:
-    """Activate or reject a pending worker directly by council."""
+    """Activate or reject a pending worker. Activation requires an Aadhaar
+    document first; rejection always works."""
     from app.routers.workers import _resolve_worker
     _resolve_worker(user, worker_id)
+    if body.status == "active" and not profile.has_aadhaar(worker_id):
+        raise HTTPException(status_code=409, detail="Upload Aadhaar proof before activating this worker")
     if body.status not in ("active", "rejected"):
         raise HTTPException(status_code=400, detail="status must be 'active' or 'rejected'")
     updated = repository.set_worker_status(worker_id, body.status)

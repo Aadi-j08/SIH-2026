@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS workers (
     jobs_this_week  INTEGER NOT NULL DEFAULT 0 CHECK (jobs_this_week >= 0),
     rating          REAL    CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),  -- NULL until first rating
     availability    TEXT    NOT NULL DEFAULT '[]', -- JSON list of AvailabilityWindow
-    status          TEXT    NOT NULL DEFAULT 'active' CHECK (status IN ('pending', 'active')),  -- pending = awaiting council approval
+    status          TEXT    NOT NULL DEFAULT 'active' CHECK (status IN ('pending', 'active', 'rejected')),  -- pending = awaiting council approval
     cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id), -- which member cooperative owns this worker
     created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -447,8 +447,8 @@ def _migration_3_worker_status_and_replies(conn: sqlite3.Connection) -> None:
         for event in ("INSERT", "UPDATE"):
             conn.execute(
                 f"CREATE TRIGGER IF NOT EXISTS trg_workers_status_{event.lower()} BEFORE {event} ON workers "
-                "WHEN NEW.status NOT IN ('pending', 'active') "
-                "BEGIN SELECT RAISE(ABORT, 'worker status must be pending or active'); END"
+                "WHEN NEW.status NOT IN ('pending', 'active', 'rejected') "
+                "BEGIN SELECT RAISE(ABORT, 'worker status must be pending, active or rejected'); END"
             )
     if "accepted_at" not in _columns(conn, "assignments"):
         conn.execute("ALTER TABLE assignments ADD COLUMN accepted_at TEXT")
@@ -730,6 +730,99 @@ def _migration_8_document_verification(conn: sqlite3.Connection) -> None:
         conn.execute(stmt)
 
 
+def _migration_9_document_blobs(conn: sqlite3.Connection) -> None:
+    """Worker documents can now carry the uploaded bytes themselves instead of only an
+    off-FS reference. The bytes live in the database (BYTEA on Postgres, BLOB on SQLite)
+    because the API host's filesystem is ephemeral on Render and Cloudflare Pages has
+    none at all, so a file written to disk would not survive a redeploy. `content` stays
+    NULL for the older URL-reference rows, which keep working unchanged."""
+    blob_type = "BYTEA" if use_postgres() else "BLOB"
+    statements = [
+        "ALTER TABLE worker_documents ADD COLUMN filename TEXT",
+        "ALTER TABLE worker_documents ADD COLUMN content_type TEXT",
+        "ALTER TABLE worker_documents ADD COLUMN byte_size INTEGER",
+        f"ALTER TABLE worker_documents ADD COLUMN content {blob_type}",
+    ]
+    for stmt in statements:
+        conn.execute(stmt)
+
+
+def _migration_10_worker_rejected_status(conn: sqlite3.Connection) -> None:
+    """Let workers.status hold 'rejected'.
+
+    POST /workers/{id}/approve accepts status "rejected" and writes it straight
+    to this column, but the column was declared CHECK (status IN ('pending',
+    'active')) -- so rejecting an applicant failed on a constraint violation
+    instead of reaching the UI. The widened CHECK is in SCHEMA for new
+    databases; here it is applied to databases that already exist.
+
+    SQLite cannot ALTER a CHECK, so the table is rebuilt. The CREATE TABLE
+    statement is read back from sqlite_master and only the CHECK text is
+    swapped, which keeps every column a legacy database happens to carry
+    (base_rating, rating_count, cooperative_id) without this migration having
+    to know about them. Foreign keys are off for the swap so the dependent
+    tables are not cascaded, and PRAGMA foreign_key_check at the end proves
+    the rebuild left no dangling references.
+    """
+    if use_postgres():
+        # Postgres names an unnamed inline CHECK after its table and column.
+        conn.execute("ALTER TABLE workers DROP CONSTRAINT IF EXISTS workers_status_check")
+        conn.execute(
+            "ALTER TABLE workers ADD CONSTRAINT workers_status_check "
+            "CHECK (status IN ('pending', 'active', 'rejected'))"
+        )
+        return
+
+    old_check = "CHECK (status IN ('pending', 'active'))"
+    new_check = "CHECK (status IN ('pending', 'active', 'rejected'))"
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'workers'"
+    ).fetchone()
+    if row is None:
+        return
+    ddl = row["sql"] or ""
+    if new_check in ddl:
+        return
+    if old_check not in ddl:
+        # A table that predates the CHECK carries the rule in triggers instead;
+        # migration 3 wrote them, so they are replaced here.
+        for event in ("insert", "update"):
+            conn.execute(f"DROP TRIGGER IF EXISTS trg_workers_status_{event}")
+        return
+
+    # Read the dependent objects now: dropping the table takes its indexes and
+    # triggers with it, so afterwards sqlite_master no longer lists them.
+    saved = conn.execute(
+        "SELECT type, sql FROM sqlite_master "
+        "WHERE tbl_name = 'workers' AND sql IS NOT NULL AND type IN ('index', 'trigger')"
+    ).fetchall()
+
+    # Copy before dropping, so a failure anywhere below still leaves every row
+    # readable in workers__m10 even when there is no transaction to roll back.
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        transactional = not conn.in_transaction
+        if transactional:
+            conn.execute("BEGIN")
+        conn.execute(f"CREATE TABLE workers__m10 {ddl[ddl.index('('):]}".replace(old_check, new_check))
+        conn.execute("INSERT INTO workers__m10 SELECT * FROM workers")
+        conn.execute("DROP TABLE workers")
+        conn.execute("ALTER TABLE workers__m10 RENAME TO workers")
+        for obj in saved:
+            conn.execute(obj["sql"].replace("workers__m10", "workers"))
+        broken = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if broken:
+            raise RuntimeError(f"rebuilding workers left dangling references: {broken[:5]}")
+        if transactional:
+            conn.execute("COMMIT")
+    except Exception:
+        if not conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
 MIGRATIONS = (
     (1, _migration_1_customer_owner),
     (2, _migration_2_integrity_triggers),
@@ -739,6 +832,8 @@ MIGRATIONS = (
     (6, _migration_6_provider_profile_tables),
     (7, _migration_7_welfare_benefits_and_grievances),
     (8, _migration_8_document_verification),
+    (9, _migration_9_document_blobs),
+    (10, _migration_10_worker_rejected_status),
 )
 
 

@@ -69,6 +69,11 @@ class WorkerDocumentOut(BaseModel):
     verified_by: int | None = None
     verified_at: str | None = None
     rejection_reason: str | None = None
+    # Present for real uploads; NULL for the older URL-reference rows.
+    filename: str | None = None
+    content_type: str | None = None
+    byte_size: int | None = None
+    has_content: bool = False
 
 
 class ProfileSummary(BaseModel):
@@ -274,6 +279,45 @@ def add_document(worker_id: int, document_type: str, file_url: str) -> WorkerDoc
         return _doc(row)
 
 
+def add_document_upload(
+    worker_id: int, document_type: str, filename: str, content_type: str, data: bytes, file_url: str
+) -> WorkerDocumentOut:
+    """Store an uploaded document's bytes alongside its reference.
+
+    The bytes live in the database rather than on disk because the API host's
+    filesystem is ephemeral (Render) or absent (Cloudflare Pages). `data` must
+    already have passed app.uploads.validate_upload.
+    """
+    with connection() as conn:
+        conn.execute(
+            "INSERT INTO worker_documents "
+            "(worker_id, document_type, file_url, filename, content_type, byte_size, content, cooperative_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (worker_id, document_type, file_url, filename, content_type, len(data), data, tenancy.tenant_id()),
+        )
+        row = conn.execute(
+            "SELECT * FROM worker_documents WHERE worker_id = ? AND cooperative_id = ? ORDER BY id DESC LIMIT 1",
+            (worker_id, tenancy.tenant_id()),
+        ).fetchone()
+        return _doc(row)
+
+
+def document_content(document_id: int) -> tuple[bytes, str, str] | None:
+    """(bytes, content_type, filename) for a stored upload, or None if it has no bytes."""
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT content, content_type, filename FROM worker_documents "
+            "WHERE id = ? AND cooperative_id = ?",
+            (document_id, tenancy.tenant_id()),
+        ).fetchone()
+    if row is None or row["content"] is None:
+        return None
+    data = row["content"]
+    if not isinstance(data, (bytes, bytearray, memoryview)):  # Postgres may hand back memoryview
+        return None
+    return bytes(data), row["content_type"] or "application/octet-stream", row["filename"] or "document"
+
+
 # ── verification (council) ────────────────────────────────────────────────
 
 def set_verification(table: str, item_id: int, verified: bool, verified_by: int | None) -> bool:
@@ -338,6 +382,8 @@ def _portfolio(row: sqlite3.Row) -> PortfolioItemOut:
 
 def _doc(row: sqlite3.Row) -> WorkerDocumentOut:
     d = dict(row)
+    # Never let the bytes reach a JSON response; only their presence is reported.
+    d["has_content"] = d.pop("content", None) is not None
     d["verified"] = bool(d.get("verified"))
     return WorkerDocumentOut.model_validate(d)
 

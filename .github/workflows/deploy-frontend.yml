@@ -39,7 +39,7 @@ jobs:
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN || 'cfat_VnAkZqNeBG5s8F0bt2A09Ug4h2gOyIiEyLdgz4Mlece5ecf0' }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '128c051f5918b70c45c3ac53c04e3bf1' }}
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
           workingDirectory: "frontend"
           command: pages deploy dist --project-name=sahakarsetu-frontend --commit-dirty=true

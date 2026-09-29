@@ -78,10 +78,25 @@ def test_profile_is_tenant_scoped(worker, client, db_path):
     assert r.status_code == 403
 
 
-def test_council_can_directly_activate_worker(council, make_client):
+def test_council_cannot_activate_worker_without_aadhaar(council, make_client):
     pending = make_client("worker", name="Unverified Worker", phone="9200000002", trade="plumbing")
     wid = pending.user["worker_id"]
-    # Council can activate directly without Aadhaar requirement
+    # Council tries to activate without Aadhaar uploaded -> 409
+    r = council.post(f"/workers/{wid}/approve", json={"status": "active"})
+    assert r.status_code == 409, r.text
+    assert "Aadhaar" in r.json()["detail"]
+    # Worker uploads an Aadhaar document (still not verified)
+    doc = pending.post(f"/workers/{wid}/documents", json={"document_type": "aadhaar", "file_url": "uploads/aadhaar.jpg"}).json()
+    assert doc["document_type"] == "aadhaar"
+    # Activation still blocked: the document must be *verified* by the council first
+    r1b = council.post(f"/workers/{wid}/approve", json={"status": "active"})
+    assert r1b.status_code == 409, r1b.text
+    assert "Aadhaar" in r1b.json()["detail"]
+    # Council reviews and verifies the uploaded document
+    rv = council.post(f"/documents/{doc['id']}/verify", json={"verified": True})
+    assert rv.status_code == 200, rv.text
+    assert rv.json()["verified"] is True
+    # Now council can activate
     r2 = council.post(f"/workers/{wid}/approve", json={"status": "active"})
     assert r2.status_code == 200, r2.text
     assert r2.json()["status"] == "active"

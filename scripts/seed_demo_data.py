@@ -20,6 +20,7 @@ Usage:
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 from pathlib import Path
@@ -32,6 +33,116 @@ from dotenv import load_dotenv
 from app.auth import hash_password
 
 load_dotenv()
+
+
+# Applicants whose Aadhaar is uploaded but not yet reviewed. The council cannot activate
+# anyone until a *verified* Aadhaar exists (app/routers/kaam.py), so without these rows the
+# Sabha verification page has nothing to act on. They make the intended flow demonstrable:
+# Review documents -> mark the Aadhaar verified -> Approve.
+PENDING_APPLICATIONS = [
+    ("Imran Qureshi", "9876543299", "plumbing", 23.2280, 77.4280),
+    ("Laxmi Baijal", "9876543289", "electrician", 23.2380, 77.4180),
+]
+
+
+def _aadhaar_pdf(name: str, phone: str) -> bytes:
+    """A small, genuinely valid one-page PDF standing in for a scanned Aadhaar.
+
+    The council preview downloads these bytes (GET /documents/{id}/file), so a
+    seeded document has to carry real content — a file_url on its own resolves
+    to nothing now that uploads live in the database. Built by hand to keep the
+    repository free of binary fixtures; a correct xref table is included
+    because the council opens this in the browser's PDF viewer.
+    """
+    lines = [
+        b"Government of India  |  Unique Identification Authority of India",
+        b"",
+        f"Aadhaar number  XXXX XXXX {phone[-4:]}".encode("ascii", "replace"),
+        f"Name  {name}".encode("ascii", "replace"),
+        b"Date of birth  01/01/1994",
+        b"Address  Bhopal, Madhya Pradesh",
+        b"",
+        b"DEMO DOCUMENT - seeded for the council verification walkthrough",
+    ]
+    text = "BT /F1 11 Tf 24 200 Td 16 TL\n" + "\n".join(
+        f"({line.decode('ascii').replace(chr(40), '').replace(chr(41), '')}) Tj T*"
+        for line in lines
+    ) + "\nET"
+    content = text.encode("ascii")
+
+    objects = [
+        b"<</Type/Catalog/Pages 2 0 R>>",
+        b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
+        b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 420 260]/Contents 4 0 R"
+        b"/Resources<</Font<</F1 5 0 R>>>>>>",
+        b"<</Length " + str(len(content)).encode() + b">>stream\n" + content + b"\nendstream",
+        b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
+    ]
+
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n".encode() + body + b"\nendobj\n"
+    xref_at = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n".encode()
+    out += b"0000000000 65535 f \n"
+    for offset in offsets:
+        out += f"{offset:010d} 00000 n \n".encode()
+    out += f"trailer\n<</Size {len(objects) + 1}/Root 1 0 R>>\nstartxref\n{xref_at}\n%%EOF\n".encode()
+    return bytes(out)
+
+
+def _seed_pending_applications(executor, demo_pass_hash, *, ph, returning, worker_id_after_insert):
+    """Insert pending worker applications, each with one unreviewed Aadhaar document.
+
+    ``executor`` is a psycopg cursor on Postgres and a sqlite3 connection locally; ``ph``
+    and ``worker_id_after_insert`` bridge the placeholder and lastrowid differences.
+
+    The Postgres path truncates first, but the SQLite path is additive, so these
+    applicants are cleared by phone before being re-inserted. Without that, a
+    second run dies on users' UNIQUE (portal, phone) and leaves the SQLite demo
+    database un-resettable without hand-written SQL.
+    """
+    returning_id = " RETURNING id;" if returning else ";"
+    phones = tuple(entry[1] for entry in PENDING_APPLICATIONS)
+    phone_list = ", ".join([ph] * len(phones))
+    executor.execute(
+        f"DELETE FROM worker_documents WHERE worker_id IN "
+        f"(SELECT id FROM workers WHERE phone IN ({phone_list}))",
+        phones,
+    )
+    executor.execute(f"DELETE FROM users WHERE phone IN ({phone_list})", phones)
+    executor.execute(f"DELETE FROM workers WHERE phone IN ({phone_list})", phones)
+
+    for name, phone, trade, lat, lon in PENDING_APPLICATIONS:
+        executor.execute(
+            f"""
+            INSERT INTO workers (name, phone, trade, latitude, longitude, jobs_this_week, rating, status, cooperative_id)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, 0, NULL, 'pending', 1){returning_id}
+            """,
+            (name, phone, trade, lat, lon),
+        )
+        worker_id = worker_id_after_insert(executor)
+        pdf = _aadhaar_pdf(name, phone)
+        filename = f"aadhaar-{phone}.pdf"
+        executor.execute(
+            f"""
+            INSERT INTO worker_documents
+                (worker_id, document_type, file_url, verified, cooperative_id,
+                 filename, content_type, byte_size, content)
+            VALUES ({ph}, 'aadhaar', {ph}, 0, 1, {ph}, 'application/pdf', {ph}, {ph});
+            """,
+            (worker_id, f"db:worker_documents/{hashlib.sha256(pdf).hexdigest()[:16]}",
+             filename, len(pdf), pdf),
+        )
+        executor.execute(
+            f"""
+            INSERT INTO users (portal, phone, name, password_hash, locality, role, worker_id, cooperative_id)
+            VALUES ('kaam', {ph}, {ph}, {ph}, 'Bhopal', NULL, {ph}, 1);
+            """,
+            (phone, f"{name} (Worker)", demo_pass_hash, worker_id),
+        )
 
 
 def seed_postgres(db_url: str):
@@ -91,6 +202,11 @@ def seed_postgres(db_url: str):
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1) RETURNING id;
                 """, (name, phone, trade, lat, lon, jobs, rating, status))
                 worker_ids[phone] = cur.fetchone()[0]
+
+            _seed_pending_applications(
+                cur, demo_pass_hash, ph="%s", returning=True,
+                worker_id_after_insert=lambda c: c.fetchone()[0],
+            )
 
             users = [
                 ("ghar", "9876543210", "Aarav Sharma (Customer)", "Arera Colony", None, None),
@@ -194,6 +310,11 @@ def seed_sqlite():
             VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 1)
             """, (name, phone, trade, lat, lon, jobs, rating))
             worker_ids[phone] = cur.lastrowid
+
+        _seed_pending_applications(
+            conn, demo_pass_hash, ph="?", returning=False,
+            worker_id_after_insert=lambda c: c.execute("SELECT last_insert_rowid()").fetchone()[0],
+        )
 
         users = [
             ("ghar", "9876543210", "Aarav Sharma (Customer)", "Arera Colony", None, None),

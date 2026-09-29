@@ -49,7 +49,7 @@ class WorkerCreate(BaseModel):
         return canonical_trade(value)
 
 
-WorkerStatus = Literal["pending", "active"]
+WorkerStatus = Literal["pending", "active", "rejected"]
 
 
 class Worker(WorkerCreate):
