@@ -20,7 +20,13 @@ The FastAPI dependencies at the bottom (`require_role`, `require_customer`,
 route choice is never trusted on its own.
 
 Config (environment):
-    SAHAKARSETU_COUNCIL_CODE   code(s) that unlock Sabha sign-up, comma-separated (default SABHA-2026)
+    SAHAKARSETU_COUNCIL_CODE   code(s) that unlock Sabha sign-up, comma-separated.
+                               Required — there is no default. This value is the
+                               only thing standing between a stranger and a
+                               council account, so an unset one denies every
+                               council sign-up rather than falling back to a
+                               guessable constant. Generate one with
+                               `python3 -c "import secrets; print(secrets.token_urlsafe(24))"`.
     SAHAKARSETU_SESSION_DAYS   session lifetime in days (default 30)
 """
 from __future__ import annotations
@@ -29,6 +35,7 @@ import datetime as dt
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -51,6 +58,8 @@ ROLE_OF_PORTAL: dict[str, Role] = {"ghar": "customer", "kaam": "worker", "sabha"
 PORTAL_OF_ROLE: dict[str, Portal] = {role: portal for portal, role in ROLE_OF_PORTAL.items()}
 
 SESSION_COOKIE = "sahakarsetu_session"
+
+log = logging.getLogger("sahakarsetu.auth")
 PBKDF2_ITERATIONS = 200_000
 
 # Where the cooperative operates; a Kaam sign-up without GPS lands here.
@@ -58,14 +67,27 @@ DEFAULT_LATITUDE, DEFAULT_LONGITUDE = 23.18, 77.42
 
 
 def council_codes() -> list[str]:
-    """Accepted council codes, upper-cased. Several may be set, e.g. one per council member: "SABHA-2026,SETU-7731"."""
-    raw = os.environ.get("SAHAKARSETU_COUNCIL_CODE", "SABHA-2026")
-    return [code.strip().upper() for code in raw.split(",") if code.strip()]
+    """Accepted council codes, upper-cased. Several may be set, e.g. one per council member: "SABHA-2026,SETU-7731".
+
+    There is deliberately no fallback value. This repository is public, so a
+    default written here would be a default published to the world, and the code
+    is the only thing gating the sabha portal — which can approve workers, verify
+    documents and read every row in the tenant. Unset means nobody can self-
+    register as council; an operator has to choose a value deliberately.
+    """
+    raw = os.environ.get("SAHAKARSETU_COUNCIL_CODE", "").strip()
+    codes = [code.strip().upper() for code in raw.split(",") if code.strip()]
+    if not codes:
+        log.error(
+            "SAHAKARSETU_COUNCIL_CODE is not set: all council (sabha) sign-ups will be "
+            "rejected. Set it to a random value to let council members register."
+        )
+    return codes
 
 
 def council_code() -> str:
     """The primary council code (kept for callers that expect one)."""
-    return council_codes()[0]
+    return council_codes()[0] if council_codes() else ""
 
 
 def is_council_code(candidate: str | None) -> bool:

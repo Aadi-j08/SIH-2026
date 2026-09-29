@@ -47,6 +47,35 @@ PENDING_APPLICATIONS = [
 ]
 
 
+DEFAULT_DEMO_PASSWORD = "demo1234"   # local development only; see demo_password()
+
+
+def demo_password() -> str:
+    """The password every seeded demo account gets.
+
+    Overridable so the demo can run on a reachable host without shipping the
+    well-known "demo1234" as an administrator credential -- the seeded council
+    account can approve workers, verify documents and read every row in the
+    tenant, so on a public instance its password is the whole security model.
+
+    The default is only for a developer's own machine. Anything supplied through
+    the environment must be at least 12 characters, and the container requires one
+    before it will seed at all, so a hosted demo cannot come up with demo1234.
+    Setting the variable to whitespace counts as setting it: falling back to the
+    default there would let a value that looks configured quietly install the
+    known password.
+    """
+    raw = os.environ.get("SAHAKARSETU_DEMO_PASSWORD")
+    if raw is None:
+        return DEFAULT_DEMO_PASSWORD
+    password = raw.strip()
+    if len(password) < 12:
+        raise SystemExit(
+            f"SAHAKARSETU_DEMO_PASSWORD must be at least 12 characters (got {len(password)})."
+        )
+    return password
+
+
 def _seed_pending_applications(executor, demo_pass_hash, *, ph, returning, worker_id_after_insert):
     """Insert pending worker applications, each with one unreviewed Aadhaar document.
 
@@ -101,7 +130,7 @@ def seed_postgres(db_url: str):
     import psycopg
 
     print("🔌 Connecting to Cloud PostgreSQL (Neon.tech)...")
-    demo_pass_hash = hash_password("demo1234")
+    demo_pass_hash = hash_password(demo_password())
 
     with psycopg.connect(db_url) as conn:
         with conn.cursor() as cur:
@@ -214,7 +243,7 @@ def seed_sqlite():
 
     print("📁 Connecting to Local SQLite (sahakarsetu.db)...")
     init_db()
-    demo_pass_hash = hash_password("demo1234")
+    demo_pass_hash = hash_password(demo_password())
 
     with connection() as conn:
         conn.execute("""

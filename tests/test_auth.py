@@ -63,6 +63,25 @@ def test_several_council_codes_can_be_active_at_once(client, monkeypatch):
     assert client.post("/auth/signup", json=sabha(phone="9000000203", code="SETU-0000")).status_code == 403
 
 
+def test_no_council_code_means_no_council_signup(client, monkeypatch):
+    """Fail closed. This repository is public, so a fallback constant here would be
+    a council account handed to anyone who reads the source."""
+    monkeypatch.delenv("SAHAKARSETU_COUNCIL_CODE", raising=False)
+    assert auth.council_codes() == []
+    assert auth.is_council_code("SABHA-2026") is False
+    assert auth.is_council_code("") is False
+    assert client.post("/auth/signup", json=sabha(code="SABHA-2026")).status_code == 403
+    assert repository.list_workers() == []
+
+
+def test_the_old_published_default_is_not_accepted(client, monkeypatch):
+    """SABHA-2026 shipped as a default and was therefore public. It must stay dead."""
+    monkeypatch.setenv("SAHAKARSETU_COUNCIL_CODE", "k7Vq-2xRt_super-secret-91")
+    assert auth.is_council_code("SABHA-2026") is False
+    assert client.post("/auth/signup", json=sabha(code="SABHA-2026")).status_code == 403
+    assert client.post("/auth/signup", json=sabha(code="k7Vq-2xRt_super-secret-91")).status_code == 201
+
+
 def test_phone_must_be_ten_digits(client):
     assert client.post("/auth/signup", json=ghar(phone="12345")).status_code == 422
     assert client.post("/auth/signup", json=ghar(phone="+91 98765 43210")).status_code == 201
