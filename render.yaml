@@ -10,10 +10,28 @@ services:
       cd frontend && npm install && npm run build
     # Free tier has an ephemeral filesystem, so the SQLite DB resets on restart.
     # Auto-seed on every start: the script is idempotent (refuses if data exists).
-    startCommand: python scripts/seed_demo.py 2>/dev/null; exec uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # The seed is OFF unless SAHAKARSETU_SEED_DEMO=1 -- it creates a council
+    # account with a known password, which must not be a default on a public
+    # host. Its stderr is deliberately NOT discarded: a seed failure is the first
+    # sign of a database problem, and hiding it cost us a deploy once already.
+    startCommand: |
+      if [ "$SAHAKARSETU_SEED_DEMO" = "1" ]; then
+        if [ -z "$SAHAKARSETU_DEMO_PASSWORD" ]; then
+          echo "Refusing to seed: set SAHAKARSETU_DEMO_PASSWORD to 12+ characters." >&2
+          exit 1
+        fi
+        python scripts/seed_demo.py; python scripts/seed_demo_data.py
+      else
+        echo "Demo seed skipped (set SAHAKARSETU_SEED_DEMO=1 to enable)."
+      fi
+      exec uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.8
+      # The shared demo code, so the deployment matches the documented walkthrough
+      # without any extra setup. It is public (this repository is public) and it
+      # grants full council access: set this to a random value before the host
+      # holds any real data.
       - key: SAHAKARSETU_COUNCIL_CODE
         value: SABHA-2026
       - key: SAHAKARSETU_CORS_ORIGINS

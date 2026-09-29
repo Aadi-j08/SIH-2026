@@ -1,9 +1,10 @@
 """
 Universal Demo Data Seeder for SahakarSetu.
 
-Auto-detects active database engine:
-- If DATABASE_URL is set -> Seeds Cloud PostgreSQL (Neon.tech / Supabase)
-- Else                   -> Seeds Local SQLite (sahakarsetu.db)
+Auto-detects the database engine the running app actually uses
+(app.database.active_engine()), not DATABASE_URL:
+- If a Postgres connection is really in use -> seeds Cloud PostgreSQL (Neon.tech / Supabase)
+- Else                                  -> seeds Local SQLite (sahakarsetu.db)
 
 Populates:
 1. Cooperative Profile (Bhopal Shramik Sahakari Samiti)
@@ -20,17 +21,18 @@ Usage:
 """
 from __future__ import annotations
 
-import hashlib
 import os
 import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from dotenv import load_dotenv
 
 from app.auth import hash_password
+from _demo_aadhaar import aadhaar_document
 
 load_dotenv()
 
@@ -45,52 +47,33 @@ PENDING_APPLICATIONS = [
 ]
 
 
-def _aadhaar_pdf(name: str, phone: str) -> bytes:
-    """A small, genuinely valid one-page PDF standing in for a scanned Aadhaar.
+DEFAULT_DEMO_PASSWORD = "demo1234"   # local development only; see demo_password()
 
-    The council preview downloads these bytes (GET /documents/{id}/file), so a
-    seeded document has to carry real content — a file_url on its own resolves
-    to nothing now that uploads live in the database. Built by hand to keep the
-    repository free of binary fixtures; a correct xref table is included
-    because the council opens this in the browser's PDF viewer.
+
+def demo_password() -> str:
+    """The password every seeded demo account gets.
+
+    Overridable so the demo can run on a reachable host without shipping the
+    well-known "demo1234" as an administrator credential -- the seeded council
+    account can approve workers, verify documents and read every row in the
+    tenant, so on a public instance its password is the whole security model.
+
+    The default is only for a developer's own machine. Anything supplied through
+    the environment must be at least 12 characters, and the container requires one
+    before it will seed at all, so a hosted demo cannot come up with demo1234.
+    Setting the variable to whitespace counts as setting it: falling back to the
+    default there would let a value that looks configured quietly install the
+    known password.
     """
-    lines = [
-        b"Government of India  |  Unique Identification Authority of India",
-        b"",
-        f"Aadhaar number  XXXX XXXX {phone[-4:]}".encode("ascii", "replace"),
-        f"Name  {name}".encode("ascii", "replace"),
-        b"Date of birth  01/01/1994",
-        b"Address  Bhopal, Madhya Pradesh",
-        b"",
-        b"DEMO DOCUMENT - seeded for the council verification walkthrough",
-    ]
-    text = "BT /F1 11 Tf 24 200 Td 16 TL\n" + "\n".join(
-        f"({line.decode('ascii').replace(chr(40), '').replace(chr(41), '')}) Tj T*"
-        for line in lines
-    ) + "\nET"
-    content = text.encode("ascii")
-
-    objects = [
-        b"<</Type/Catalog/Pages 2 0 R>>",
-        b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
-        b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 420 260]/Contents 4 0 R"
-        b"/Resources<</Font<</F1 5 0 R>>>>>>",
-        b"<</Length " + str(len(content)).encode() + b">>stream\n" + content + b"\nendstream",
-        b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
-    ]
-
-    out = bytearray(b"%PDF-1.4\n")
-    offsets = []
-    for number, body in enumerate(objects, start=1):
-        offsets.append(len(out))
-        out += f"{number} 0 obj\n".encode() + body + b"\nendobj\n"
-    xref_at = len(out)
-    out += f"xref\n0 {len(objects) + 1}\n".encode()
-    out += b"0000000000 65535 f \n"
-    for offset in offsets:
-        out += f"{offset:010d} 00000 n \n".encode()
-    out += f"trailer\n<</Size {len(objects) + 1}/Root 1 0 R>>\nstartxref\n{xref_at}\n%%EOF\n".encode()
-    return bytes(out)
+    raw = os.environ.get("SAHAKARSETU_DEMO_PASSWORD")
+    if raw is None:
+        return DEFAULT_DEMO_PASSWORD
+    password = raw.strip()
+    if len(password) < 12:
+        raise SystemExit(
+            f"SAHAKARSETU_DEMO_PASSWORD must be at least 12 characters (got {len(password)})."
+        )
+    return password
 
 
 def _seed_pending_applications(executor, demo_pass_hash, *, ph, returning, worker_id_after_insert):
@@ -124,8 +107,7 @@ def _seed_pending_applications(executor, demo_pass_hash, *, ph, returning, worke
             (name, phone, trade, lat, lon),
         )
         worker_id = worker_id_after_insert(executor)
-        pdf = _aadhaar_pdf(name, phone)
-        filename = f"aadhaar-{phone}.pdf"
+        file_url, filename, size, content = aadhaar_document(name, phone)
         executor.execute(
             f"""
             INSERT INTO worker_documents
@@ -133,8 +115,7 @@ def _seed_pending_applications(executor, demo_pass_hash, *, ph, returning, worke
                  filename, content_type, byte_size, content)
             VALUES ({ph}, 'aadhaar', {ph}, 0, 1, {ph}, 'application/pdf', {ph}, {ph});
             """,
-            (worker_id, f"db:worker_documents/{hashlib.sha256(pdf).hexdigest()[:16]}",
-             filename, len(pdf), pdf),
+            (worker_id, file_url, filename, size, content),
         )
         executor.execute(
             f"""
@@ -149,7 +130,7 @@ def seed_postgres(db_url: str):
     import psycopg
 
     print("🔌 Connecting to Cloud PostgreSQL (Neon.tech)...")
-    demo_pass_hash = hash_password("demo1234")
+    demo_pass_hash = hash_password(demo_password())
 
     with psycopg.connect(db_url) as conn:
         with conn.cursor() as cur:
@@ -262,7 +243,7 @@ def seed_sqlite():
 
     print("📁 Connecting to Local SQLite (sahakarsetu.db)...")
     init_db()
-    demo_pass_hash = hash_password("demo1234")
+    demo_pass_hash = hash_password(demo_password())
 
     with connection() as conn:
         conn.execute("""
@@ -366,9 +347,15 @@ def seed_sqlite():
 
 
 def main():
-    db_url = os.environ.get("DATABASE_URL")
-    if db_url and (db_url.startswith("postgres://") or db_url.startswith("postgresql://")):
-        seed_postgres(db_url)
+    from app.database import active_engine
+
+    # Route on the engine the app will actually open, not on DATABASE_URL. A
+    # service can carry a Neon URL and still run SQLite (get_connection() only
+    # ever opens DB_PATH), and seeding Neon in that case writes every row into
+    # a database nothing reads -- the app comes up with an empty screen and the
+    # logs look perfectly healthy.
+    if active_engine() == "postgresql":
+        seed_postgres(os.environ["DATABASE_URL"])
     else:
         seed_sqlite()
 

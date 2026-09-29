@@ -19,9 +19,31 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 
 # Postgres (Neon) when DATABASE_URL says so, SQLite otherwise. Read through the
 # module attribute at call time so tests can monkeypatch it off.
+#
+# This reports the *configured URL*, not the driver a connection is using.
+# get_connection() currently always returns SQLite, so on a service that sets
+# both DATABASE_URL and SAHAKARSETU_DB this returns True while every query still
+# runs against SQLite. Use it for reporting only; anything that issues SQL must
+# ask the connection instead (see _is_sqlite).
 def use_postgres() -> bool:
     url = globals().get("DATABASE_URL") or ""
     return url.startswith(("postgres://", "postgresql://"))
+
+
+def active_engine() -> str:
+    """The engine `get_connection()` will actually hand out.
+
+    This is a different question from `use_postgres()`. A Neon DATABASE_URL
+    alongside SAHAKARSETU_DB is a configuration that *says* Postgres and
+    *runs* SQLite, because get_connection() only ever opens DB_PATH. Anything
+    that has to agree with the running app — the engine banner, and the seeders
+    that would otherwise write their rows into a database nothing reads — must
+    ask this instead.
+
+    Returns "postgresql" once a psycopg connection is really used; until then
+    SQLite, because that is what every query goes to.
+    """
+    return "sqlite"
 
 log = logging.getLogger("sahakarsetu.database")
 
@@ -730,13 +752,29 @@ def _migration_8_document_verification(conn: sqlite3.Connection) -> None:
         conn.execute(stmt)
 
 
+def _is_sqlite(conn) -> bool:
+    """Whether `conn` is a real SQLite connection.
+
+    Migrations must ask the connection what it is, never `use_postgres()`.
+    That helper only reads DATABASE_URL, and get_connection() always hands back
+    a SQLite connection, so the two disagree whenever a Postgres URL is
+    configured on a SQLite-backed service. Rendering's Docker image does
+    exactly that: SAHAKARSETU_DB=/data/sahakarsetu.db with a Neon
+    DATABASE_URL also set. Branching on the env var there ran Postgres-only
+    DDL against SQLite and took the whole service down at startup. The
+    psycopg wrapper in app/pg.py is not a sqlite3.Connection, so this also
+    routes correctly if Postgres is ever wired up for real.
+    """
+    return isinstance(conn, sqlite3.Connection)
+
+
 def _migration_9_document_blobs(conn: sqlite3.Connection) -> None:
     """Worker documents can now carry the uploaded bytes themselves instead of only an
     off-FS reference. The bytes live in the database (BYTEA on Postgres, BLOB on SQLite)
     because the API host's filesystem is ephemeral on Render and Cloudflare Pages has
     none at all, so a file written to disk would not survive a redeploy. `content` stays
     NULL for the older URL-reference rows, which keep working unchanged."""
-    blob_type = "BYTEA" if use_postgres() else "BLOB"
+    blob_type = "BLOB" if _is_sqlite(conn) else "BYTEA"
     statements = [
         "ALTER TABLE worker_documents ADD COLUMN filename TEXT",
         "ALTER TABLE worker_documents ADD COLUMN content_type TEXT",
@@ -764,7 +802,7 @@ def _migration_10_worker_rejected_status(conn: sqlite3.Connection) -> None:
     tables are not cascaded, and PRAGMA foreign_key_check at the end proves
     the rebuild left no dangling references.
     """
-    if use_postgres():
+    if not _is_sqlite(conn):
         # Postgres names an unnamed inline CHECK after its table and column.
         conn.execute("ALTER TABLE workers DROP CONSTRAINT IF EXISTS workers_status_check")
         conn.execute(
@@ -862,7 +900,7 @@ def init_db() -> None:
 
 def get_database_engine_info() -> dict[str, str]:
     """Returns metadata about active database engine and storage driver."""
-    if DATABASE_URL and (DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")):
+    if active_engine() == "postgresql":
         return {
             "engine": "PostgreSQL",
             "provider": "Cloud Managed (Neon.tech / Supabase)",
@@ -872,5 +910,9 @@ def get_database_engine_info() -> dict[str, str]:
         "engine": "SQLite",
         "provider": "Local Embedded WAL Mode",
         "path": str(DB_PATH),
+        "persistence": (
+            "in-memory container filesystem — resets on every deploy. Attach a Render disk "
+            "mounted at the path above, or point the service at a Postgres database."
+        ),
         "concurrency": "Write-Ahead Logging (WAL)",
     }

@@ -42,6 +42,10 @@ from app.services import booking_flow  # noqa: E402
 from app import rates as rates_mod  # noqa: E402
 from app.services.ledger import rupees_to_paise  # noqa: E402
 
+# scripts/ is already on sys.path when this file runs, so the shared builder
+# next to it imports without help.
+from _demo_aadhaar import aadhaar_document  # noqa: E402
+
 rng = random.Random(args.seed)
 PASSWORD = "demo1234"
 NOW = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
@@ -129,8 +133,20 @@ def main() -> None:
         joined = NOW - dt.timedelta(days=rng.randint(20, 300))
         run("UPDATE workers SET rating = ?, created_at = ? WHERE id = ?", (rating, stamp(joined), w.worker_id))
     # Kaam sign-ups wait for council approval; the cooperative approved everyone but the three newest
+    pending = workers[-3:]
     for w in workers[:-3]:
         run("UPDATE workers SET status = 'active' WHERE id = ?", (w.worker_id,))
+    # ...and each of those three has an Aadhaar on file, unreviewed. Without it the
+    # council cannot act on them at all: approving needs a *verified* Aadhaar
+    # (app/routers/kaam.py), so an applicant with no document is a dead row in the
+    # queue rather than something the verification screen can demonstrate.
+    for w in pending:
+        file_url, filename, size, content = aadhaar_document(w.name, w.phone)
+        run(
+            "INSERT INTO worker_documents (worker_id, document_type, file_url, verified, cooperative_id,"
+            " filename, content_type, byte_size, content) VALUES (?, 'aadhaar', ?, 0, 1, ?, 'application/pdf', ?, ?)",
+            (w.worker_id, file_url, filename, size, content),
+        )
     # availability: most say nothing; some declare today; five declare themselves busy today (offline)
     today = (NOW + dt.timedelta(hours=5, minutes=30)).date()   # IST, like the app judges availability
     for w in rng.sample(workers, 5):

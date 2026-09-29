@@ -20,7 +20,10 @@ The FastAPI dependencies at the bottom (`require_role`, `require_customer`,
 route choice is never trusted on its own.
 
 Config (environment):
-    SAHAKARSETU_COUNCIL_CODE   code(s) that unlock Sabha sign-up, comma-separated (default SABHA-2026)
+    SAHAKARSETU_COUNCIL_CODE   code(s) that unlock Sabha sign-up, comma-separated.
+                               Defaults to SABHA-2026 for a zero-setup demo, which
+                               is public knowledge: override it with a random value
+                               on any host that holds real data.
     SAHAKARSETU_SESSION_DAYS   session lifetime in days (default 30)
 """
 from __future__ import annotations
@@ -29,6 +32,7 @@ import datetime as dt
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -51,21 +55,43 @@ ROLE_OF_PORTAL: dict[str, Role] = {"ghar": "customer", "kaam": "worker", "sabha"
 PORTAL_OF_ROLE: dict[str, Portal] = {role: portal for portal, role in ROLE_OF_PORTAL.items()}
 
 SESSION_COOKIE = "sahakarsetu_session"
+
+log = logging.getLogger("sahakarsetu.auth")
 PBKDF2_ITERATIONS = 200_000
 
 # Where the cooperative operates; a Kaam sign-up without GPS lands here.
 DEFAULT_LATITUDE, DEFAULT_LONGITUDE = 23.18, 77.42
 
 
+DEFAULT_COUNCIL_CODE = "SABHA-2026"
+
+
 def council_codes() -> list[str]:
-    """Accepted council codes, upper-cased. Several may be set, e.g. one per council member: "SABHA-2026,SETU-7731"."""
-    raw = os.environ.get("SAHAKARSETU_COUNCIL_CODE", "SABHA-2026")
-    return [code.strip().upper() for code in raw.split(",") if code.strip()]
+    """Accepted council codes, upper-cased. Several may be set, e.g. one per council member: "SABHA-2026,SETU-7731".
+
+    Defaults to SABHA-2026 so a fresh clone and the demo deployment work with no
+    setup. That default is public — this repository is public — and the code is
+    the only thing gating the sabha portal, which can approve workers, verify
+    documents and read every row in the tenant. Anyone who can reach the host
+    can therefore self-register as council. Before this is used for anything
+    real, set SAHAKARSETU_COUNCIL_CODE to a random value:
+
+        python3 -c "import secrets; print(secrets.token_urlsafe(24))"
+    """
+    raw = os.environ.get("SAHAKARSETU_COUNCIL_CODE", "").strip() or DEFAULT_COUNCIL_CODE
+    codes = [code.strip().upper() for code in raw.split(",") if code.strip()]
+    if DEFAULT_COUNCIL_CODE in codes:
+        log.warning(
+            "Council sign-up is open with the shared demo code %s. Set "
+            "SAHAKARSETU_COUNCIL_CODE to a random value before this host holds real data.",
+            DEFAULT_COUNCIL_CODE,
+        )
+    return codes
 
 
 def council_code() -> str:
     """The primary council code (kept for callers that expect one)."""
-    return council_codes()[0]
+    return council_codes()[0] if council_codes() else ""
 
 
 def is_council_code(candidate: str | None) -> bool:

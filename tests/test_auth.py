@@ -63,6 +63,24 @@ def test_several_council_codes_can_be_active_at_once(client, monkeypatch):
     assert client.post("/auth/signup", json=sabha(phone="9000000203", code="SETU-0000")).status_code == 403
 
 
+def test_the_demo_council_code_works_without_configuration(client, monkeypatch):
+    """SABHA-2026 is the documented demo code and is deliberately the default, so a
+    fresh clone and the demo deployment need no setup. It is also public, which is
+    why council_codes() logs a warning while it is in use."""
+    monkeypatch.delenv("SAHAKARSETU_COUNCIL_CODE", raising=False)
+    assert auth.council_codes() == ["SABHA-2026"]
+    assert auth.is_council_code("sabha-2026") is True          # still case-insensitive
+    assert client.post("/auth/signup", json=sabha(code="SABHA-2026")).status_code == 201
+
+
+def test_an_explicit_council_code_overrides_the_demo_default(client, monkeypatch):
+    """The escape hatch: once a real code is set, the published one stops working."""
+    monkeypatch.setenv("SAHAKARSETU_COUNCIL_CODE", "k7Vq-2xRt_super-secret-91")
+    assert auth.is_council_code("SABHA-2026") is False
+    assert client.post("/auth/signup", json=sabha(code="SABHA-2026")).status_code == 403
+    assert client.post("/auth/signup", json=sabha(code="k7Vq-2xRt_super-secret-91")).status_code == 201
+
+
 def test_phone_must_be_ten_digits(client):
     assert client.post("/auth/signup", json=ghar(phone="12345")).status_code == 422
     assert client.post("/auth/signup", json=ghar(phone="+91 98765 43210")).status_code == 201
