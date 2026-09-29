@@ -28,11 +28,12 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.8
-      # No default on purpose. This unlocks the council portal on a public host,
-      # and this file is in a public repository, so any value committed here is
-      # published. Set it in the Render dashboard.
+      # The shared demo code, so the deployment matches the documented walkthrough
+      # without any extra setup. It is public (this repository is public) and it
+      # grants full council access: set this to a random value before the host
+      # holds any real data.
       - key: SAHAKARSETU_COUNCIL_CODE
-        sync: false
+        value: SABHA-2026
       - key: SAHAKARSETU_CORS_ORIGINS
         value: "https://sahakarsetu-frontend.pages.dev"
       - key: DATABASE_URL

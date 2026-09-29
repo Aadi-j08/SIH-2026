@@ -104,16 +104,6 @@ def run(sql: str, params: tuple = ()) -> None:
 
 def main() -> None:
     database.init_db()
-    # Council sign-up is gated on a code that has no default (app/auth.py), so a
-    # missing one would create zero council accounts and look like a seeding bug.
-    # Refuse instead, before writing anything.
-    if not auth.council_codes():
-        sys.exit(
-            "SAHAKARSETU_COUNCIL_CODE is not set, so the council accounts this seeder "
-            "creates could not sign up. Generate one, e.g.\n"
-            '  SAHAKARSETU_COUNCIL_CODE="$(python3 -c \'import secrets; print(secrets.token_urlsafe(24))\')"\n'
-            "and run this again."
-        )
     with database.connection() as conn:
         if conn.execute("SELECT 1 FROM users WHERE phone = '9000000100'").fetchone():
             sys.exit(f"{database.DB_PATH} already holds the demo data; use --db for a fresh file.")

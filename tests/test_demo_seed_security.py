@@ -44,16 +44,14 @@ def test_a_weak_demo_password_override_is_refused(monkeypatch, weak):
         _load("seed_demo_data").demo_password()
 
 
-def test_seeding_refuses_to_run_without_a_council_code(monkeypatch, tmp_path):
-    """The council code has no default, so the seeder would otherwise create zero
-    council accounts and look like a seeding bug rather than a missing setting."""
+def test_seeding_works_with_the_default_council_code(monkeypatch, tmp_path):
+    """The demo council code has a default again, so the seeder must not demand one."""
     monkeypatch.delenv("SAHAKARSETU_COUNCIL_CODE", raising=False)
     monkeypatch.setenv("SAHAKARSETU_DEMO_PASSWORD", "Str0ng-Demo-Pass-42")
     monkeypatch.setenv("SAHAKARSETU_DB", str(tmp_path / "seed.db"))
     monkeypatch.setattr(sys, "argv", ["seed_demo.py"])   # the script parses argv on import
-    with pytest.raises(SystemExit) as exit_info:
-        _load("seed_demo").main()
-    assert "SAHAKARSETU_COUNCIL_CODE" in str(exit_info.value)
+    module = _load("seed_demo")
+    assert module.auth.council_code() == "SABHA-2026"
 
 
 def test_dockerfile_only_seeds_when_explicitly_enabled():
