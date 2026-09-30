@@ -40,5 +40,6 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF }}
+          accountId: ${{ vars.CF_ACCOUNT_ID }}
           workingDirectory: "frontend"
           command: pages deploy dist --project-name=sahakarsetu-frontend --commit-dirty=true
