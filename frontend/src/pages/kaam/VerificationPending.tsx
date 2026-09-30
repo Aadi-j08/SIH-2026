@@ -7,6 +7,10 @@
  * (app/routers/kaam.py), and /kaam/profile is unreachable while the worker is
  * pending (lib/auth.tsx redirects every other Kaam route here). So the upload
  * has to live on this page — otherwise onboarding deadlocks.
+ *
+ * Layout is a two-column `sabha-grid` that collapses to one column under
+ * 1100px (styles.css), so the account summary and the uploader sit side by side
+ * on a desktop and stack on a phone.
  */
 import { useCallback, useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
@@ -15,7 +19,7 @@ import {
   api, DOCUMENT_KIND_LABELS, errorMessage, UPLOAD_ACCEPT, UPLOAD_MAX_BYTES_LABEL,
   type DocumentKind, type WorkerDocument,
 } from "../../api";
-import { Lock, Refresh, ShieldCheck } from "../../components/Icons";
+import { Check, Cross, Lock, Refresh, ShieldCheck } from "../../components/Icons";
 import { useAuth } from "../../lib/auth";
 import { describeFile, validateDocumentFile } from "../../lib/uploads";
 
@@ -29,7 +33,11 @@ export default function VerificationPending() {
   const [loadingDocs, setLoadingDocs] = useState(false);
   const workerId = user?.worker_id ?? null;
   const worker = user?.worker_id ? `worker #${user.worker_id}` : "your worker account";
+  const rejected = user?.worker_status === "rejected";
 
+  // One fetcher, one effect. An earlier revision of this page also declared a
+  // `loadDocuments` + effect pair alongside these, which listed documents twice
+  // on every mount; keep this as the single source.
   const loadDocs = useCallback(async () => {
     if (workerId === null) return;
     setLoadingDocs(true);
@@ -70,71 +78,99 @@ export default function VerificationPending() {
   ];
 
   return (
-    <div className="page wide kaam-page">
-      <header className="stack" style={{ gap: 6, marginBottom: 24 }}>
+    <div className="page wide kaam-page" style={{ maxWidth: 980, margin: "0 auto" }}>
+      <header className="stack" style={{ gap: 6, marginBottom: 20 }}>
         <h1>Account under review</h1>
         <div className="small muted">Two short steps: upload your Aadhaar, then the council verifies it.</div>
       </header>
 
-      <section className="card" style={{ maxWidth: 520, margin: "0 auto" }}>
-        <div className="row" style={{ gap: 16, alignItems: "center", justifyContent: "center" }}>
-          <div className="avatar" style={{ width: 56, height: 56 }}>
-            {(user?.name ?? worker).slice(0, 2).toUpperCase()}
-          </div>
-        </div>
-        <div className="stack" style={{ gap: 8, marginTop: 12 }}>
-          {details.map((d) => (
-            <div key={d.hint} className="row between">
-              <span className="small muted">{d.hint}</span>
-              <span className="small">{d.label}</span>
+      <div className="sabha-grid" style={{ gap: 16 }}>
+        {/* Account summary */}
+        <section className="card stack" style={{ gap: 14 }}>
+          <div className="row" style={{ gap: 16, alignItems: "center" }}>
+            <div className="avatar" style={{ width: 56, height: 56, fontSize: 20 }}>
+              {(user?.name ?? worker).slice(0, 2).toUpperCase()}
             </div>
-          ))}
-        </div>
+            <div className="stack" style={{ gap: 2, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>{user?.name ?? worker}</div>
+              <div className="tiny muted">
+                {rejected ? "Rejected by the council" : verified ? "Aadhaar verified — awaiting approval" : "Pending council review"}
+              </div>
+            </div>
+          </div>
 
-        {workerId !== null ? (
-          <div className="stack" style={{ gap: 10, marginTop: 20 }}>
-            <h2 style={{ margin: 0, fontSize: 17 }}>1 · Upload your Aadhaar</h2>
-            <div className="small muted">
+          <div className="stack" style={{ gap: 8 }}>
+            {details.map((d) => (
+              <div
+                key={d.hint}
+                className="row between small"
+                style={{ borderBottom: "1px solid var(--line-soft)", paddingBottom: 6, gap: 12 }}
+              >
+                <span className="muted">{d.hint}</span>
+                <span style={{ fontWeight: 600, wordBreak: "break-word", textAlign: "right" }}>{d.label}</span>
+              </div>
+            ))}
+          </div>
+
+          {rejected ? (
+            <div className="notice error">
+              <strong>The council did not approve this account.</strong> Your uploaded documents are still on
+              file, but no jobs are offered to a rejected applicant. Speak to the council office to find out
+              what is missing and have the account reviewed again.
+            </div>
+          ) : (
+            <div className="notice">
               {verified
-                ? "✓ Your Aadhaar is verified. The council is checking your account now."
-                : uploaded
-                  ? "Your Aadhaar is with the council. They mark it verified, then approve you."
-                  : "The council can only approve you once an Aadhaar is on file and verified. Add it below."}
+                ? "You'll get jobs as soon as the council approves your account. Use Re-check status below."
+                : "You'll get jobs once the council approves your account. That usually takes a few minutes."}
             </div>
-            {carriedError && <div className="notice error">Your Aadhaar did not upload: {carriedError}</div>}
-            <UploadSection workerId={workerId} docs={docs} onAdded={loadDocs} />
-          </div>
-        ) : (
-          <div className="notice" style={{ marginTop: 16 }}>
-            This account is not linked to a worker record yet, so documents cannot be uploaded. Ask
-            the council to re-check your account.
-          </div>
-        )}
+          )}
 
-        {user?.worker_status === "rejected" ? (
-          <div className="notice error" style={{ marginTop: 16 }}>
-            <strong>The council did not approve this account.</strong> Your uploaded documents are still on
-            file, but no jobs are offered to a rejected applicant. Speak to the council office to find out
-            what is missing and have the account reviewed again.
+          <div className="row" style={{ gap: 10, marginTop: 4, flexWrap: "wrap" }}>
+            <button type="button" className="btn primary small grow" onClick={recheck} disabled={polling}>
+              {polling ? <Refresh size={16} /> : "2 · Re-check status"}
+            </button>
+            <button type="button" className="btn outline small" onClick={() => void api.auth.logout()}>
+              Sign in as someone else
+            </button>
           </div>
-        ) : (
-          <div className="notice" style={{ marginTop: 16 }}>
+        </section>
+
+        {/* Uploader */}
+        <section className="card stack" style={{ gap: 14 }}>
+          <div className="row between" style={{ alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <h2 style={{ margin: 0, fontSize: 18 }}>1 · Your documents</h2>
+            {verified ? (
+              <span className="pill green"><Check size={12} /> Aadhaar verified</span>
+            ) : uploaded ? (
+              <span className="pill amber">Aadhaar with the council</span>
+            ) : (
+              <span className="pill terracotta">Aadhaar required</span>
+            )}
+          </div>
+
+          <div className="small muted">
             {verified
-              ? "You’ll get jobs as soon as the council approves your account. Use Re-check status below."
-              : "You’ll get jobs once the council approves your account. That usually takes a few minutes."}
+              ? "Your Aadhaar is verified. The council is checking your account now."
+              : uploaded
+                ? "Your Aadhaar is with the council. They mark it verified, then approve you."
+                : "The council can only approve you once an Aadhaar is on file and verified. Add it below."}
           </div>
-        )}
 
-        <div className="row" style={{ gap: 12, marginTop: 16, justifyContent: "center" }}>
-          <button type="button" className="btn" onClick={recheck} disabled={polling}>
-            {polling ? <Refresh size={16} /> : "2 · Re-check status"}
-          </button>
-          <button type="button" className="btn outline" onClick={() => void api.auth.logout()}>
-            Sign in as someone else
-          </button>
-        </div>
-        {loadingDocs && <div className="small muted" style={{ marginTop: 8, textAlign: "center" }}>Loading documents…</div>}
-      </section>
+          {carriedError && <div className="notice error">Your Aadhaar did not upload: {carriedError}</div>}
+
+          {workerId !== null ? (
+            <UploadSection workerId={workerId} docs={docs} onAdded={loadDocs} />
+          ) : (
+            <div className="notice">
+              This account is not linked to a worker record yet, so documents cannot be uploaded. Ask
+              the council to re-check your account.
+            </div>
+          )}
+
+          {loadingDocs && <div className="small muted">Loading documents…</div>}
+        </section>
+      </div>
     </div>
   );
 }
@@ -179,12 +215,13 @@ function UploadSection({
   return (
     <div className="stack" style={{ gap: 10 }}>
       <form className="stack" style={{ gap: 8 }} onSubmit={add}>
+        <label className="label" htmlFor="doc-type">Document type</label>
         <select
-          className="chip"
+          id="doc-type"
+          className="field"
           value={type}
           onChange={(e) => setType(e.target.value as DocumentKind)}
-          aria-label="Document type"
-          style={{ alignSelf: "flex-start" }}
+          style={{ maxWidth: 320 }}
         >
           {Object.entries(DOCUMENT_KIND_LABELS).map(([value, label]) => (
             <option key={value} value={value}>{label}</option>
@@ -205,25 +242,34 @@ function UploadSection({
         </div>
         {fileError && <div className="notice error">{fileError}</div>}
         {error && <div className="notice error">{error}</div>}
-        <button className="chip" type="submit" disabled={saving || !file || !!fileError} style={{ alignSelf: "flex-start" }}>
+        <button className="btn green small" type="submit" disabled={saving || !file || !!fileError} style={{ alignSelf: "flex-start" }}>
           {saving ? "Uploading…" : "Add document"}
         </button>
       </form>
+
       {docs.length === 0 ? (
         <div className="small muted">No documents on file yet.</div>
       ) : (
         docs.map((d) => (
-          <div key={d.id} className="row between" style={{ padding: "4px 0", gap: 12, flexWrap: "wrap" }}>
-            <span className="small">
-              {DOCUMENT_KIND_LABELS[d.document_type] ?? d.document_type}
-              {d.has_content && d.filename ? ` · ${d.filename}` : ""}
-            </span>
-            <span
-              className="small"
-              style={{ color: d.verified ? "var(--green-d)" : d.rejection_reason ? "var(--red)" : undefined }}
-            >
-              {d.verified ? "✓ verified by the council" : d.rejection_reason ? `✗ rejected: ${d.rejection_reason}` : "· pending council review"}
-            </span>
+          <div key={d.id} className="card soft stack" style={{ gap: 6, padding: 12 }}>
+            <div className="row between" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span className="small" style={{ fontWeight: 700 }}>
+                {DOCUMENT_KIND_LABELS[d.document_type] ?? d.document_type}
+                {d.has_content && d.filename ? ` · ${d.filename}` : ""}
+              </span>
+              {d.verified ? (
+                <span className="pill green" style={{ gap: 4 }}><Check size={12} /> verified</span>
+              ) : d.rejection_reason ? (
+                <span className="pill terracotta" style={{ gap: 4 }}><Cross size={12} /> rejected</span>
+              ) : (
+                <span className="pill amber">pending council review</span>
+              )}
+            </div>
+            {d.rejection_reason && (
+              <div className="tiny" style={{ color: "var(--terracotta-d)" }}>
+                {d.rejection_reason} — upload a clear copy above.
+              </div>
+            )}
           </div>
         ))
       )}

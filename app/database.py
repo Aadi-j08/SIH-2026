@@ -549,10 +549,10 @@ def _migration_5_federation_tenants(conn: sqlite3.Connection) -> None:
         copied = conn.execute(
             """
             INSERT INTO cooperative_federations
-                (id, name, short_name, registration_id, established, area, radius_km,
+                (id, code, name, short_name, registration_id, established, area, radius_km,
                  verified, worker_kyc, payments_verified, secretary, coordinator,
                  last_meeting, weekly_job_limit, fund_allocation)
-            SELECT id, name, short_name, registration_id, established, area, radius_km,
+            SELECT id, 'SABHA-' || CAST(id AS TEXT), name, short_name, registration_id, established, area, radius_km,
                    verified, worker_kyc, payments_verified, secretary, coordinator,
                    last_meeting, weekly_job_limit, fund_allocation
             FROM cooperative
