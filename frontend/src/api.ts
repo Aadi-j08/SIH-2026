@@ -705,14 +705,14 @@ export function storageRemove(key: string): void {
 
 /**
  * Public API origin when the SPA is hosted separately (Cloudflare Pages). Empty = same origin.
- * If the deploy-time env var is missing (Pages env not set / not rebuilt), production builds
- * fall back to the known API host so auth never silently hits the static host instead.
+ * Read from the build environment only. There is deliberately no hardcoded fallback: the
+ * minifier strips an unused constant whenever this variable is set, so a fallback would
+ * silently vanish from exactly those builds where a wrong value does the most damage.
+ * vite.config.ts fails `vite build` when VITE_API_BASE_URL is missing, so a typo in the
+ * Cloudflare Pages env var breaks the build instead of shipping a dead API host.
  * Dev keeps the empty base so the Vite proxy (vite.config.ts) handles API calls.
  */
-const FALLBACK_API_BASE_URL = "https://sih-2026-1-n10c.onrender.com";
-export const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? FALLBACK_API_BASE_URL : "")
-).replace(/\/$/, "");
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 const SESSION_TOKEN_KEY = "sahakarsetu_session_token";
 const COOPERATIVE_ID_KEY = "sahakarsetu_cooperative_id";
