@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
@@ -24,7 +24,15 @@ const API_PREFIXES = [
   "/openapi.json",
 ];
 
-export default defineConfig(({ command }) => {
+export default defineConfig(({ command, mode }) => {
+  // process.env on its own is not enough. Vite exposes .env files to *client*
+  // code as import.meta.env, not to this config file, so a committed
+  // .env.production default would be invisible here. loadEnv merges the .env
+  // files with process.env, and process.env wins on conflict -- which is the
+  // precedence we want: an explicit Cloudflare Pages / CI / render.yaml value
+  // always overrides the committed default.
+  const env = loadEnv(mode, process.cwd(), "VITE_");
+
   // Fail the production build when the API origin is missing entirely. This is
   // the only place that can catch a typo in the Cloudflare Pages env var: a bad
   // value is still a syntactically valid URL, so nothing downstream would reject
@@ -33,11 +41,11 @@ export default defineConfig(({ command }) => {
   // An explicitly empty value is legitimate and means "same origin" -- that is
   // what the copy FastAPI serves from /app/ needs, since the API and the SPA
   // share a host there. Only a *missing* variable is an error.
-  if (command === "build" && process.env.VITE_API_BASE_URL === undefined) {
+  if (command === "build" && env.VITE_API_BASE_URL === undefined) {
     throw new Error(
       "VITE_API_BASE_URL must be set for production builds. Set it in the Cloudflare " +
         "Pages dashboard under Settings -> Environment variables for both Production " +
-        "and Preview. See docs/DEPLOY.md section 2.",
+        "and Preview, or restore frontend/.env.production. See docs/DEPLOY.md section 2.",
     );
   }
 
