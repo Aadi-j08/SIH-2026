@@ -7,6 +7,28 @@ Recommended production shape for SIH:
 
 You already have Pages. This doc gets the API public and wired to Pages, then explains how to ship changes later.
 
+> **How the frontend deploys.** Cloudflare Pages is connected to this repository
+> through **Git integration**, so pushes to the production branch are built and
+> deployed by Cloudflare. There is deliberately **no deploy workflow** — an
+> earlier `.github/workflows/deploy-frontend.yml` used `wrangler-action` to run
+> `pages deploy` manually, which raced the Git build and could overwrite a newer
+> deploy with an older one. It was removed; `.github/workflows/ci.yml` now only
+> tests and builds, and never deploys.
+>
+> Three consequences worth knowing:
+>
+> - **Green `main` no longer implies a deployed site.** The only deploy path is
+>   Cloudflare dashboard state, which no check in this repo can read. A stale
+>   Pages deployment surfaces only when a user hits it.
+> - **Pages builds every push to the production branch** unless *Include paths*
+>   is configured. The `frontend/**` path filter the old workflow used does not
+>   carry over to the Git integration.
+> - **`secrets.CF` and `vars.CF_ACCOUNT_ID` are now orphaned** — nothing in the
+>   repo references them. Delete both under *Settings → Secrets and variables*.
+>   The `CF` token was also pasted in plaintext in commit `459cee6` and is still
+>   readable in this repository's history, so **revoke it** and set a fresh value
+>   only if you later reintroduce a deploy workflow.
+
 ---
 
 ## 0. Feedback loop
@@ -41,7 +63,17 @@ The repo ships a ready `render.yaml`. One-time setup in the Render dashboard:
 
    Also set `VITE_BASE_PATH=/app/` so assets resolve under `/app/`.
 
-6. Render restarts and builds automatically. Note the URL, e.g. `https://sahakarsetu-api.onrender.com`.
+   `render.yaml` already sets `VITE_API_BASE_URL` to an **empty string**, and
+   that is deliberate — do not remove it. This build produces the copy FastAPI
+   serves from `/app/`, where the SPA and the API share a host, so API calls
+   must stay relative. An empty value means "same origin"; leaving the key out
+   entirely fails the build (`frontend/vite.config.ts`). Note that Render's
+   `buildCommand` runs `npm run build`, so a frontend build failure here breaks
+   the **backend** deploy too.
+
+6. Render restarts and builds automatically. Note the URL — this is the value §2
+   tells you to copy into `VITE_API_BASE_URL`, so take it from the Render
+   dashboard rather than assuming a name.
 
 Verify: `https://…/` returns `{"status":"ok",…}` and `/docs` opens.
 
@@ -57,15 +89,30 @@ python scripts/seed_demo.py
 
 ## 2. Point Cloudflare Pages at the API
 
-In Pages → **Settings → Environment variables** (Production **and** Preview):
+In the Cloudflare dashboard → **Workers & Pages → `sahakarsetu-frontend` → Settings → Environment variables**, add to **both Production and Preview**:
 
 | Name | Value |
-|------|--------|
-| `VITE_API_BASE_URL` | `https://sahakarsetu-api.onrender.com` (no trailing slash) |
+|------|-------|
+| `VITE_API_BASE_URL` | The Render URL from §1 — copy it from the Render dashboard. Do not retype it from memory; an unreachable host fails silently. |
+| `NODE_VERSION` | `22.16.0` |
 
-`VITE_BASE_PATH` should stay `/` for Pages root hosting.
+Required build settings on the same page (**Settings → Builds**):
 
-**Trigger a new Pages deploy** (push to the connected branch or “Retry deployment”). Vite bakes `VITE_*` in at **build** time — changing the env without rebuilding does nothing.
+| Setting | Value |
+|---------|-------|
+| Root directory | `frontend` |
+| Build command | `npm run build` |
+| Build output directory | `dist` |
+| Production branch | `main` |
+
+Notes that catch people out here:
+
+- **`frontend/wrangler.toml` cannot configure the build.** Wrangler `[vars]` are *runtime* bindings for Pages Functions, and this project has none. Vite inlines `VITE_*` from the real build environment, so the dashboard is the only place that works.
+- **A wrong API host fails silently, and nothing in the app will warn you.** The landing page is static and will render fine while every auth, booking, rate and settlement call fails. `frontend/src/api.ts` therefore has **no** hardcoded fallback host — a fallback constant gets stripped by the minifier as soon as the variable is set, so it would vanish in exactly the builds where a wrong value does the most damage. Instead `frontend/vite.config.ts` throws when `VITE_API_BASE_URL` is unset, so a **missing or misspelled variable fails the build** rather than shipping. A build that succeeds is therefore proof the variable is present — but not that its value is reachable. Check the host once after the first deploy.
+- **`NODE_VERSION` is set as well as pinned in-repo.** `frontend/.node-version` holds `22.16.0` and is read by both CI and the Pages build image, but Cloudflare only reads it from the configured **Root directory**. Setting `NODE_VERSION` in the dashboard makes the pin work regardless of how Root directory is configured. Vite 8 requires `^20.19.0 || >=22.12.0`; the Cloudflare build image v2 default (18.17.1) would fail the build outright.
+- **Leave `VITE_BASE_PATH` unset.** It is only needed when FastAPI serves the built SPA under `/app/` (see §5 and `render.yaml`); Pages hosts at the root, where the default `/` is correct.
+
+**To apply an env change**, redeploy — either push a commit touching `frontend/**` or press **Retry deployment** on the Pages dashboard. Vite bakes `VITE_*` in at **build** time, so editing the variable alone changes nothing.
 
 ---
 

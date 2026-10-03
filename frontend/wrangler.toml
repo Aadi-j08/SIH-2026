@@ -3,5 +3,10 @@ compatibility_date = "2026-09-20"
 
 pages_build_output_dir = "dist"
 
-[vars]
-VITE_API_BASE_URL = "https://sih-2026-1-n10c.onrender.com"
+# Build-time configuration (VITE_API_BASE_URL, NODE_VERSION) lives in the
+# Cloudflare Pages dashboard: Settings -> Environment variables, for both
+# Production and Preview. See docs/DEPLOY.md section 2.
+#
+# Nothing belongs under [vars] here. Those are Pages Functions *runtime*
+# bindings, there are no Pages Functions in this project, and they would never
+# reach `vite build` regardless. Node is pinned once, by .node-version.

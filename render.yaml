@@ -48,3 +48,12 @@ services:
         value: "production"
       - key: VITE_BASE_PATH
         value: "/app/"
+      # Empty means "same origin", and that is correct here: this build produces
+      # the copy FastAPI itself serves from /app/, so API calls go to this same
+      # host at /auth, /bookings and so on. Deliberately empty rather than an
+      # absolute URL so there is no hostname here that can drift out of sync
+      # with the Cloudflare Pages copy. The frontend build (vite.config.ts)
+      # fails if this key is missing altogether, which is why it is set to an
+      # explicit empty string rather than omitted.
+      - key: VITE_API_BASE_URL
+        value: ""
