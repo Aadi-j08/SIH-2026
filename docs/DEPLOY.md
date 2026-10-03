@@ -89,14 +89,12 @@ python scripts/seed_demo.py
 
 ## 2. Point Cloudflare Pages at the API
 
-In the Cloudflare dashboard → **Workers & Pages → `sahakarsetu-frontend` → Settings → Environment variables**, add to **both Production and Preview**:
+**There is nothing you have to do here.** `frontend/.env.production` already carries
+the API origin, and Vite loads it automatically for `vite build`. A fresh fork or a
+brand-new Pages project builds with no dashboard configuration at all.
 
-| Name | Value |
-|------|-------|
-| `VITE_API_BASE_URL` | The Render URL from §1 — copy it from the Render dashboard. Do not retype it from memory; an unreachable host fails silently. |
-| `NODE_VERSION` | `22.16.0` |
-
-Required build settings on the same page (**Settings → Builds**):
+Only build settings need configuring — Cloudflare dashboard → **Workers & Pages →
+your project → Settings → Builds**:
 
 | Setting | Value |
 |---------|-------|
@@ -105,11 +103,23 @@ Required build settings on the same page (**Settings → Builds**):
 | Build output directory | `dist` |
 | Production branch | `main` |
 
+To point the deployment at a **different** backend — your own Render service, say —
+set `VITE_API_BASE_URL` in **Settings → Environment variables** for both Production
+and Preview. An explicit variable always overrides the committed default, so no
+code change is needed. Copy the URL from the Render dashboard rather than retyping
+it: an unreachable host fails silently.
+
+Optionally add `NODE_VERSION` = `22.16.0` there too. `frontend/.node-version` holds
+the same value and is read by both CI and the Pages build image, but Cloudflare only
+reads it from the configured **Root directory** — the dashboard variable makes the
+pin work regardless. Vite 8 requires Node 20.19+ or 22.12+, and the build image v2
+default (18.17.1) would fail the build outright.
+
 Notes that catch people out here:
 
-- **`frontend/wrangler.toml` cannot configure the build.** Wrangler `[vars]` are *runtime* bindings for Pages Functions, and this project has none. Vite inlines `VITE_*` from the real build environment, so the dashboard is the only place that works.
-- **A wrong API host fails silently, and nothing in the app will warn you.** The landing page is static and will render fine while every auth, booking, rate and settlement call fails. `frontend/src/api.ts` therefore has **no** hardcoded fallback host — a fallback constant gets stripped by the minifier as soon as the variable is set, so it would vanish in exactly the builds where a wrong value does the most damage. Instead `frontend/vite.config.ts` throws when `VITE_API_BASE_URL` is unset, so a **missing or misspelled variable fails the build** rather than shipping. A build that succeeds is therefore proof the variable is present — but not that its value is reachable. Check the host once after the first deploy.
-- **`NODE_VERSION` is set as well as pinned in-repo.** `frontend/.node-version` holds `22.16.0` and is read by both CI and the Pages build image, but Cloudflare only reads it from the configured **Root directory**. Setting `NODE_VERSION` in the dashboard makes the pin work regardless of how Root directory is configured. Vite 8 requires `^20.19.0 || >=22.12.0`; the Cloudflare build image v2 default (18.17.1) would fail the build outright.
+- **The build fails if `VITE_API_BASE_URL` resolves to nothing.** `frontend/vite.config.ts` throws in that case, which is deliberate — see below. The committed default means this only happens if `.env.production` is deleted or renamed.
+- **`frontend/wrangler.toml` cannot configure the build.** Wrangler `[vars]` are *runtime* bindings for Pages Functions, and this project has none, so nothing belongs there.
+- **A wrong API host fails silently, and nothing in the running app will warn you.** The landing page is static and renders fine while every auth, booking, rate and settlement call fails. `frontend/src/api.ts` therefore has **no** hardcoded fallback host — a fallback constant gets stripped by the minifier as soon as the variable is set, so it would vanish in exactly those builds where a wrong value does the most damage. A **successful build proves the variable is present, but not that its value is reachable.** Check the host once after the first deploy.
 - **Leave `VITE_BASE_PATH` unset.** It is only needed when FastAPI serves the built SPA under `/app/` (see §5 and `render.yaml`); Pages hosts at the root, where the default `/` is correct.
 
 **To apply an env change**, redeploy — either push a commit touching `frontend/**` or press **Retry deployment** on the Pages dashboard. Vite bakes `VITE_*` in at **build** time, so editing the variable alone changes nothing.
