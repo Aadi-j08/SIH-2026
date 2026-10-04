@@ -16,14 +16,20 @@ def test_database_engine_info():
     assert "concurrency" in info
 
 
-# ── the deployed configuration: a Postgres URL in front of a SQLite file ────
+# ── the configuration that broke production ─────────────────────────────────
 #
 # Render's Docker image pins SAHAKARSETU_DB=/data/sahakarsetu.db and the service
-# also has a Neon DATABASE_URL set. get_connection() always returns SQLite, so
-# use_postgres() reports True while every statement still runs against SQLite.
-# Migrations that branch on use_postgres() therefore issued Postgres-only DDL
-# (ALTER TABLE ... DROP CONSTRAINT) against SQLite, which is a syntax error there
-# and killed the service in its lifespan -- "Application startup failed. Exiting."
+# also has a Neon DATABASE_URL set. get_connection() used to ignore the URL and
+# always return SQLite, so use_postgres() reported True while every statement ran
+# against a file in the container's ephemeral disk -- every worker and council
+# account created after a redeploy vanished. Migrations that branched on
+# use_postgres() also issued Postgres-only DDL (ALTER TABLE ... DROP CONSTRAINT)
+# against SQLite, a syntax error there, killing the service in its lifespan:
+# "Application startup failed. Exiting."
+#
+# get_connection() now honours DATABASE_URL. These tests pin the fix: the URL
+# decides the connection, and migrate() stays on SQLite regardless because it
+# is only ever handed a real SQLite connection.
 
 LEGACY_WORKERS = """
 CREATE TABLE workers (
@@ -136,3 +142,157 @@ def test_core_tables_and_indexes_exist(db_path):
         for t in ("workers", "bookings", "users", "assignments", "disputes", "settlements"):
             tenant_cols = {row[1] for row in conn.execute(f"PRAGMA table_info({t})")}
             assert "cooperative_id" in tenant_cols, f"{t} missing cooperative_id"
+
+
+# ── the fix: the URL decides the connection ─────────────────────────────────
+
+NEON = "postgresql://user:pw@ep-cool.us-east-2.aws.neon.tech/db"
+
+
+def test_get_connection_honours_the_postgres_url(tmp_path, monkeypatch):
+    """A Postgres URL must produce the psycopg connection, not a local file.
+
+    This is the assertion that failed in production: a new worker registered,
+    the row went into the container's ephemeral disk, and it was gone after the
+    next deploy. app.pg.get_connection is stubbed so no server is needed -- what
+    is under test is the branch, not the driver.
+    """
+    import app.pg
+
+    sentinel = object()
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "should-not-be-used.db")
+    monkeypatch.setattr(database, "DATABASE_URL", NEON)
+    monkeypatch.setattr(app.pg, "get_connection", lambda: sentinel)
+
+    assert database.get_connection() is sentinel
+    assert not (tmp_path / "should-not-be-used.db").exists(), "wrote to the local file"
+
+
+def test_active_engine_agrees_with_the_url(monkeypatch):
+    """active_engine() used to hardcode "sqlite", so it could not disagree loudly."""
+    monkeypatch.setattr(database, "DATABASE_URL", NEON)
+    assert database.active_engine() == "postgresql"
+    assert database.use_postgres() is True
+
+    monkeypatch.setattr(database, "DATABASE_URL", None)
+    assert database.active_engine() == "sqlite"
+
+
+def test_engine_info_reflects_the_chosen_engine(monkeypatch):
+    monkeypatch.setattr(database, "DATABASE_URL", NEON)
+    info = get_database_engine_info()
+    assert info["engine"] == "PostgreSQL"
+    assert "path" not in info, "must not advertise a local file it is not using"
+
+
+def test_unparseable_database_url_fails_loudly(tmp_path, monkeypatch):
+    """A typo'd DATABASE_URL must not silently resolve to the ephemeral disk.
+
+    This is the original outage wearing a different hat: the URL is present but
+    unusable, so use_postgres() is False and the old code quietly used SQLite.
+    """
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "sahakarsetu.db")
+    monkeypatch.setattr(database, "DATABASE_URL", "mysql://user:pw@host/db")
+
+    with pytest.raises(RuntimeError, match="not a PostgreSQL URL"):
+        database.get_connection()
+
+
+def test_blank_database_url_is_not_treated_as_misconfiguration(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "sahakarsetu.db")
+    monkeypatch.setattr(database, "DATABASE_URL", "   ")
+    assert isinstance(database.get_connection(), sqlite3.Connection)
+
+
+def test_booking_flow_does_not_bypass_the_engine(tmp_path, monkeypatch):
+    """open_connection() had its own sqlite3.connect, a second route to the file."""
+    import app.booking_flow_db as booking_flow_db
+
+    sentinel = object()
+    monkeypatch.setattr(database, "DATABASE_URL", NEON)
+    monkeypatch.setattr(database, "get_connection", lambda: sentinel)
+
+    assert booking_flow_db.open_connection() is sentinel
+
+
+def test_booking_flow_still_uses_sqlite_without_a_url(db_path):
+    import app.booking_flow_db as booking_flow_db
+
+    assert isinstance(booking_flow_db.open_connection(), sqlite3.Connection)
+
+
+# ── schema.sql must cover what the SQLite migration chain creates ────────────
+#
+# Postgres never runs migrate(); init_db() applies schema.sql instead. Any table
+# or column the migration chain adds but schema.sql omits simply does not exist
+# in production. Two such gaps shipped unnoticed: payment_ledger and
+# booking_ratings (created lazily by booking_flow_db) and the worker_documents
+# verification and blob columns. This walks both paths and compares them.
+
+def _columns_via_migrations(db_path):
+    """Every table and column the SQLite path ends up with."""
+    with connection() as conn:
+        tables = {
+            row[0]
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        return {
+            # sqlite_sequence is SQLite's internal AUTOINCREMENT bookkeeping,
+            # not a table the app defines.
+            table: {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+            for table in tables
+            if not table.startswith("sqlite_")
+        }
+
+
+def _columns_from_schema_sql():
+    """Every table and column schema.sql declares, parsed without a server."""
+    import re
+
+    text = (database.BASE_DIR / "schema.sql").read_text(encoding="utf-8")
+    parsed = {}
+    for match in re.finditer(r"CREATE TABLE IF NOT EXISTS (\w+)\s*\((.*?)\n\);", text, re.S):
+        table, body = match.group(1), match.group(2)
+        columns = set()
+        for line in body.split("\n"):
+            line = line.split("--")[0].strip().rstrip(",")
+            if not line:
+                continue
+            first = line.split()[0].upper()
+            if first in {"UNIQUE", "CHECK", "FOREIGN", "PRIMARY", "CONSTRAINT"}:
+                continue
+            columns.add(line.split()[0])
+        parsed[table] = columns
+    return parsed
+
+
+def test_schema_sql_is_not_missing_anything_the_migrations_create(db_path):
+    """Postgres gets schema.sql; SQLite gets the migration chain. They must agree."""
+    migrated = _columns_via_migrations(db_path)
+    declared = _columns_from_schema_sql()
+
+    missing_columns = {
+        table: sorted(migrated[table] - declared.get(table, set()))
+        for table in migrated
+        if migrated[table] - declared.get(table, set())
+    }
+    assert missing_columns == {}, f"schema.sql is missing columns: {missing_columns}"
+
+
+def test_schema_sql_declares_the_booking_flow_tables():
+    """booking_flow_db creates these lazily on SQLite; Postgres has no such path."""
+    declared = _columns_from_schema_sql()
+    assert "payment_ledger" in declared, "payment_ledger missing from schema.sql"
+    assert "booking_ratings" in declared, "booking_ratings missing from schema.sql"
+    assert {"id", "booking_id", "party", "amount_paise"} <= declared["payment_ledger"]
+    assert {"booking_id", "worker_id", "rating"} <= declared["booking_ratings"]
+
+
+def test_schema_sql_declares_the_document_blob_and_verification_columns():
+    """Documents must survive a redeploy: the bytes live in the database."""
+    declared = _columns_from_schema_sql()
+    assert "worker_documents" in declared
+    for column in ("filename", "content_type", "byte_size", "content"):
+        assert column in declared["worker_documents"], f"worker_documents.{column} missing"
+    for column in ("verified", "verified_by", "verified_at", "rejection_reason"):
+        assert column in declared["worker_documents"], f"worker_documents.{column} missing"

@@ -66,13 +66,44 @@ def _database_path() -> str | None:
 
 
 def open_connection() -> sqlite3.Connection:
-    """Open a fresh connection to the project's SQLite database.
+    """Open a fresh connection to the project's database.
 
-    Uses the DB path configured in app/database.py; falls back to the
-    project's connection factory if no path is set. The booking flow
-    manages its own transactions (autocommit on, explicit BEGIN
+    With DATABASE_URL set this is the Postgres connection from
+    database.get_connection(), wrapped so `?` placeholders, sqlite3.Row-style
+    rows and lastrowid all keep working. Otherwise it is the project's SQLite
+    file.
+
+    The booking flow manages its own transactions (autocommit on, explicit BEGIN
     IMMEDIATE), so it opens its own connection.
     """
+    # Postgres first: the connection it returns is not a sqlite3.Connection, so
+    # the factory loop below would reject it, and DB_PATH may still point at a
+    # local file that nothing else reads.
+    if database.use_postgres():
+        conn = database.get_connection()
+    else:
+        conn = _open_sqlite_connection()
+
+    if not isinstance(conn, sqlite3.Connection):
+        # SQLite-only tuning below; skip it entirely for the Postgres wrapper.
+        return conn
+
+    conn.row_factory = sqlite3.Row
+    # Transactions are issued explicitly below, so turn off the sqlite3
+    # module's implicit BEGINs (works for both Python 3.12 transaction modes).
+    if getattr(conn, "autocommit", None) is False:
+        conn.autocommit = True
+    else:
+        conn.isolation_level = None
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 30000")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    return conn
+
+
+def _open_sqlite_connection() -> sqlite3.Connection:
+    """Locate and open the configured SQLite database."""
     path = _database_path()
     conn: sqlite3.Connection | None = None
     if path is not None:
@@ -91,18 +122,6 @@ def open_connection() -> sqlite3.Connection:
             f"({', '.join(_PATH_ATTRIBUTES)}) or a connection function "
             f"({', '.join(_CONNECTION_FACTORIES)}) in app/database.py."
         )
-
-    conn.row_factory = sqlite3.Row
-    # Transactions are issued explicitly below, so turn off the sqlite3
-    # module's implicit BEGINs (works for both Python 3.12 transaction modes).
-    if getattr(conn, "autocommit", None) is False:
-        conn.autocommit = True
-    else:
-        conn.isolation_level = None
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA busy_timeout = 30000")
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA synchronous = NORMAL")
     return conn
 
 
@@ -141,12 +160,23 @@ def _pending_changes(conn: sqlite3.Connection) -> list[str]:
     missing = [t for t in ("workers", "bookings", "assignments") if t not in existing_tables]
     if missing:
         raise RuntimeError(
-            f"Expected existing tables {missing} in the SQLite database. "
+            f"Expected existing tables {missing} in the "
+            f"{database.active_engine()} database. "
             "Run the project's database setup before using the booking flow."
         )
 
     for table, ddl in _NEW_TABLES.items():
         if table not in existing_tables:
+            # _NEW_TABLES is SQLite DDL (AUTOINCREMENT is not valid Postgres).
+            # On Postgres these tables come from schema.sql via init_db(), so a
+            # missing one means init_db() has not run -- say so instead of
+            # emitting DDL that would fail with a syntax error.
+            if database.use_postgres():
+                raise RuntimeError(
+                    f"table '{table}' is missing from the Postgres database. "
+                    "It is declared in schema.sql; call app.database.init_db(), "
+                    "which applies that file on boot."
+                )
             statements.append(ddl)
 
     assignment_cols = table_columns(conn, "assignments")

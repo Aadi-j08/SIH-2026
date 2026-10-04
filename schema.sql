@@ -116,6 +116,32 @@ CREATE TABLE IF NOT EXISTS declines (
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 12b. Payment ledger: the immutable split of one booking's payout across the
+-- worker, the welfare fund and platform operations. UNIQUE (booking_id, party)
+-- is what makes settlement idempotent -- a replayed run inserts nothing.
+CREATE TABLE IF NOT EXISTS payment_ledger (
+    id                SERIAL PRIMARY KEY,
+    booking_id        INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+    worker_id         INTEGER REFERENCES workers(id),
+    party             VARCHAR(32) NOT NULL CHECK (party IN ('worker', 'welfare_fund', 'platform_operations')),
+    share_percent     INTEGER NOT NULL,
+    amount_paise      INTEGER NOT NULL CHECK (amount_paise >= 0),
+    cooperative_id    INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+    created_at        TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (booking_id, party)
+);
+
+-- 12c. One customer rating per booking, so a booking can be rated once.
+CREATE TABLE IF NOT EXISTS booking_ratings (
+    id                SERIAL PRIMARY KEY,
+    booking_id        INTEGER NOT NULL UNIQUE REFERENCES bookings(id) ON DELETE CASCADE,
+    worker_id         INTEGER NOT NULL REFERENCES workers(id),
+    rating            INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    comment           TEXT,
+    cooperative_id    INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+    created_at        TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- 13. Cooperative Info (legacy singleton kept as a convenience view over the federation)
 CREATE TABLE IF NOT EXISTS cooperative (
     id                INTEGER PRIMARY KEY CHECK (id = 1),
@@ -231,6 +257,10 @@ CREATE INDEX IF NOT EXISTS idx_workers_cooperative     ON workers (cooperative_i
 CREATE INDEX IF NOT EXISTS idx_bookings_cooperative    ON bookings (cooperative_id);
 CREATE INDEX IF NOT EXISTS idx_assignments_cooperative  ON assignments (cooperative_id);
 CREATE INDEX IF NOT EXISTS idx_disputes_cooperative     ON disputes (cooperative_id);
+CREATE INDEX IF NOT EXISTS idx_payment_ledger_worker      ON payment_ledger (worker_id);
+CREATE INDEX IF NOT EXISTS idx_payment_ledger_cooperative ON payment_ledger (cooperative_id);
+CREATE INDEX IF NOT EXISTS idx_booking_ratings_worker     ON booking_ratings (worker_id);
+CREATE INDEX IF NOT EXISTS idx_booking_ratings_cooperative ON booking_ratings (cooperative_id);
 
 -- 21. Worker profile (skills, certifications, portfolio, documents)
 CREATE TABLE IF NOT EXISTS worker_skills (
@@ -276,16 +306,28 @@ CREATE TABLE IF NOT EXISTS portfolio_items (
 );
 
 CREATE TABLE IF NOT EXISTS worker_documents (
-    id              SERIAL PRIMARY KEY,
-    worker_id       INTEGER NOT NULL REFERENCES workers(id),
-    document_type   VARCHAR(30) NOT NULL,            -- id_proof, insurance, vehicle, other
-    file_url        TEXT NOT NULL,                   -- off-FS storage reference
-    uploaded_at     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+    id                SERIAL PRIMARY KEY,
+    worker_id         INTEGER NOT NULL REFERENCES workers(id),
+    document_type     VARCHAR(30) NOT NULL,            -- id_proof, insurance, vehicle, other
+    file_url          TEXT NOT NULL,                   -- off-FS storage reference
+    uploaded_at       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    cooperative_id    INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+    -- Verification trail (council sign-off; see app/profile.py).
+    verified          INTEGER NOT NULL DEFAULT 0,
+    verified_by       INTEGER REFERENCES users(id),
+    verified_at       TIMESTAMP WITH TIME ZONE,
+    rejection_reason  TEXT,
+    -- Inline bytes. NULL for the older file_url-reference rows, which keep
+    -- working unchanged. Stored in the database because the API host's
+    -- filesystem is ephemeral on Render and Cloudflare Pages has none at all.
+    filename          TEXT,
+    content_type      TEXT,
+    byte_size         INTEGER,
+    content           BYTEA,
     UNIQUE (worker_id, document_type, file_url)
-    -- filename / content_type / byte_size / content (BYTEA) are added by
-    -- _migration_9_document_blobs, like the verification columns.
 );
+
+CREATE INDEX IF NOT EXISTS idx_worker_documents_verified ON worker_documents (verified);
 
 CREATE INDEX IF NOT EXISTS idx_worker_skills_worker    ON worker_skills (worker_id);
 CREATE INDEX IF NOT EXISTS idx_worker_skills_coop      ON worker_skills (cooperative_id);

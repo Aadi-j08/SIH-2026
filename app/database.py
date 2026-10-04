@@ -20,11 +20,8 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 # Postgres (Neon) when DATABASE_URL says so, SQLite otherwise. Read through the
 # module attribute at call time so tests can monkeypatch it off.
 #
-# This reports the *configured URL*, not the driver a connection is using.
-# get_connection() currently always returns SQLite, so on a service that sets
-# both DATABASE_URL and SAHAKARSETU_DB this returns True while every query still
-# runs against SQLite. Use it for reporting only; anything that issues SQL must
-# ask the connection instead (see _is_sqlite).
+# This reports the *configured URL*, and `get_connection()` branches on exactly
+# the same predicate, so the two can no longer disagree.
 def use_postgres() -> bool:
     url = globals().get("DATABASE_URL") or ""
     return url.startswith(("postgres://", "postgresql://"))
@@ -33,17 +30,13 @@ def use_postgres() -> bool:
 def active_engine() -> str:
     """The engine `get_connection()` will actually hand out.
 
-    This is a different question from `use_postgres()`. A Neon DATABASE_URL
-    alongside SAHAKARSETU_DB is a configuration that *says* Postgres and
-    *runs* SQLite, because get_connection() only ever opens DB_PATH. Anything
-    that has to agree with the running app — the engine banner, and the seeders
-    that would otherwise write their rows into a database nothing reads — must
-    ask this instead.
-
-    Returns "postgresql" once a psycopg connection is really used; until then
-    SQLite, because that is what every query goes to.
+    `get_connection()` branches on `use_postgres()`, so when DATABASE_URL is a
+    Postgres URL every query really does go to Postgres -- including on a host
+    that also has a local DB_PATH. Anything that has to agree with the running
+    app (the engine banner, and the seeders that would otherwise write their rows
+    into a database nothing reads) asks this instead of use_postgres().
     """
-    return "sqlite"
+    return "postgresql" if use_postgres() else "sqlite"
 
 log = logging.getLogger("sahakarsetu.database")
 
@@ -374,7 +367,30 @@ CREATE INDEX IF NOT EXISTS idx_grievances_coop     ON grievances (cooperative_id
 
 
 def get_connection() -> sqlite3.Connection:
-    """Open a connection with row access by column name and foreign keys on."""
+    """Open a connection with row access by column name and foreign keys on.
+
+    Returns a psycopg-backed stand-in when DATABASE_URL is a Postgres URL, so
+    every call site keeps working unchanged. app/pg.py translates the SQLite
+    dialect this codebase is written in. There is deliberately no fallback: if
+    DATABASE_URL is set we use Postgres or fail, never silently write to a local
+    file that nothing else reads.
+    """
+    if use_postgres():
+        from app.pg import get_connection as _postgres_connection
+
+        return _postgres_connection()
+
+    # A DATABASE_URL we cannot recognise must not quietly resolve to SQLite:
+    # that is exactly how the service ended up serving every request from an
+    # ephemeral disk. Fail here instead, where the cause is visible.
+    if (globals().get("DATABASE_URL") or "").strip():
+        raise RuntimeError(
+            "DATABASE_URL is set but is not a PostgreSQL URL "
+            f"(got {globals().get('DATABASE_URL')!r}). Expected a postgres:// or "
+            "postgresql:// URL. Refusing to fall back to the local SQLite file, "
+            "which would silently lose data on redeploy. Unset DATABASE_URL to use SQLite."
+        )
+
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -756,14 +772,16 @@ def _is_sqlite(conn) -> bool:
     """Whether `conn` is a real SQLite connection.
 
     Migrations must ask the connection what it is, never `use_postgres()`.
-    That helper only reads DATABASE_URL, and get_connection() always hands back
-    a SQLite connection, so the two disagree whenever a Postgres URL is
-    configured on a SQLite-backed service. Rendering's Docker image does
-    exactly that: SAHAKARSETU_DB=/data/sahakarsetu.db with a Neon
-    DATABASE_URL also set. Branching on the env var there ran Postgres-only
-    DDL against SQLite and took the whole service down at startup. The
-    psycopg wrapper in app/pg.py is not a sqlite3.Connection, so this also
-    routes correctly if Postgres is ever wired up for real.
+    The two used to disagree on Render, whose image sets both
+    SAHAKARSETU_DB=/data/sahakarsetu.db and a Neon DATABASE_URL: get_connection()
+    always returned SQLite, so branching on the env var ran Postgres-only DDL
+    against SQLite and took the service down at startup. get_connection() now
+    honours DATABASE_URL, and init_db() routes Postgres to schema.sql, so
+    migrate() only ever sees a SQLite connection -- this check is kept because
+    it costs nothing and the failure it prevents is a startup crash.
+
+    The psycopg wrapper in app/pg.py is not a sqlite3.Connection, so this also
+    routes correctly if a migration is ever reached with Postgres.
     """
     return isinstance(conn, sqlite3.Connection)
 
@@ -892,10 +910,42 @@ def migrate(conn: sqlite3.Connection) -> list[int]:
 
 def init_db() -> None:
     """Create the core tables if they do not exist and bring older databases up to date. Safe to call repeatedly."""
+    if use_postgres():
+        _init_db_postgres()
+        return
+
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     with connection() as conn:
         conn.executescript(SCHEMA)
         migrate(conn)
+
+
+def _init_db_postgres() -> None:
+    """Bring a Postgres database up to date from schema.sql.
+
+    schema.sql is the source of truth for Postgres: it already carries the
+    booking-flow tables, the trigger-derived constraints and the blob columns
+    that the SQLite migration chain adds incrementally. Applying it with
+    CREATE TABLE IF NOT EXISTS is idempotent, so this is safe on every boot.
+
+    The SQLite migration chain is deliberately not run. It is expressed with
+    PRAGMA table_info, implicit transaction control and ALTER TABLE ADD COLUMN
+    retry loops that do not carry over, and applying it here would only
+    duplicate what schema.sql already guarantees.
+    """
+    schema_path = BASE_DIR / "schema.sql"
+    if not schema_path.is_file():
+        raise FileNotFoundError(
+            f"schema.sql is required to initialise a Postgres database, not found at {schema_path}"
+        )
+
+    with connection() as conn:
+        # SCHEMA first: it is SQLite-flavoured, but every statement in it is
+        # already portable and it guarantees the tables the booking flow's
+        # pending-column work depends on exist.
+        conn.executescript(SCHEMA)
+        conn.executescript(schema_path.read_text(encoding="utf-8"))
+    log.info("Postgres schema applied from %s", schema_path.name)
 
 
 def get_database_engine_info() -> dict[str, str]:
