@@ -102,5 +102,10 @@ jobs:
         uses: neondatabase/delete-branch-action@v3
         with:
           project_id: ${{ vars.NEON_PROJECT_ID }}
-          branch: ${{ steps.branch.outputs.branch }}
+          # Not steps.branch.outputs.branch: create-branch-action@v6 emits
+          # db_url, db_url_with_pooler and branch_id, but no `branch`, so
+          # referencing that output produced an empty argument and the cleanup
+          # failed with "Not enough non-option arguments". The name is chosen
+          # above, so reuse it.
+          branch: verify-${{ github.run_id }}
           api_key: ${{ secrets.NEON_API_KEY }}

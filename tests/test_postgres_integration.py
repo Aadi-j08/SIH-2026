@@ -71,6 +71,7 @@ import re
 import sqlite3
 import threading
 import uuid
+from urllib.parse import urlsplit, urlunsplit
 
 import pytest
 
@@ -118,9 +119,18 @@ def _admin_connect():
 
 
 def _database_url_for(name: str) -> str:
-    """The maintenance URL rewritten to name `name`."""
-    base = re.sub(r"/[^/?]*(\?.*)?$", r"/\1", TEST_ADMIN_URL)
-    return f"{base}{name}"
+    """The maintenance URL with its database replaced by `name`.
+
+    Parsed rather than regex-substituted. Neon URLs carry a query string
+    (`?sslmode=require&channel_binding=require`), and the earlier regex stripped
+    the database name but appended the new one *after* the query, yielding
+    `.../?sslmode=requiresahakarsetu_it_...` and
+    `invalid sslmode value`. A local server with no query string never showed it.
+    """
+    parts = urlsplit(TEST_ADMIN_URL)
+    return urlunsplit(
+        (parts.scheme, parts.netloc, f"/{name}", parts.query, parts.fragment)
+    )
 
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
