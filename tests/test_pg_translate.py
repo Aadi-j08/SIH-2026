@@ -143,3 +143,122 @@ def test_translate_is_stable():
     # query caches behave unpredictably.
     sql = "SELECT * FROM t WHERE a = ? AND b LIKE 'x%'"
     assert q(sql) == q(sql)
+
+# ── SQLite scalar date / arithmetic functions ────────────────────────────────
+#
+# Each of these was found by grepping app/ for the construct; the four below are
+# every occurrence in the codebase. They would otherwise reach PostgreSQL
+# verbatim and 500 the endpoint that issued them.
+
+def test_datetime_now_with_modifier_becomes_interval_arithmetic():
+    # app/services/overview.py:373
+    out = q("AND COALESCE(responded_at, created_at) <= datetime('now', ?)")
+    assert "NOW() + CAST(%s AS INTERVAL)" in out
+    assert "datetime(" not in out
+
+
+def test_datetime_on_a_column_is_identity():
+    # app/services/overview.py:521,524,528 -- normalising a stored timestamp.
+    assert q("AND datetime(created_at) >= ?") == "AND created_at >= %s"
+    assert q("SELECT COUNT(*) FROM bookings WHERE datetime(started_at) >= ?") == (
+        "SELECT COUNT(*) FROM bookings WHERE started_at >= %s"
+    )
+
+
+def test_date_with_modifier_shifts_then_truncates():
+    # app/kaam.py:162,163,170 and app/services/booking_flow.py:396
+    out = q("COUNT(DISTINCT DATE(created_at, '+330 minutes')) AS engagement_days")
+    assert "(created_at + CAST('+330 minutes' AS INTERVAL))::date" in out
+    assert "DATE(" not in out
+
+
+def test_two_arg_max_becomes_greatest():
+    # app/kaam.py:375 -- SQLite's scalar max; GREATEST is the PostgreSQL spelling.
+    out = q("UPDATE workers SET jobs_this_week = MAX(0, jobs_this_week - 1) WHERE id = ?")
+    assert "GREATEST(0, jobs_this_week - 1)" in out
+    assert "MAX(" not in out
+
+
+def test_one_arg_max_aggregate_is_untouched():
+    # MAX(a) is an aggregate in both engines and must not become GREATEST.
+    assert "MAX(amount_paise)" in plain("SELECT MAX(amount_paise) FROM payment_ledger")
+
+
+def test_max_aggregate_with_a_nested_comma_is_untouched():
+    # COALESCE(MAX(x), 0) has a comma in COALESCE, not in MAX.
+    sql = "SELECT COALESCE(MAX(amount_paise), 0) FROM payment_ledger"
+    assert plain(sql) == sql
+
+
+# ── AUTOINCREMENT ────────────────────────────────────────────────────────────
+
+def test_autoincrement_primary_key_becomes_serial():
+    # app/services/assistant.py:44 declares assistant_audit with this form.
+    out = plain(
+        "CREATE TABLE IF NOT EXISTS assistant_audit ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL)"
+    )
+    assert "AUTOINCREMENT" not in out
+    assert "id SERIAL PRIMARY KEY" in out
+
+
+def test_schema_constant_contains_no_sqlite_only_syntax():
+    """Regression guard for the boot crash: SCHEMA must never reach PostgreSQL."""
+    from app import database
+
+    for statement in database.SCHEMA.split(";"):
+        statement = statement.strip()
+        if not statement:
+            continue
+        # Would raise NotImplementedError if SQLite-only syntax were present.
+        _translate(statement, has_params=False)
+
+
+def test_schema_sql_itself_translates_cleanly():
+    from app import database
+
+    script = (database.BASE_DIR / "schema.sql").read_text(encoding="utf-8")
+    _translate(script, has_params=False)
+
+
+# ── deny-list ────────────────────────────────────────────────────────────────
+
+def test_denied_constructs_raise_with_a_useful_message():
+    import pytest
+
+    for sql, needle in [
+        ("SELECT strftime('%Y', created_at) FROM bookings", "strftime()"),
+        ("SELECT julianday(created_at) FROM bookings", "julianday()"),
+        ("SELECT group_concat(name) FROM workers", "group_concat()"),
+        ("SELECT IFNULL(a, b) FROM bookings", "IFNULL()"),
+        ("SELECT IIF(a, 1, 2) FROM bookings", "IIF()"),
+        ("CREATE TABLE t (id INTEGER PRIMARY KEY) WITHOUT ROWID", "WITHOUT ROWID"),
+        ("ATTACH DATABASE 'x.db' AS x", "ATTACH"),
+        ("VACUUM", "VACUUM"),
+        ("CREATE TRIGGER t BEFORE INSERT ON x BEGIN SELECT RAISE(ABORT, 'no'); END", "RAISE()"),
+        ("SELECT * FROM t WHERE name GLOB 'a*'", "GLOB"),
+        ("SELECT * FROM sqlite_sequence", "sqlite_sequence"),
+        ("INSERT OR REPLACE INTO workers (id) VALUES (1)", "INSERT OR"),
+    ]:
+        with pytest.raises(NotImplementedError, match=needle):
+            _translate(sql, has_params=False)
+
+
+def test_unhandled_pragma_is_denied():
+    import pytest
+
+    with pytest.raises(NotImplementedError, match="unhandled PRAGMA"):
+        _translate("PRAGMA incremental_vacuum", has_params=False)
+
+
+def test_handled_pragmas_are_not_denied():
+    assert plain("PRAGMA table_info(workers)") != ""
+    assert plain("PRAGMA foreign_keys = ON") == "SELECT 1"
+
+
+def test_deny_list_does_not_false_positive_on_translated_forms():
+    # The rewrites above must not trip the checks.
+    _translate("SELECT datetime('now', ?)", has_params=True)
+    _translate("SELECT MAX(0, x) FROM t", has_params=True)
+    _translate("SELECT id FROM sqlite_master WHERE type = 'table'", has_params=False)
+    _translate("INSERT OR IGNORE INTO t (a) VALUES (?)", has_params=True)

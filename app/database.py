@@ -923,15 +923,25 @@ def init_db() -> None:
 def _init_db_postgres() -> None:
     """Bring a Postgres database up to date from schema.sql.
 
-    schema.sql is the source of truth for Postgres: it already carries the
-    booking-flow tables, the trigger-derived constraints and the blob columns
-    that the SQLite migration chain adds incrementally. Applying it with
-    CREATE TABLE IF NOT EXISTS is idempotent, so this is safe on every boot.
+    schema.sql is the single source of truth for Postgres: it is a superset of
+    the SCHEMA constant, and it already carries the booking-flow tables, the
+    trigger-derived constraints and the blob columns that the SQLite migration
+    chain adds incrementally. It is applied with CREATE TABLE IF NOT EXISTS,
+    which is idempotent, so this is safe on every boot.
 
-    The SQLite migration chain is deliberately not run. It is expressed with
+    The SCHEMA constant is deliberately NOT applied here. It is a second copy of
+    the same table definitions in SQLite dialect -- `INTEGER PRIMARY KEY
+    AUTOINCREMENT` is a syntax error in PostgreSQL, so applying it aborted the
+    whole service at startup. Even with that fixed it would run first and make
+    every CREATE TABLE IF NOT EXISTS in schema.sql a no-op, silently leaving
+    worker_documents without its verification and blob columns.
+
+    The SQLite migration chain is not run either. It is expressed with
     PRAGMA table_info, implicit transaction control and ALTER TABLE ADD COLUMN
-    retry loops that do not carry over, and applying it here would only
-    duplicate what schema.sql already guarantees.
+    retry loops that do not carry over, and applying it would duplicate
+    schema.sql. _POSTGRES_COLUMN_UPGRADES below covers the one thing CREATE
+    TABLE IF NOT EXISTS cannot: bringing an already-created table up to the
+    current column set.
     """
     schema_path = BASE_DIR / "schema.sql"
     if not schema_path.is_file():
@@ -940,12 +950,52 @@ def _init_db_postgres() -> None:
         )
 
     with connection() as conn:
-        # SCHEMA first: it is SQLite-flavoured, but every statement in it is
-        # already portable and it guarantees the tables the booking flow's
-        # pending-column work depends on exist.
-        conn.executescript(SCHEMA)
         conn.executescript(schema_path.read_text(encoding="utf-8"))
+        _upgrade_postgres_columns(conn)
+
+    # CREATE TABLE IF NOT EXISTS silently skips a table that already exists in
+    # an older shape, so assert the columns that matter actually landed rather
+    # than reporting a healthy boot over a half-applied schema.
+    _assert_postgres_schema()
+
     log.info("Postgres schema applied from %s", schema_path.name)
+
+
+# Columns that _migration_8_document_verification and _migration_9_document_blobs
+# add on SQLite. A Postgres database created before schema.sql declared them has
+# worker_documents without them, and CREATE TABLE IF NOT EXISTS will not fix
+# that, so they are added explicitly. Postgres supports the IF NOT EXISTS form.
+_POSTGRES_COLUMN_UPGRADES: tuple[tuple[str, str, str], ...] = (
+    ("worker_documents", "verified", "INTEGER NOT NULL DEFAULT 0"),
+    ("worker_documents", "verified_by", "INTEGER REFERENCES users(id)"),
+    ("worker_documents", "verified_at", "TIMESTAMP WITH TIME ZONE"),
+    ("worker_documents", "rejection_reason", "TEXT"),
+    ("worker_documents", "filename", "TEXT"),
+    ("worker_documents", "content_type", "TEXT"),
+    ("worker_documents", "byte_size", "INTEGER"),
+    ("worker_documents", "content", "BYTEA"),
+)
+
+
+def _upgrade_postgres_columns(conn) -> None:
+    for table, column, decl in _POSTGRES_COLUMN_UPGRADES:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {decl}")
+
+
+def _assert_postgres_schema() -> None:
+    """Fail loudly if a document upload would lose its bytes."""
+    with connection() as conn:
+        missing = [
+            column
+            for column in ("verified", "filename", "byte_size", "content")
+            if column not in _columns(conn, "worker_documents")
+        ]
+    if missing:
+        raise RuntimeError(
+            f"Postgres schema is incomplete: worker_documents is missing {missing}. "
+            "Document uploads would store a reference to bytes that are never saved, "
+            "and would be lost on redeploy. Check schema.sql against this checkout."
+        )
 
 
 def get_database_engine_info() -> dict[str, str]:

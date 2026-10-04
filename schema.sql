@@ -329,6 +329,21 @@ CREATE TABLE IF NOT EXISTS worker_documents (
 
 CREATE INDEX IF NOT EXISTS idx_worker_documents_verified ON worker_documents (verified);
 
+-- 12d. Assistant audit trail. Declared here rather than only by the lazy
+-- CREATE TABLE in app/services/assistant.py: that one is SQLite dialect
+-- (INTEGER PRIMARY KEY AUTOINCREMENT) and was the only table in app/ with no
+-- PostgreSQL definition anywhere.
+CREATE TABLE IF NOT EXISTS assistant_audit (
+    id          SERIAL PRIMARY KEY,
+    user_id     INTEGER NOT NULL,
+    intent      TEXT NOT NULL,
+    transcript  TEXT NOT NULL,
+    entities    TEXT NOT NULL,
+    confirmed   INTEGER NOT NULL,
+    outcome     TEXT NOT NULL,
+    created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_worker_skills_worker    ON worker_skills (worker_id);
 CREATE INDEX IF NOT EXISTS idx_worker_skills_coop      ON worker_skills (cooperative_id);
 CREATE INDEX IF NOT EXISTS idx_certifications_worker   ON certifications (worker_id);

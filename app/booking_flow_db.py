@@ -14,10 +14,6 @@ from contextlib import contextmanager
 
 from app import database
 
-# Names looked up in app/database.py, in this order.
-_PATH_ATTRIBUTES = ("DB_PATH", "DATABASE_PATH", "SQLITE_PATH", "DB_FILE", "DATABASE_FILE")
-_CONNECTION_FACTORIES = ("get_connection", "get_conn", "connect", "get_db_connection")
-
 # Column-name candidates for existing tables whose exact spelling may differ.
 ASSIGNMENT_SCORE_COLUMNS = ("score", "allocation_score", "total_score", "final_score")
 WORKER_NAME_COLUMNS = ("name", "full_name", "worker_name")
@@ -57,35 +53,26 @@ _NEW_INDEXES = (
 )
 
 
-def _database_path() -> str | None:
-    for attr in _PATH_ATTRIBUTES:
-        value = getattr(database, attr, None)
-        if value:
-            return str(value)
-    return None
-
 
 def open_connection() -> sqlite3.Connection:
     """Open a fresh connection to the project's database.
 
-    With DATABASE_URL set this is the Postgres connection from
-    database.get_connection(), wrapped so `?` placeholders, sqlite3.Row-style
-    rows and lastrowid all keep working. Otherwise it is the project's SQLite
-    file.
+    Goes through database.get_connection(), which is the only place that
+    decides which engine to use and raises on a DATABASE_URL it cannot use.
+    Opening SQLite directly here would bypass both, and the booking flow is the
+    path that most needs to reach Neon.
+
+    With DATABASE_URL set this is the psycopg-backed wrapper from app/pg.py, so
+    `?` placeholders, sqlite3.Row-style rows and lastrowid all keep working.
+    Otherwise it is the project's SQLite file.
 
     The booking flow manages its own transactions (autocommit on, explicit BEGIN
     IMMEDIATE), so it opens its own connection.
     """
-    # Postgres first: the connection it returns is not a sqlite3.Connection, so
-    # the factory loop below would reject it, and DB_PATH may still point at a
-    # local file that nothing else reads.
-    if database.use_postgres():
-        conn = database.get_connection()
-    else:
-        conn = _open_sqlite_connection()
+    conn = database.get_connection()
 
     if not isinstance(conn, sqlite3.Connection):
-        # SQLite-only tuning below; skip it entirely for the Postgres wrapper.
+        # The Postgres wrapper; the SQLite-only tuning below does not apply.
         return conn
 
     conn.row_factory = sqlite3.Row
@@ -101,28 +88,6 @@ def open_connection() -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous = NORMAL")
     return conn
 
-
-def _open_sqlite_connection() -> sqlite3.Connection:
-    """Locate and open the configured SQLite database."""
-    path = _database_path()
-    conn: sqlite3.Connection | None = None
-    if path is not None:
-        conn = sqlite3.connect(path, timeout=30)
-    else:
-        for name in _CONNECTION_FACTORIES:
-            factory = getattr(database, name, None)
-            if callable(factory):
-                candidate = factory()
-                if isinstance(candidate, sqlite3.Connection):
-                    conn = candidate
-                    break
-    if conn is None:
-        raise RuntimeError(
-            "Could not locate the SQLite database. Expose a path "
-            f"({', '.join(_PATH_ATTRIBUTES)}) or a connection function "
-            f"({', '.join(_CONNECTION_FACTORIES)}) in app/database.py."
-        )
-    return conn
 
 
 @contextmanager

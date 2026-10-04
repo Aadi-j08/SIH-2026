@@ -54,7 +54,12 @@ def _resolve_document(user: User, document_id: int):
     from app import tenancy
     with connection() as conn:
         row = conn.execute(
-            "SELECT * FROM worker_documents WHERE id = ? AND cooperative_id = ?",
+            # Explicit columns: the callers only need worker_id and the
+            # verification fields, and `content` is megabytes of ID scan.
+            "SELECT id, worker_id, document_type, file_url, uploaded_at, cooperative_id, "
+            "verified, verified_by, verified_at, rejection_reason, "
+            "filename, content_type, byte_size, content IS NOT NULL AS has_content "
+            "FROM worker_documents WHERE id = ? AND cooperative_id = ?",
             (document_id, tenancy.tenant_id()),
         ).fetchone()
     if row is None:

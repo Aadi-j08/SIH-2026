@@ -296,3 +296,187 @@ def test_schema_sql_declares_the_document_blob_and_verification_columns():
         assert column in declared["worker_documents"], f"worker_documents.{column} missing"
     for column in ("verified", "verified_by", "verified_at", "rejection_reason"):
         assert column in declared["worker_documents"], f"worker_documents.{column} missing"
+
+
+# ── the boot path must be runnable on PostgreSQL ─────────────────────────────
+#
+# The first cut of this branch executed the SCHEMA constant against PostgreSQL.
+# SCHEMA is SQLite dialect (`INTEGER PRIMARY KEY AUTOINCREMENT`), so the very
+# first statement was a syntax error and the service died in its lifespan --
+# the same outage this branch fixes. These assert the boot path is portable.
+
+def test_schema_sql_is_a_superset_of_the_schema_constant():
+    """Dropping SCHEMA from the Postgres path is only safe if schema.sql covers it."""
+    import re
+
+    def parse(text):
+        found = {}
+        for match in re.finditer(
+            r"CREATE TABLE(?: IF NOT EXISTS)? (\w+)\s*\((.*?)\n\)\s*;", text, re.S
+        ):
+            table, body = match.group(1), match.group(2)
+            columns = set()
+            for line in body.split("\n"):
+                line = line.split("--")[0].strip().rstrip(",")
+                if not line:
+                    continue
+                if line.split()[0].upper() in {
+                    "UNIQUE", "CHECK", "FOREIGN", "PRIMARY", "CONSTRAINT"
+                }:
+                    continue
+                columns.add(line.split()[0])
+            found[table] = columns
+        return found
+
+    constant = parse(database.SCHEMA)
+    declared = parse((database.BASE_DIR / "schema.sql").read_text(encoding="utf-8"))
+
+    assert not set(constant) - set(declared), "schema.sql is missing a SCHEMA table"
+    for table, columns in constant.items():
+        missing = columns - declared[table]
+        assert not missing, f"schema.sql {table} is missing {sorted(missing)}"
+
+
+def test_postgres_boot_applies_schema_sql_and_not_the_schema_constant(monkeypatch):
+    """SCHEMA must not be executed against PostgreSQL, and the assert must run."""
+    import app.pg
+
+    calls = []
+    monkeypatch.setattr(database, "DATABASE_URL", NEON)
+    monkeypatch.setattr(app.pg, "get_connection", lambda: object())
+    monkeypatch.setattr(
+        database, "connection",
+        lambda: _RecordingConnection(calls),
+    )
+    monkeypatch.setattr(database, "_assert_postgres_schema", lambda: calls.append("asserted"))
+
+    database.init_db()
+
+    # _upgrade_postgres_columns issues single ALTERs; the script is the only
+    # multi-statement payload, and it must be schema.sql and not SCHEMA.
+    scripts = [c for c in calls if "CREATE TABLE" in c]
+    assert len(scripts) == 1, f"expected one DDL script, got {len(scripts)}"
+    # Strip comments first: schema.sql mentions AUTOINCREMENT while explaining
+    # why assistant_audit is declared there rather than in assistant.py.
+    ddl = "\n".join(
+        line.split("--")[0] for line in scripts[0].splitlines()
+    )
+    assert "AUTOINCREMENT" not in ddl, (
+        "the SQLite SCHEMA constant was executed against PostgreSQL"
+    )
+    assert "CREATE TABLE IF NOT EXISTS workers" in scripts[0]
+    assert "assistant_audit" in scripts[0]
+
+    # Existing databases need ALTERs, because CREATE TABLE IF NOT EXISTS skips
+    # a table that already exists in an older shape.
+    alters = [c for c in calls if c.startswith("ALTER TABLE")]
+    assert len(alters) == 8, f"expected the 8 document columns, got {len(alters)}"
+    assert all("IF NOT EXISTS" in a for a in alters)
+
+    assert "asserted" in calls, "schema shape was never verified"
+
+
+class _RecordingConnection:
+    """Stands in for a Postgres connection and records executescript calls."""
+
+    def __init__(self, calls):
+        self._calls = calls
+        self.row_factory = None
+        self.autocommit = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def executescript(self, script):
+        self._calls.append(script)
+
+    def execute(self, sql, params=()):
+        self._calls.append(sql)
+        return self
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        pass
+
+
+def test_postgres_upgrade_covers_the_document_blob_columns():
+    """CREATE TABLE IF NOT EXISTS cannot add columns to an existing table."""
+    from app import pg
+
+    # The AUTOINCREMENT rewrite exists for exactly this lazy DDL.
+    assert "SERIAL PRIMARY KEY" in pg._translate(
+        "CREATE TABLE IF NOT EXISTS assistant_audit ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL)",
+        has_params=False,
+    )
+
+
+# ── the fail-loud guard must cover the booking flow too ──────────────────────
+
+def test_booking_flow_shares_the_fail_loud_guard(tmp_path, monkeypatch):
+    """open_connection() used to call sqlite3.connect directly, bypassing the guard.
+
+    The booking flow is the highest-value write path, so leaving it able to
+    reach the ephemeral disk under a misconfigured DATABASE_URL would preserve
+    the original outage.
+    """
+    import app.booking_flow_db as booking_flow_db
+
+    monkeypatch.setattr(database, "DATABASE_URL", "mysql://user:pw@host/db")
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "sahakarsetu.db")
+
+    with pytest.raises(RuntimeError, match="not a PostgreSQL URL"):
+        booking_flow_db.open_connection()
+
+    assert not (tmp_path / "sahakarsetu.db").exists(), "opened the ephemeral file"
+
+
+def test_booking_flow_postgres_connection_is_not_sqlite_tuned(tmp_path, monkeypatch):
+    """The SQLite PRAGMA tuning must be skipped for the psycopg wrapper."""
+    import app.booking_flow_db as booking_flow_db
+    import app.pg
+
+    sentinel = object()
+    monkeypatch.setattr(database, "DATABASE_URL", NEON)
+    monkeypatch.setattr(app.pg, "get_connection", lambda: sentinel)
+
+    assert booking_flow_db.open_connection() is sentinel
+
+
+# ── document blobs must not be streamed by listings ──────────────────────────
+
+def test_document_queries_select_has_content_not_the_bytes():
+    """`SELECT *` plus a BYTEA column would pull every ID scan over the wire."""
+    import inspect
+
+    import app.profile as profile
+
+    source = inspect.getsource(profile)
+    assert "SELECT * FROM worker_documents" not in source, (
+        "profile.py selects document rows with SELECT *, which now includes the "
+        "content blob; use the _DOCUMENT_COLUMNS projection instead"
+    )
+    assert "content IS NOT NULL AS has_content" in source
+
+    from app.routers import workers
+
+    assert "SELECT * FROM worker_documents" not in inspect.getsource(workers)
+
+
+def test_document_content_endpoint_still_reads_the_blob():
+    """The one query that genuinely needs the bytes must still fetch them."""
+    import inspect
+
+    import app.profile as profile
+
+    assert "SELECT content, content_type, filename FROM worker_documents" in inspect.getsource(
+        profile
+    )
