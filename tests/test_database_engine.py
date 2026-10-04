@@ -512,17 +512,35 @@ def test_postgres_boot_applies_schema_sql_and_not_the_schema_constant(monkeypatc
     # a table that already exists in an older shape. Counted against the tuple
     # rather than a literal so the set can grow without a silent skip.
     alters = [c for c in calls if c.startswith("ALTER TABLE")]
-    assert len(alters) == len(database._POSTGRES_COLUMN_UPGRADES), (
-        f"expected one ALTER per _POSTGRES_COLUMN_UPGRADES entry "
-        f"({len(database._POSTGRES_COLUMN_UPGRADES)}), got {len(alters)}"
-    )
     assert all("IF NOT EXISTS" in a for a in alters)
-    # The eight document columns are what motivated the mechanism; they stay
-    # covered whatever else is added alongside them.
-    document_alters = [a for a in alters if a.startswith("ALTER TABLE worker_documents")]
-    assert len(document_alters) == 8, (
-        f"expected the 8 document columns, got {len(document_alters)}"
+    # Every declared upgrade must be attempted. Not an exact count: the generic
+    # convergence pass adds further columns on top of the explicit tuple.
+    for table, column, _decl in database._POSTGRES_COLUMN_UPGRADES:
+        attempted = [
+            a for a in alters
+            if a.startswith(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} ")
+        ]
+        assert attempted, (
+            f"{table}.{column} is not upgraded on an existing database"
+        )
+    assert any("cooperative_id" in a for a in alters), (
+        "the federation tenant column must be added; a pre-federation Neon branch "
+        "fails to boot on the first CREATE INDEX over it"
     )
+    # The eight document columns are what motivated the mechanism; they stay
+    # The document blob/verification columns must all be upgraded on a database
+    # that predates them. Asserted by presence rather than count, because the
+    # generic convergence pass adds further columns on top.
+    document_alters = [a for a in alters if a.startswith("ALTER TABLE worker_documents")]
+    assert document_alters, "no worker_documents columns are upgraded"
+    for column in (
+        "verified", "verified_by", "verified_at", "rejection_reason",
+        "filename", "content_type", "byte_size", "content",
+    ):
+        assert any(
+            a.startswith(f"ALTER TABLE worker_documents ADD COLUMN IF NOT EXISTS {column} ")
+            for a in document_alters
+        ), f"worker_documents.{column} is not upgraded"
 
     assert "asserted" in calls, "schema shape was never verified"
 
@@ -549,9 +567,15 @@ class _RecordingConnection:
         return self
 
     def fetchone(self):
-        # _upgrade_postgres_columns asks information_schema.tables whether each
-        # table exists yet; report yes so the ALTER path is exercised.
+        # _upgrade_postgres_columns/_converge_postgres_columns ask
+        # information_schema.tables whether each table exists yet; report yes so
+        # the ALTER paths are exercised.
         return (1,)
+
+    def __iter__(self):
+        # PRAGMA table_info(...) row set. Empty, so the convergence pass believes
+        # every declared column is missing and issues the ALTERs.
+        return iter(())
 
     def commit(self):
         pass

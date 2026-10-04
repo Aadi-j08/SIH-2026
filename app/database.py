@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -956,6 +957,7 @@ def _init_db_postgres() -> None:
         # ever run -- so init_db() would abort on exactly the older databases it
         # exists to repair.
         _upgrade_postgres_columns(conn)
+        _converge_postgres_columns(conn)
         conn.executescript(schema_path.read_text(encoding="utf-8"))
 
     # CREATE TABLE IF NOT EXISTS silently skips a table that already exists in
@@ -991,6 +993,25 @@ _POSTGRES_COLUMN_UPGRADES: tuple[tuple[str, str, str], ...] = (
     ("workers", "rating_count", "INTEGER NOT NULL DEFAULT 0"),
 )
 
+# Migration 5 adds the federation tenant column to every scoped table. Postgres
+# never runs the migration chain, and schema.sql indexes `cooperative_id` on 19
+# tables, so an existing Neon database predating the federation fails to boot with
+# `column "cooperative_id" does not exist` on the first CREATE INDEX. Found by
+# running init_db() against a real Neon branch, which inherits the parent
+# branch's production schema.
+_FEDERATION_TENANT_TABLES: tuple[str, ...] = (
+    "workers", "users", "sessions", "bookings", "assignments", "declines",
+    "payment_ledger", "booking_ratings", "disputes", "standard_rates",
+    "settlements", "feedback", "worker_skills", "certifications",
+    "portfolio_items", "worker_documents", "benefits", "insurance_policies",
+    "grievances",
+)
+
+_POSTGRES_COLUMN_UPGRADES += tuple(
+    (table, "cooperative_id", "INTEGER NOT NULL DEFAULT 1")
+    for table in _FEDERATION_TENANT_TABLES
+)
+
 
 def _upgrade_postgres_columns(conn) -> None:
     """Add the columns an older database is missing, before schema.sql runs.
@@ -1020,6 +1041,77 @@ def _upgrade_postgres_columns(conn) -> None:
             if candidate != table:
                 continue
             conn.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {decl}")
+
+
+_CREATE_TABLE_BODY = re.compile(
+    r"CREATE TABLE IF NOT EXISTS (\w+)\s*\((.*?)\n\);", re.S
+)
+_CONSTRAINT_KEYWORDS = {"UNIQUE", "CHECK", "FOREIGN", "PRIMARY", "CONSTRAINT"}
+
+
+def _schema_declared_columns() -> dict[str, list[tuple[str, str]]]:
+    """Every column schema.sql declares, as (table, [(column, definition)]).
+
+    Used to converge an existing database on the columns schema.sql indexes. An
+    index over a column the table does not have is a boot-time failure, and the
+    set of such columns is not something worth tracking by hand -- it changes
+    whenever schema.sql does.
+    """
+    try:
+        text = (BASE_DIR / "schema.sql").read_text(encoding="utf-8")
+    except OSError:
+        return {}
+
+    declared: dict[str, list[tuple[str, str]]] = {}
+    for match in _CREATE_TABLE_BODY.finditer(text):
+        table, body = match.group(1), match.group(2)
+        columns: list[tuple[str, str]] = []
+        for line in body.split("\n"):
+            line = line.split("--")[0].strip().rstrip(",").strip()
+            if not line:
+                continue
+            name = line.split()[0]
+            if name.upper() in _CONSTRAINT_KEYWORDS:
+                continue
+            columns.append((name, line))
+        declared[table] = columns
+    return declared
+
+
+def _converge_postgres_columns(conn) -> None:
+    """Add any column schema.sql declares that an existing table is missing.
+
+    Belt and braces after _upgrade_postgres_columns: that tuple covers the
+    columns this project knows were added by migration, and this covers anything
+    a future edit to schema.sql introduces. Either way the boot ends up matching
+    the declared schema instead of failing partway through its own DDL.
+    """
+    for table, columns in _schema_declared_columns().items():
+        exists = conn.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = ? LIMIT 1",
+            (table,),
+        ).fetchone()
+        if not exists:
+            continue  # created by schema.sql a moment later
+        present = {
+            row["name"] for row in conn.execute(f"PRAGMA table_info({table})")
+        }
+        for name, definition in columns:
+            if name in present:
+                continue
+            try:
+                conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {definition}"
+                )
+            except sqlite3.OperationalError as exc:
+                # A NOT NULL column with no default cannot be added to a table
+                # that has rows. That is a real schema change needing a backfill,
+                # so say so rather than continuing with a half-applied schema.
+                raise RuntimeError(
+                    f"Cannot add column {table}.{name} to an existing Postgres table: {exc}. "
+                    "It is NOT NULL with no default and the table has rows, so it needs an "
+                    "explicit backfill before this schema can be applied."
+                ) from exc
 
 
 def _assert_postgres_schema() -> None:
