@@ -84,6 +84,13 @@ from app import auth, booking_flow_db, database, pg
 
 TEST_SERVER_URL = os.environ.get("POSTGRES_TEST_URL", "").strip()
 
+# The maintenance connection is separate because CREATE/DROP DATABASE cannot run
+# through Neon's pooled endpoint (pgbouncer in transaction mode rejects them).
+# So POSTGRES_TEST_URL may be the *pooled* URL -- which is the point, since
+# pgbouncer is what production uses and what this suite exists to verify -- while
+# the admin connection stays on the unpooled URL.
+TEST_ADMIN_URL = os.environ.get("POSTGRES_TEST_ADMIN_URL", "").strip() or TEST_SERVER_URL
+
 try:  # psycopg ships with the app, but do not fail collection without it.
     import psycopg
 except ImportError:  # pragma: no cover - environment problem, not a test result
@@ -107,12 +114,12 @@ def _admin_connect():
     connection in the lock test. The application is never reached this way, so
     nothing here can hide a defect in app/pg.py.
     """
-    return psycopg.connect(TEST_SERVER_URL, autocommit=True, prepare_threshold=None)
+    return psycopg.connect(TEST_ADMIN_URL, autocommit=True, prepare_threshold=None)
 
 
 def _database_url_for(name: str) -> str:
     """The maintenance URL rewritten to name `name`."""
-    base = re.sub(r"/[^/?]*(\?.*)?$", r"/\1", TEST_SERVER_URL)
+    base = re.sub(r"/[^/?]*(\?.*)?$", r"/\1", TEST_ADMIN_URL)
     return f"{base}{name}"
 
 

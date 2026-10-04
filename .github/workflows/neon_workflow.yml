@@ -1,0 +1,148 @@
+name: Create/Delete Branch for Pull Request
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - closed
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  setup:
+    name: Setup
+    outputs:
+      branch: ${{ steps.branch_name.outputs.current_branch }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get branch name
+        id: branch_name
+        uses: tj-actions/branch-names@v8
+
+  create_neon_branch:
+    name: Create Neon Branch
+    outputs:
+      db_url: ${{ steps.create_neon_branch_encode.outputs.db_url }}
+      db_url_with_pooler: ${{ steps.create_neon_branch_encode.outputs.db_url_with_pooler }}
+    needs: setup
+    if: |
+      github.event_name == 'pull_request' && (
+      github.event.action == 'synchronize'
+      || github.event.action == 'opened'
+      || github.event.action == 'reopened')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get branch expiration date as an env variable (2 weeks from now)
+        id: get_expiration_date
+        run: echo "EXPIRES_AT=$(date -u --date '+14 days' +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
+      - name: Create Neon Branch
+        id: create_neon_branch
+        uses: neondatabase/create-branch-action@v6
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch_name: preview/pr-${{ github.event.number }}-${{ needs.setup.outputs.branch }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          expires_at: ${{ env.EXPIRES_AT }}
+
+  # Boot the app against the real Neon branch, then run the PostgreSQL integration
+  # suite against both connection styles.
+  #
+  # The pooled run is the one that matters. Production reaches Neon through the
+  # -pooler endpoint (pgbouncer), and pgbouncer does not behave like a bare
+  # PostgreSQL connection: prepared statements, transaction-scoped advisory locks
+  # and session state are all affected. That combination had never been
+  # exercised. The Postgres path was written against a local server, and the
+  # fake-driver tests never invoked the row factory -- so a wrong row_factory
+  # signature passed CI while raising TypeError on the first statement of every
+  # request in production.
+  postgres_verification:
+    name: Postgres integration (Neon branch)
+    needs: [setup, create_neon_branch]
+    if: |
+      github.event_name == 'pull_request' && (
+      github.event.action == 'synchronize'
+      || github.event.action == 'opened'
+      || github.event.action == 'reopened')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Reports the real boot error rather than a test assertion: init_db()
+      # applying schema.sql is the step that had been assumed, not observed.
+      - name: Boot against the Neon branch
+        env:
+          DATABASE_URL: ${{ needs.create_neon_branch.outputs.db_url }}
+        run: python -c "from app.database import init_db; init_db(); print('boot ok')"
+
+      - name: Integration suite (unpooled)
+        env:
+          POSTGRES_TEST_URL: ${{ needs.create_neon_branch.outputs.db_url }}
+          POSTGRES_TEST_ADMIN_URL: ${{ needs.create_neon_branch.outputs.db_url }}
+        run: python -m pytest tests/test_postgres_integration.py -q
+
+      # CREATE/DROP DATABASE cannot run through the pooler, so the maintenance
+      # connection stays unpooled while the application path under test is pooled.
+      - name: Integration suite (pooled / pgbouncer)
+        env:
+          POSTGRES_TEST_URL: ${{ needs.create_neon_branch.outputs.db_url_with_pooler }}
+          POSTGRES_TEST_ADMIN_URL: ${{ needs.create_neon_branch.outputs.db_url }}
+        run: python -m pytest tests/test_postgres_integration.py -q
+
+# The step above creates a new Neon branch.
+# You may want to do something with the new branch, such as run migrations, run tests
+# on it, or send the connection details to a hosting platform environment.
+# The branch DATABASE_URL is available to you via:
+# "${{ steps.create_neon_branch.outputs.db_url_with_pooler }}".
+# It's important you don't log the DATABASE_URL as output as it contains a username and
+# password for your database.
+# For example, you can uncomment the lines below to run a database migration command:
+#      - name: Run Migrations
+#        run: npm run db:migrate
+#        env:
+#          # to use pooled connection
+#          DATABASE_URL: "${{ steps.create_neon_branch.outputs.db_url_with_pooler }}"
+#          # OR to use unpooled connection
+#          # DATABASE_URL: "${{ steps.create_neon_branch.outputs.db_url }}"
+
+# Following the step above, which runs database migrations, you may want to check
+# for schema changes in your database. We recommend using the following action to
+# post a comment to your pull request with the schema diff. For this action to work,
+# you also need to give permissions to the workflow job to be able to post comments
+# and read your repository contents. Add the following permissions to the workflow job:
+#
+# permissions:
+#   contents: read
+#   pull-requests: write
+#
+# You can also check out https://github.com/neondatabase/schema-diff-action for more
+# information on how to use the schema diff action.
+# You can uncomment the lines below to enable the schema diff action.
+#      - name: Post Schema Diff Comment to PR
+#        uses: neondatabase/schema-diff-action@v1
+#        with:
+#          project_id: ${{ vars.NEON_PROJECT_ID }}
+#          compare_branch: preview/pr-${{ github.event.number }}-${{ needs.setup.outputs.branch }}
+#          api_key: ${{ secrets.NEON_API_KEY }}
+
+  delete_neon_branch:
+    name: Delete Neon Branch
+    needs: setup
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete Neon Branch
+        uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch: preview/pr-${{ github.event.number }}-${{ needs.setup.outputs.branch }}
+          api_key: ${{ secrets.NEON_API_KEY }}
