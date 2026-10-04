@@ -47,57 +47,6 @@ jobs:
           api_key: ${{ secrets.NEON_API_KEY }}
           expires_at: ${{ env.EXPIRES_AT }}
 
-  # Boot the app against the real Neon branch, then run the PostgreSQL integration
-  # suite against both connection styles.
-  #
-  # The pooled run is the one that matters. Production reaches Neon through the
-  # -pooler endpoint (pgbouncer), and pgbouncer does not behave like a bare
-  # PostgreSQL connection: prepared statements, transaction-scoped advisory locks
-  # and session state are all affected. That combination had never been
-  # exercised. The Postgres path was written against a local server, and the
-  # fake-driver tests never invoked the row factory -- so a wrong row_factory
-  # signature passed CI while raising TypeError on the first statement of every
-  # request in production.
-  postgres_verification:
-    name: Postgres integration (Neon branch)
-    needs: [setup, create_neon_branch]
-    if: |
-      github.event_name == 'pull_request' && (
-      github.event.action == 'synchronize'
-      || github.event.action == 'opened'
-      || github.event.action == 'reopened')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      # Reports the real boot error rather than a test assertion: init_db()
-      # applying schema.sql is the step that had been assumed, not observed.
-      - name: Boot against the Neon branch
-        env:
-          DATABASE_URL: ${{ needs.create_neon_branch.outputs.db_url }}
-        run: python -c "from app.database import init_db; init_db(); print('boot ok')"
-
-      - name: Integration suite (unpooled)
-        env:
-          POSTGRES_TEST_URL: ${{ needs.create_neon_branch.outputs.db_url }}
-          POSTGRES_TEST_ADMIN_URL: ${{ needs.create_neon_branch.outputs.db_url }}
-        run: python -m pytest tests/test_postgres_integration.py -q
-
-      # CREATE/DROP DATABASE cannot run through the pooler, so the maintenance
-      # connection stays unpooled while the application path under test is pooled.
-      - name: Integration suite (pooled / pgbouncer)
-        env:
-          POSTGRES_TEST_URL: ${{ needs.create_neon_branch.outputs.db_url_with_pooler }}
-          POSTGRES_TEST_ADMIN_URL: ${{ needs.create_neon_branch.outputs.db_url }}
-        run: python -m pytest tests/test_postgres_integration.py -q
-
 # The step above creates a new Neon branch.
 # You may want to do something with the new branch, such as run migrations, run tests
 # on it, or send the connection details to a hosting platform environment.

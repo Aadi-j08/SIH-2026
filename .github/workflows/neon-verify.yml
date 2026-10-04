@@ -1,0 +1,106 @@
+name: Postgres verification (Neon)
+
+# The Neon integration's own workflow (neon_workflow.yml) creates a preview
+# database per pull request and then does nothing with it -- its comments suggest
+# running migrations or tests against the branch. This is that step.
+#
+# Why a separate workflow on `push` rather than a job in neon_workflow.yml:
+#
+#   - For `pull_request`, GitHub executes the workflow definition from the BASE
+#     branch, so a job added on a feature branch never runs until it is merged.
+#   - For `push`, GitHub uses the definition in the pushed commit, so this runs
+#     from the branch itself and needs no change to main.
+#
+# That also keeps main untouched: Render auto-deploys from whichever repository it
+# is connected to (docs/DEPLOY.md:50 allows either), so pushing to main to
+# activate a test job would risk shipping unreviewed code to production.
+#
+# Why it needs to exist at all: production reaches Neon through the -pooler
+# endpoint (pgbouncer), and a bare PostgreSQL server is not evidence about
+# pgbouncer. Prepared statements, session state and transaction-scoped advisory
+# locks all behave differently behind a transaction pooler. The Postgres path was
+# previously validated only against a local server, where a wrong row_factory
+# signature passed every test while raising TypeError on the first statement of
+# every request.
+
+on:
+  push:
+    branches:
+      - 'fix/**'
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'schema.sql'
+      - 'tests/test_postgres_integration.py'
+      - '.github/workflows/neon-verify.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Boot + integration suite on a Neon branch
+    runs-on: ubuntu-latest
+    # Secrets are unavailable to workflows from forks, so this only runs where
+    # NEON_API_KEY exists (this repository, not the upstream copy).
+    if: ${{ vars.NEON_PROJECT_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compute branch expiry (1 day)
+        id: expiry
+        run: echo "expires_at=$(date -u --date '+1 day' +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
+      - name: Create Neon branch
+        id: branch
+        uses: neondatabase/create-branch-action@v6
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch_name: verify-${{ github.run_id }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          expires_at: ${{ steps.expiry.outputs.expires_at }}
+
+      # Reports the real boot error rather than a test assertion. init_db()
+      # applying schema.sql is the step that had been assumed rather than
+      # observed, and it is where a drift between the two schema paths shows up.
+      - name: Boot against the Neon branch
+        env:
+          DATABASE_URL: ${{ steps.branch.outputs.db_url }}
+        run: python -c "from app.database import init_db; init_db(); print('boot ok')"
+
+      - name: Integration suite (unpooled)
+        env:
+          POSTGRES_TEST_URL: ${{ steps.branch.outputs.db_url }}
+          POSTGRES_TEST_ADMIN_URL: ${{ steps.branch.outputs.db_url }}
+        run: python -m pytest tests/test_postgres_integration.py -q
+
+      # The run that matters. CREATE/DROP DATABASE is rejected by pgbouncer in
+      # transaction mode, so the maintenance connection stays unpooled while the
+      # path under test is pooled -- POSTGRES_TEST_ADMIN_URL exists for exactly
+      # this split.
+      - name: Integration suite (pooled / pgbouncer)
+        env:
+          POSTGRES_TEST_URL: ${{ steps.branch.outputs.db_url_with_pooler }}
+          POSTGRES_TEST_ADMIN_URL: ${{ steps.branch.outputs.db_url }}
+        run: python -m pytest tests/test_postgres_integration.py -q
+
+      - name: Delete Neon branch
+        if: always()
+        uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch: ${{ steps.branch.outputs.branch }}
+          api_key: ${{ secrets.NEON_API_KEY }}
