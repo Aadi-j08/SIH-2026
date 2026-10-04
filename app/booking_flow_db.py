@@ -14,10 +14,6 @@ from contextlib import contextmanager
 
 from app import database
 
-# Names looked up in app/database.py, in this order.
-_PATH_ATTRIBUTES = ("DB_PATH", "DATABASE_PATH", "SQLITE_PATH", "DB_FILE", "DATABASE_FILE")
-_CONNECTION_FACTORIES = ("get_connection", "get_conn", "connect", "get_db_connection")
-
 # Column-name candidates for existing tables whose exact spelling may differ.
 ASSIGNMENT_SCORE_COLUMNS = ("score", "allocation_score", "total_score", "final_score")
 WORKER_NAME_COLUMNS = ("name", "full_name", "worker_name")
@@ -57,40 +53,27 @@ _NEW_INDEXES = (
 )
 
 
-def _database_path() -> str | None:
-    for attr in _PATH_ATTRIBUTES:
-        value = getattr(database, attr, None)
-        if value:
-            return str(value)
-    return None
-
 
 def open_connection() -> sqlite3.Connection:
-    """Open a fresh connection to the project's SQLite database.
+    """Open a fresh connection to the project's database.
 
-    Uses the DB path configured in app/database.py; falls back to the
-    project's connection factory if no path is set. The booking flow
-    manages its own transactions (autocommit on, explicit BEGIN
+    Goes through database.get_connection(), which is the only place that
+    decides which engine to use and raises on a DATABASE_URL it cannot use.
+    Opening SQLite directly here would bypass both, and the booking flow is the
+    path that most needs to reach Neon.
+
+    With DATABASE_URL set this is the psycopg-backed wrapper from app/pg.py, so
+    `?` placeholders, sqlite3.Row-style rows and lastrowid all keep working.
+    Otherwise it is the project's SQLite file.
+
+    The booking flow manages its own transactions (autocommit on, explicit BEGIN
     IMMEDIATE), so it opens its own connection.
     """
-    path = _database_path()
-    conn: sqlite3.Connection | None = None
-    if path is not None:
-        conn = sqlite3.connect(path, timeout=30)
-    else:
-        for name in _CONNECTION_FACTORIES:
-            factory = getattr(database, name, None)
-            if callable(factory):
-                candidate = factory()
-                if isinstance(candidate, sqlite3.Connection):
-                    conn = candidate
-                    break
-    if conn is None:
-        raise RuntimeError(
-            "Could not locate the SQLite database. Expose a path "
-            f"({', '.join(_PATH_ATTRIBUTES)}) or a connection function "
-            f"({', '.join(_CONNECTION_FACTORIES)}) in app/database.py."
-        )
+    conn = database.get_connection()
+
+    if not isinstance(conn, sqlite3.Connection):
+        # The Postgres wrapper; the SQLite-only tuning below does not apply.
+        return conn
 
     conn.row_factory = sqlite3.Row
     # Transactions are issued explicitly below, so turn off the sqlite3
@@ -104,6 +87,7 @@ def open_connection() -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA synchronous = NORMAL")
     return conn
+
 
 
 @contextmanager
@@ -141,12 +125,23 @@ def _pending_changes(conn: sqlite3.Connection) -> list[str]:
     missing = [t for t in ("workers", "bookings", "assignments") if t not in existing_tables]
     if missing:
         raise RuntimeError(
-            f"Expected existing tables {missing} in the SQLite database. "
+            f"Expected existing tables {missing} in the "
+            f"{database.active_engine()} database. "
             "Run the project's database setup before using the booking flow."
         )
 
     for table, ddl in _NEW_TABLES.items():
         if table not in existing_tables:
+            # _NEW_TABLES is SQLite DDL (AUTOINCREMENT is not valid Postgres).
+            # On Postgres these tables come from schema.sql via init_db(), so a
+            # missing one means init_db() has not run -- say so instead of
+            # emitting DDL that would fail with a syntax error.
+            if database.use_postgres():
+                raise RuntimeError(
+                    f"table '{table}' is missing from the Postgres database. "
+                    "It is declared in schema.sql; call app.database.init_db(), "
+                    "which applies that file on boot."
+                )
             statements.append(ddl)
 
     assignment_cols = table_columns(conn, "assignments")

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -20,11 +21,8 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 # Postgres (Neon) when DATABASE_URL says so, SQLite otherwise. Read through the
 # module attribute at call time so tests can monkeypatch it off.
 #
-# This reports the *configured URL*, not the driver a connection is using.
-# get_connection() currently always returns SQLite, so on a service that sets
-# both DATABASE_URL and SAHAKARSETU_DB this returns True while every query still
-# runs against SQLite. Use it for reporting only; anything that issues SQL must
-# ask the connection instead (see _is_sqlite).
+# This reports the *configured URL*, and `get_connection()` branches on exactly
+# the same predicate, so the two can no longer disagree.
 def use_postgres() -> bool:
     url = globals().get("DATABASE_URL") or ""
     return url.startswith(("postgres://", "postgresql://"))
@@ -33,17 +31,13 @@ def use_postgres() -> bool:
 def active_engine() -> str:
     """The engine `get_connection()` will actually hand out.
 
-    This is a different question from `use_postgres()`. A Neon DATABASE_URL
-    alongside SAHAKARSETU_DB is a configuration that *says* Postgres and
-    *runs* SQLite, because get_connection() only ever opens DB_PATH. Anything
-    that has to agree with the running app — the engine banner, and the seeders
-    that would otherwise write their rows into a database nothing reads — must
-    ask this instead.
-
-    Returns "postgresql" once a psycopg connection is really used; until then
-    SQLite, because that is what every query goes to.
+    `get_connection()` branches on `use_postgres()`, so when DATABASE_URL is a
+    Postgres URL every query really does go to Postgres -- including on a host
+    that also has a local DB_PATH. Anything that has to agree with the running
+    app (the engine banner, and the seeders that would otherwise write their rows
+    into a database nothing reads) asks this instead of use_postgres().
     """
-    return "sqlite"
+    return "postgresql" if use_postgres() else "sqlite"
 
 log = logging.getLogger("sahakarsetu.database")
 
@@ -374,7 +368,30 @@ CREATE INDEX IF NOT EXISTS idx_grievances_coop     ON grievances (cooperative_id
 
 
 def get_connection() -> sqlite3.Connection:
-    """Open a connection with row access by column name and foreign keys on."""
+    """Open a connection with row access by column name and foreign keys on.
+
+    Returns a psycopg-backed stand-in when DATABASE_URL is a Postgres URL, so
+    every call site keeps working unchanged. app/pg.py translates the SQLite
+    dialect this codebase is written in. There is deliberately no fallback: if
+    DATABASE_URL is set we use Postgres or fail, never silently write to a local
+    file that nothing else reads.
+    """
+    if use_postgres():
+        from app.pg import get_connection as _postgres_connection
+
+        return _postgres_connection()
+
+    # A DATABASE_URL we cannot recognise must not quietly resolve to SQLite:
+    # that is exactly how the service ended up serving every request from an
+    # ephemeral disk. Fail here instead, where the cause is visible.
+    if (globals().get("DATABASE_URL") or "").strip():
+        raise RuntimeError(
+            "DATABASE_URL is set but is not a PostgreSQL URL "
+            f"(got {globals().get('DATABASE_URL')!r}). Expected a postgres:// or "
+            "postgresql:// URL. Refusing to fall back to the local SQLite file, "
+            "which would silently lose data on redeploy. Unset DATABASE_URL to use SQLite."
+        )
+
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -756,14 +773,16 @@ def _is_sqlite(conn) -> bool:
     """Whether `conn` is a real SQLite connection.
 
     Migrations must ask the connection what it is, never `use_postgres()`.
-    That helper only reads DATABASE_URL, and get_connection() always hands back
-    a SQLite connection, so the two disagree whenever a Postgres URL is
-    configured on a SQLite-backed service. Rendering's Docker image does
-    exactly that: SAHAKARSETU_DB=/data/sahakarsetu.db with a Neon
-    DATABASE_URL also set. Branching on the env var there ran Postgres-only
-    DDL against SQLite and took the whole service down at startup. The
-    psycopg wrapper in app/pg.py is not a sqlite3.Connection, so this also
-    routes correctly if Postgres is ever wired up for real.
+    The two used to disagree on Render, whose image sets both
+    SAHAKARSETU_DB=/data/sahakarsetu.db and a Neon DATABASE_URL: get_connection()
+    always returned SQLite, so branching on the env var ran Postgres-only DDL
+    against SQLite and took the service down at startup. get_connection() now
+    honours DATABASE_URL, and init_db() routes Postgres to schema.sql, so
+    migrate() only ever sees a SQLite connection -- this check is kept because
+    it costs nothing and the failure it prevents is a startup crash.
+
+    The psycopg wrapper in app/pg.py is not a sqlite3.Connection, so this also
+    routes correctly if a migration is ever reached with Postgres.
     """
     return isinstance(conn, sqlite3.Connection)
 
@@ -892,10 +911,223 @@ def migrate(conn: sqlite3.Connection) -> list[int]:
 
 def init_db() -> None:
     """Create the core tables if they do not exist and bring older databases up to date. Safe to call repeatedly."""
+    if use_postgres():
+        _init_db_postgres()
+        return
+
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     with connection() as conn:
         conn.executescript(SCHEMA)
         migrate(conn)
+
+
+def _init_db_postgres() -> None:
+    """Bring a Postgres database up to date from schema.sql.
+
+    schema.sql is the single source of truth for Postgres: it is a superset of
+    the SCHEMA constant, and it already carries the booking-flow tables, the
+    trigger-derived constraints and the blob columns that the SQLite migration
+    chain adds incrementally. It is applied with CREATE TABLE IF NOT EXISTS,
+    which is idempotent, so this is safe on every boot.
+
+    The SCHEMA constant is deliberately NOT applied here. It is a second copy of
+    the same table definitions in SQLite dialect -- `INTEGER PRIMARY KEY
+    AUTOINCREMENT` is a syntax error in PostgreSQL, so applying it aborted the
+    whole service at startup. Even with that fixed it would run first and make
+    every CREATE TABLE IF NOT EXISTS in schema.sql a no-op, silently leaving
+    worker_documents without its verification and blob columns.
+
+    The SQLite migration chain is not run either. It is expressed with
+    PRAGMA table_info, implicit transaction control and ALTER TABLE ADD COLUMN
+    retry loops that do not carry over, and applying it would duplicate
+    schema.sql. _POSTGRES_COLUMN_UPGRADES below covers the one thing CREATE
+    TABLE IF NOT EXISTS cannot: bringing an already-created table up to the
+    current column set.
+    """
+    schema_path = BASE_DIR / "schema.sql"
+    if not schema_path.is_file():
+        raise FileNotFoundError(
+            f"schema.sql is required to initialise a Postgres database, not found at {schema_path}"
+        )
+
+    with connection() as conn:
+        # Column upgrades FIRST. schema.sql creates indexes over columns such as
+        # worker_documents.verified, and on a database that predates them Postgres
+        # rejects the CREATE INDEX with "column does not exist" before the ALTERs
+        # ever run -- so init_db() would abort on exactly the older databases it
+        # exists to repair.
+        _upgrade_postgres_columns(conn)
+        _converge_postgres_columns(conn)
+        conn.executescript(schema_path.read_text(encoding="utf-8"))
+
+    # CREATE TABLE IF NOT EXISTS silently skips a table that already exists in
+    # an older shape, so assert the columns that matter actually landed rather
+    # than reporting a healthy boot over a half-applied schema.
+    _assert_postgres_schema()
+
+    log.info("Postgres schema applied from %s", schema_path.name)
+
+
+# Columns that _migration_8_document_verification and _migration_9_document_blobs
+# add on SQLite. A Postgres database created before schema.sql declared them has
+# worker_documents without them, and CREATE TABLE IF NOT EXISTS will not fix
+# that, so they are added explicitly. Postgres supports the IF NOT EXISTS form.
+_POSTGRES_COLUMN_UPGRADES: tuple[tuple[str, str, str], ...] = (
+    ("worker_documents", "verified", "INTEGER NOT NULL DEFAULT 0"),
+    ("worker_documents", "verified_by", "INTEGER REFERENCES users(id)"),
+    ("worker_documents", "verified_at", "TIMESTAMP WITH TIME ZONE"),
+    ("worker_documents", "rejection_reason", "TEXT"),
+    ("worker_documents", "filename", "TEXT"),
+    ("worker_documents", "content_type", "TEXT"),
+    ("worker_documents", "byte_size", "INTEGER"),
+    ("worker_documents", "content", "BYTEA"),
+    # Columns app/booking_flow_db.py:_pending_changes adds with ALTER TABLE on the
+    # SQLite path. A Postgres boot skips the SQLite migration chain entirely, and
+    # without these the service started on a half-built schema and only grew
+    # these columns mid-request, the first time a booking-flow endpoint ran.
+    ("assignments", "allocation_score", "REAL"),
+    ("assignments", "score_breakdown", "TEXT"),
+    ("assignments", "explanation", "TEXT"),
+    ("bookings", "completed_at", "TIMESTAMP WITH TIME ZONE"),
+    ("workers", "base_rating", "REAL"),
+    ("workers", "rating_count", "INTEGER NOT NULL DEFAULT 0"),
+)
+
+# Migration 5 adds the federation tenant column to every scoped table. Postgres
+# never runs the migration chain, and schema.sql indexes `cooperative_id` on 19
+# tables, so an existing Neon database predating the federation fails to boot with
+# `column "cooperative_id" does not exist` on the first CREATE INDEX. Found by
+# running init_db() against a real Neon branch, which inherits the parent
+# branch's production schema.
+_FEDERATION_TENANT_TABLES: tuple[str, ...] = (
+    "workers", "users", "sessions", "bookings", "assignments", "declines",
+    "payment_ledger", "booking_ratings", "disputes", "standard_rates",
+    "settlements", "feedback", "worker_skills", "certifications",
+    "portfolio_items", "worker_documents", "benefits", "insurance_policies",
+    "grievances",
+)
+
+_POSTGRES_COLUMN_UPGRADES += tuple(
+    (table, "cooperative_id", "INTEGER NOT NULL DEFAULT 1")
+    for table in _FEDERATION_TENANT_TABLES
+)
+
+
+def _upgrade_postgres_columns(conn) -> None:
+    """Add the columns an older database is missing, before schema.sql runs.
+
+    Two orderings are needed and neither works alone:
+
+      - ALTER first, schema.sql second. schema.sql creates indexes over columns
+        it also declares (idx_worker_documents_verified), so applying it to a
+        database whose worker_documents predates `verified` fails with
+        `column "verified" does not exist` before the ALTER ever runs.
+      - schema.sql first, ALTER second. On a *fresh* database there are no tables
+        yet, and `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` still requires the
+        table to exist.
+
+    So: run the ALTERs first, skipping tables that are not there yet. A fresh
+    database gets them from schema.sql's CREATE TABLE; an older one gets them
+    here so the indexes in schema.sql can then be created.
+    """
+    for table in dict.fromkeys(t for t, _c, _d in _POSTGRES_COLUMN_UPGRADES):
+        present = conn.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = ? LIMIT 1",
+            (table,),
+        ).fetchone()
+        if not present:
+            continue
+        for candidate, column, decl in _POSTGRES_COLUMN_UPGRADES:
+            if candidate != table:
+                continue
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {decl}")
+
+
+_CREATE_TABLE_BODY = re.compile(
+    r"CREATE TABLE IF NOT EXISTS (\w+)\s*\((.*?)\n\);", re.S
+)
+_CONSTRAINT_KEYWORDS = {"UNIQUE", "CHECK", "FOREIGN", "PRIMARY", "CONSTRAINT"}
+
+
+def _schema_declared_columns() -> dict[str, list[tuple[str, str]]]:
+    """Every column schema.sql declares, as (table, [(column, definition)]).
+
+    Used to converge an existing database on the columns schema.sql indexes. An
+    index over a column the table does not have is a boot-time failure, and the
+    set of such columns is not something worth tracking by hand -- it changes
+    whenever schema.sql does.
+    """
+    try:
+        text = (BASE_DIR / "schema.sql").read_text(encoding="utf-8")
+    except OSError:
+        return {}
+
+    declared: dict[str, list[tuple[str, str]]] = {}
+    for match in _CREATE_TABLE_BODY.finditer(text):
+        table, body = match.group(1), match.group(2)
+        columns: list[tuple[str, str]] = []
+        for line in body.split("\n"):
+            line = line.split("--")[0].strip().rstrip(",").strip()
+            if not line:
+                continue
+            name = line.split()[0]
+            if name.upper() in _CONSTRAINT_KEYWORDS:
+                continue
+            columns.append((name, line))
+        declared[table] = columns
+    return declared
+
+
+def _converge_postgres_columns(conn) -> None:
+    """Add any column schema.sql declares that an existing table is missing.
+
+    Belt and braces after _upgrade_postgres_columns: that tuple covers the
+    columns this project knows were added by migration, and this covers anything
+    a future edit to schema.sql introduces. Either way the boot ends up matching
+    the declared schema instead of failing partway through its own DDL.
+    """
+    for table, columns in _schema_declared_columns().items():
+        exists = conn.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = ? LIMIT 1",
+            (table,),
+        ).fetchone()
+        if not exists:
+            continue  # created by schema.sql a moment later
+        present = {
+            row["name"] for row in conn.execute(f"PRAGMA table_info({table})")
+        }
+        for name, definition in columns:
+            if name in present:
+                continue
+            try:
+                conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {definition}"
+                )
+            except sqlite3.OperationalError as exc:
+                # A NOT NULL column with no default cannot be added to a table
+                # that has rows. That is a real schema change needing a backfill,
+                # so say so rather than continuing with a half-applied schema.
+                raise RuntimeError(
+                    f"Cannot add column {table}.{name} to an existing Postgres table: {exc}. "
+                    "It is NOT NULL with no default and the table has rows, so it needs an "
+                    "explicit backfill before this schema can be applied."
+                ) from exc
+
+
+def _assert_postgres_schema() -> None:
+    """Fail loudly if a document upload would lose its bytes."""
+    with connection() as conn:
+        missing = [
+            column
+            for column in ("verified", "filename", "byte_size", "content")
+            if column not in _columns(conn, "worker_documents")
+        ]
+    if missing:
+        raise RuntimeError(
+            f"Postgres schema is incomplete: worker_documents is missing {missing}. "
+            "Document uploads would store a reference to bytes that are never saved, "
+            "and would be lost on redeploy. Check schema.sql against this checkout."
+        )
 
 
 def get_database_engine_info() -> dict[str, str]:

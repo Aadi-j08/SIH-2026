@@ -43,6 +43,14 @@ CREATE TABLE IF NOT EXISTS workers (
     rating          REAL CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),
     availability    TEXT NOT NULL DEFAULT '[]',
     status          VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('pending', 'active', 'rejected')),
+    -- Rating bookkeeping the booking flow maintains (app/booking_flow_db.py):
+    -- base_rating is the running score the average is computed against, so one
+    -- bad review cannot erase a worker's history, and rating_count is how many
+    -- reviews are in it. On SQLite these arrive via ALTER TABLE ADD COLUMN at the
+    -- first booking-flow request; declared here so a Postgres boot does not have
+    -- to mutate its own schema mid-request.
+    base_rating     REAL,
+    rating_count    INTEGER NOT NULL DEFAULT 0,
     cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -84,6 +92,9 @@ CREATE TABLE IF NOT EXISTS bookings (
     scheduled_for   VARCHAR(100),
     status          VARCHAR(20) NOT NULL DEFAULT 'pending'
                     CHECK (status IN ('pending', 'assigned', 'in_progress', 'completed', 'cancelled')),
+    -- When the job was marked completed; written with CURRENT_TIMESTAMP by
+    -- app/services/booking_flow.py and read by the Kaam job history.
+    completed_at    TIMESTAMP WITH TIME ZONE,
     urgency_level   VARCHAR(20) NOT NULL DEFAULT 'medium'
                     CHECK (urgency_level IN ('low', 'medium', 'high', 'urgent')),
     customer_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -97,6 +108,13 @@ CREATE TABLE IF NOT EXISTS assignments (
     booking_id      INTEGER NOT NULL UNIQUE REFERENCES bookings(id) ON DELETE CASCADE,
     worker_id       INTEGER NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
     score           REAL,
+    -- Allocation-engine output kept with the assignment: the score itself
+    -- (allocation_score is the name older deployments use, and the booking flow
+    -- writes to whichever score column exists), the JSON per-factor breakdown,
+    -- and the plain-language explanation shown to the council.
+    allocation_score REAL,
+    score_breakdown TEXT,
+    explanation     TEXT,
     accepted_at     TIMESTAMP WITH TIME ZONE,
     started_at      TIMESTAMP WITH TIME ZONE,
     start_selfie_url TEXT,
@@ -114,6 +132,32 @@ CREATE TABLE IF NOT EXISTS declines (
     note            TEXT,
     cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 12b. Payment ledger: the immutable split of one booking's payout across the
+-- worker, the welfare fund and platform operations. UNIQUE (booking_id, party)
+-- is what makes settlement idempotent -- a replayed run inserts nothing.
+CREATE TABLE IF NOT EXISTS payment_ledger (
+    id                SERIAL PRIMARY KEY,
+    booking_id        INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+    worker_id         INTEGER REFERENCES workers(id),
+    party             VARCHAR(32) NOT NULL CHECK (party IN ('worker', 'welfare_fund', 'platform_operations')),
+    share_percent     INTEGER NOT NULL,
+    amount_paise      INTEGER NOT NULL CHECK (amount_paise >= 0),
+    cooperative_id    INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+    created_at        TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (booking_id, party)
+);
+
+-- 12c. One customer rating per booking, so a booking can be rated once.
+CREATE TABLE IF NOT EXISTS booking_ratings (
+    id                SERIAL PRIMARY KEY,
+    booking_id        INTEGER NOT NULL UNIQUE REFERENCES bookings(id) ON DELETE CASCADE,
+    worker_id         INTEGER NOT NULL REFERENCES workers(id),
+    rating            INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    comment           TEXT,
+    cooperative_id    INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+    created_at        TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 13. Cooperative Info (legacy singleton kept as a convenience view over the federation)
@@ -231,6 +275,10 @@ CREATE INDEX IF NOT EXISTS idx_workers_cooperative     ON workers (cooperative_i
 CREATE INDEX IF NOT EXISTS idx_bookings_cooperative    ON bookings (cooperative_id);
 CREATE INDEX IF NOT EXISTS idx_assignments_cooperative  ON assignments (cooperative_id);
 CREATE INDEX IF NOT EXISTS idx_disputes_cooperative     ON disputes (cooperative_id);
+CREATE INDEX IF NOT EXISTS idx_payment_ledger_worker      ON payment_ledger (worker_id);
+CREATE INDEX IF NOT EXISTS idx_payment_ledger_cooperative ON payment_ledger (cooperative_id);
+CREATE INDEX IF NOT EXISTS idx_booking_ratings_worker     ON booking_ratings (worker_id);
+CREATE INDEX IF NOT EXISTS idx_booking_ratings_cooperative ON booking_ratings (cooperative_id);
 
 -- 21. Worker profile (skills, certifications, portfolio, documents)
 CREATE TABLE IF NOT EXISTS worker_skills (
@@ -276,15 +324,42 @@ CREATE TABLE IF NOT EXISTS portfolio_items (
 );
 
 CREATE TABLE IF NOT EXISTS worker_documents (
-    id              SERIAL PRIMARY KEY,
-    worker_id       INTEGER NOT NULL REFERENCES workers(id),
-    document_type   VARCHAR(30) NOT NULL,            -- id_proof, insurance, vehicle, other
-    file_url        TEXT NOT NULL,                   -- off-FS storage reference
-    uploaded_at     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+    id                SERIAL PRIMARY KEY,
+    worker_id         INTEGER NOT NULL REFERENCES workers(id),
+    document_type     VARCHAR(30) NOT NULL,            -- id_proof, insurance, vehicle, other
+    file_url          TEXT NOT NULL,                   -- off-FS storage reference
+    uploaded_at       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    cooperative_id    INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
+    -- Verification trail (council sign-off; see app/profile.py).
+    verified          INTEGER NOT NULL DEFAULT 0,
+    verified_by       INTEGER REFERENCES users(id),
+    verified_at       TIMESTAMP WITH TIME ZONE,
+    rejection_reason  TEXT,
+    -- Inline bytes. NULL for the older file_url-reference rows, which keep
+    -- working unchanged. Stored in the database because the API host's
+    -- filesystem is ephemeral on Render and Cloudflare Pages has none at all.
+    filename          TEXT,
+    content_type      TEXT,
+    byte_size         INTEGER,
+    content           BYTEA,
     UNIQUE (worker_id, document_type, file_url)
-    -- filename / content_type / byte_size / content (BYTEA) are added by
-    -- _migration_9_document_blobs, like the verification columns.
+);
+
+CREATE INDEX IF NOT EXISTS idx_worker_documents_verified ON worker_documents (verified);
+
+-- 12d. Assistant audit trail. Declared here rather than only by the lazy
+-- CREATE TABLE in app/services/assistant.py: that one is SQLite dialect
+-- (INTEGER PRIMARY KEY AUTOINCREMENT) and was the only table in app/ with no
+-- PostgreSQL definition anywhere.
+CREATE TABLE IF NOT EXISTS assistant_audit (
+    id          SERIAL PRIMARY KEY,
+    user_id     INTEGER NOT NULL,
+    intent      TEXT NOT NULL,
+    transcript  TEXT NOT NULL,
+    entities    TEXT NOT NULL,
+    confirmed   INTEGER NOT NULL,
+    outcome     TEXT NOT NULL,
+    created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_worker_skills_worker    ON worker_skills (worker_id);

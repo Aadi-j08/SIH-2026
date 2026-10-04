@@ -76,6 +76,17 @@ class WorkerDocumentOut(BaseModel):
     has_content: bool = False
 
 
+# Everything a document response needs, and deliberately not `content`. The
+# bytes of an Aadhaar or ID scan are megabytes; selecting them to test them for
+# NULL would pull every uploaded file across the network on each listing, and
+# `has_content` is the only thing the response actually uses.
+_DOCUMENT_COLUMNS = (
+    "id, worker_id, document_type, file_url, uploaded_at, cooperative_id, "
+    "verified, verified_by, verified_at, rejection_reason, "
+    "filename, content_type, byte_size, content IS NOT NULL AS has_content"
+)
+
+
 class ProfileSummary(BaseModel):
     worker_id: int
     skills: list[SkillOut] = Field(default_factory=list)
@@ -246,7 +257,8 @@ def delete_portfolio_item(item_id: int, worker_id: int) -> bool:
 def list_documents(worker_id: int) -> list[WorkerDocumentOut]:
     with connection() as conn:
         rows = conn.execute(
-            "SELECT * FROM worker_documents WHERE worker_id = ? AND cooperative_id = ? ORDER BY id",
+            f"SELECT {_DOCUMENT_COLUMNS} FROM worker_documents "
+            "WHERE worker_id = ? AND cooperative_id = ? ORDER BY id",
             (worker_id, tenancy.tenant_id()),
         )
         return [_doc(row) for row in rows]
@@ -273,7 +285,8 @@ def add_document(worker_id: int, document_type: str, file_url: str) -> WorkerDoc
             (worker_id, document_type, file_url, tenancy.tenant_id()),
         )
         row = conn.execute(
-            "SELECT * FROM worker_documents WHERE worker_id = ? AND cooperative_id = ? ORDER BY id DESC LIMIT 1",
+            f"SELECT {_DOCUMENT_COLUMNS} FROM worker_documents "
+            "WHERE worker_id = ? AND cooperative_id = ? ORDER BY id DESC LIMIT 1",
             (worker_id, tenancy.tenant_id()),
         ).fetchone()
         return _doc(row)
@@ -296,7 +309,8 @@ def add_document_upload(
             (worker_id, document_type, file_url, filename, content_type, len(data), data, tenancy.tenant_id()),
         )
         row = conn.execute(
-            "SELECT * FROM worker_documents WHERE worker_id = ? AND cooperative_id = ? ORDER BY id DESC LIMIT 1",
+            f"SELECT {_DOCUMENT_COLUMNS} FROM worker_documents "
+            "WHERE worker_id = ? AND cooperative_id = ? ORDER BY id DESC LIMIT 1",
             (worker_id, tenancy.tenant_id()),
         ).fetchone()
         return _doc(row)
@@ -345,7 +359,8 @@ def profile_summary(worker_id: int) -> ProfileSummary:
         portfolio = [_portfolio(r) for r in conn.execute(
             "SELECT * FROM portfolio_items WHERE worker_id = ? AND cooperative_id = ?", (worker_id, cid))]
         docs = [_doc(r) for r in conn.execute(
-            "SELECT * FROM worker_documents WHERE worker_id = ? AND cooperative_id = ?", (worker_id, cid))]
+            f"SELECT {_DOCUMENT_COLUMNS} FROM worker_documents "
+            "WHERE worker_id = ? AND cooperative_id = ?", (worker_id, cid))]
 
     filled = sum([
         bool(skills), bool(certs), bool(portfolio), bool(docs),
@@ -381,9 +396,10 @@ def _portfolio(row: sqlite3.Row) -> PortfolioItemOut:
 
 
 def _doc(row: sqlite3.Row) -> WorkerDocumentOut:
+    # has_content comes from the SQL projection (content IS NOT NULL ...), so
+    # the bytes themselves are never fetched or serialised.
     d = dict(row)
-    # Never let the bytes reach a JSON response; only their presence is reported.
-    d["has_content"] = d.pop("content", None) is not None
+    d["has_content"] = bool(d.get("has_content"))
     d["verified"] = bool(d.get("verified"))
     return WorkerDocumentOut.model_validate(d)
 

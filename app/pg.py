@@ -4,18 +4,48 @@ PostgreSQL behind the sqlite3 surface app/database.py expects.
 psycopg 3 connections are wrapped so the rest of the codebase keeps working
 unchanged: `?` placeholders, sqlite3.Row-style rows (name + positional access,
 dict(row)), cursor.lastrowid, rowcount, executescript, PRAGMA table_info,
-sqlite_master probes, INSERT OR IGNORE, BEGIN IMMEDIATE/COMMIT issued as SQL,
-and sqlite3.IntegrityError/OperationalError raised for PG failures (so the
-exception handlers in app/main.py still fire).
+sqlite_master probes, INSERT OR IGNORE, BEGIN IMMEDIATE, sqlite3 date/arith
+functions, and sqlite3.IntegrityError/OperationalError raised for PG failures
+(so the exception handlers in app/main.py still fire).
 
-Each statement is translated (_translate); everything else must already be
-portable SQL. Deliberately NOT translated:
-  - INSERT OR REPLACE — only scripts/seed_demo_data.py's SQLite branch uses it,
-    unreachable when DATABASE_URL is a Postgres URL (it dispatches to its own
-    seed_postgres() instead).
-  - SQLite CREATE TRIGGER ... RAISE(ABORT ...) — skipped by the migrations in
-    app/database.py; a fresh Postgres schema already has the CHECK constraints
-    those triggers emulate, and assignments.booking_id is UNIQUE.
+Five behaviours are deliberately *not* left to psycopg's defaults, because the
+defaults would silently differ from SQLite:
+
+  - Timestamps. schema.sql declares TIMESTAMP WITH TIME ZONE, so psycopg returns
+    dt.datetime where SQLite returned str. `_sqlite_value()` renders every
+    timestamp as the naive UTC 'YYYY-MM-DD HH:MM:SS' text SQLite stores, so the
+    ~47 str-parsing call sites, the 21 `str`-typed Pydantic fields and the
+    ledger's SHA-256 hash chain all keep working -- and keep producing the same
+    digest they did on SQLite.
+  - Session TimeZone. `DATE(col, '+330 minutes')` truncates in the session zone,
+    so _pooled() pins every connection to UTC rather than inheriting a server
+    default that differs between a dev machine and Neon.
+  - Transactions. The raw connection runs autocommit, and the wrapper opens one
+    lazily on the first statement that SQLite would have wrapped (INSERT,
+    UPDATE, DELETE, REPLACE), so `database.connection()` keeps its
+    all-or-nothing meaning. Otherwise a signup that fails on its second INSERT
+    would leave the first row committed.
+  - BEGIN IMMEDIATE. Plain BEGIN is deferred in PostgreSQL and takes no lock, so
+    the read-then-write blocks in booking_flow_db would no longer be
+    serialised. It is rewritten to BEGIN plus a transaction-scoped advisory
+    lock, which is the same single-writer guarantee SQLite gives.
+  - lastrowid. `lastval()` is session-scoped and table-agnostic, so on a pooled
+    connection it happily returns another table's id from an earlier request.
+    The generated id is read from `RETURNING id` instead.
+
+DATABASE_URL is read through `app.database` at call time, never captured at
+import time, so there is a single source of truth: patching app.database
+.DATABASE_URL (tests, runtime reconfiguration) repoints this adapter too, and a
+pooled connection opened for a previous URL is dropped rather than reused.
+
+Anything not listed as translated is checked against a deny-list and raises,
+rather than being handed to PostgreSQL to fail confusingly at query time.
+
+Not translated:
+  - INSERT OR REPLACE -- only scripts/seed_demo_data.py's SQLite branch uses it.
+  - SQLite CREATE TRIGGER ... RAISE(ABORT ...) -- only the SQLite migration
+    chain creates those; schema.sql already carries the CHECK constraints they
+    emulate.
 
 Connections are pooled per thread (Render -> Neon is cross-region; a fresh TLS
 handshake per query block would dominate request latency). prepare_threshold is
@@ -24,15 +54,62 @@ prepared statements.
 """
 from __future__ import annotations
 
+import datetime as dt
 import re
+import sqlite3
 import threading
 
 import psycopg
 
-from app.database import DATABASE_URL
+from app import database
+
+
+# The booking flow serialises all of its writes behind one lock, so the
+# PostgreSQL equivalent has to be a single lock too rather than per-table ones.
+# Any constant works as long as it is consistent; this value is arbitrary.
+_BOOKING_FLOW_LOCK_KEY = 0x53494832_3032_3601  # "SIH2026" + 1
 
 
 # ── rows ─────────────────────────────────────────────────────────────────────
+
+def _sqlite_value(value):
+    """One PostgreSQL value, rendered the way SQLite would have stored it.
+
+    SQLite has no date or time types. schema.sql's `TIMESTAMP WITH TIME ZONE`
+    columns are TEXT on SQLite, written by CURRENT_TIMESTAMP as
+    'YYYY-MM-DD HH:MM:SS' in UTC with no offset and no fractional seconds, and
+    read back verbatim as str. That single spelling is what the rest of this app
+    was written against, so the mapping belongs here -- at the "Postgres behind
+    the sqlite3 surface" layer -- rather than at the ~47 call sites that parse it:
+
+      - app/services/overview.py:_parse does value.replace("T", " ")[:19], which
+        is str-only: datetime's first two positional parameters are year and
+        month, so a datetime raises TypeError before strptime is reached.
+      - 21 Pydantic models declare their timestamp fields `str`; v2 does not
+        coerce a datetime into one.
+      - app/services/ledger.py feeds str(created_at) into its SHA-256 hash chain,
+        so `str(datetime)` produced a *different digest for the same booking* --
+        silent corruption of the settlement audit trail rather than an error.
+
+    tz-aware datetimes are converted to UTC, microseconds dropped, and formatted
+    '%Y-%m-%d %H:%M:%S'. Dropping the offset is the point: SQLite's text is
+    naive UTC by construction, so rendering naive UTC here keeps the bytes
+    identical to the SQLite deployment *and* keeps the ledger hash chain stable
+    across engines. A naive datetime is already UTC (the session TimeZone is
+    pinned in _pooled()), so it is only formatted.
+
+    dates become ISO text, which is how SQLite stores a DATE column. Everything
+    else passes through untouched: int, float, str, bytes/memoryview, Decimal,
+    None.
+    """
+    if isinstance(value, dt.datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(dt.timezone.utc).replace(tzinfo=None)
+        return value.replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(value, dt.date):  # datetime is a subclass, so it is checked first
+        return value.isoformat()
+    return value
+
 
 class Row:
     """sqlite3.Row look-alike: row["col"], row[0], dict(row), iteration."""
@@ -41,8 +118,8 @@ class Row:
 
     def __init__(self, names: tuple[str, ...], values: tuple) -> None:
         self._names = names
-        self._values = values
-        self._by_name = dict(zip(names, values))
+        self._values = tuple(_sqlite_value(value) for value in values)
+        self._by_name = dict(zip(names, self._values))
 
     def keys(self):
         return list(self._names)
@@ -65,19 +142,234 @@ class Row:
         return f"<Row {self._by_name!r}>"
 
 
-def _row_factory(cursor, values):
-    return Row(tuple(d.name for d in cursor.description or ()), tuple(values))
+def _row_factory(cursor):
+    """psycopg 3's row factory: takes the cursor, returns a row maker.
 
+    psycopg 3 calls a row_factory with ONE argument -- the cursor -- and expects
+    a callable back, which it then invokes once per record with the adapted
+    values (psycopg/cursor.py `_make_row_maker`). psycopg *2*'s two-argument
+    (cursor, values) convention raises `TypeError: _row_factory() missing 1
+    required positional argument: 'values'` on the first statement of every
+    connection -- including the BEGIN this module issues before any real SQL is
+    sent, which is why the Postgres path had never executed a statement at all.
+
+    Column names are read inside the row maker rather than captured when the
+    factory is called, because that is where `cursor.description` describes the
+    *current* result set; psycopg's own dict_row does the same.
+    """
+
+    def make_row(values):
+        return Row(tuple(d.name for d in cursor.description or ()), tuple(values))
+
+    return make_row
+
+
+# ── statement classification ─────────────────────────────────────────────────
+
+_TABLE_INFO = re.compile(
+    r"^\s*PRAGMA\s+table_info\(\s*"
+    r"(?:'([^']*)'|\"([^\"]*)\"|([A-Za-z_]\w*))"
+    r"\s*\)\s*;?\s*$",
+    re.I,
+)
+
+# SQLite connection tuning and integrity pragmas have no PostgreSQL equivalent.
+# Answered with a trivial result so callers that ignore the cursor, and callers
+# that iterate it, both behave.
+_NOOP_PRAGMA = re.compile(
+    r"^\s*PRAGMA\s+(foreign_keys|foreign_key_check|busy_timeout|journal_mode"
+    r"|synchronous|user_version|integrity_check)\b",
+    re.I,
+)
+
+_ANY_PRAGMA = re.compile(r"^\s*PRAGMA\b", re.I)
+
+_INSERT_OR_IGNORE = re.compile(r"^\s*INSERT\s+OR\s+IGNORE\s+INTO\b", re.I)
+_BEGIN_IMMEDIATE = re.compile(r"^\s*BEGIN\s+IMMEDIATE\b", re.I)
+_RETURNING = re.compile(r"\bRETURNING\b", re.I)
+_INSERT_INTO = re.compile(
+    r"^\s*INSERT\s+(?:OR\s+\w+\s+)?INTO\s+([A-Za-z_]\w*)", re.I
+)
+
+# Statements SQLite would wrap in an implicit transaction (isolation_level=""),
+# and statements that manage transactions themselves.
+_IMPLICIT_TXN = re.compile(r"^\s*(?:INSERT|UPDATE|DELETE|REPLACE)\b", re.I)
+_TRANSACTION_CONTROL = re.compile(r"^\s*(BEGIN|COMMIT|ROLLBACK|END)\b", re.I)
+
+# `INTEGER PRIMARY KEY AUTOINCREMENT` is SQLite-only. SERIAL is the equivalent.
+_AUTOINCREMENT_PK = re.compile(
+    r"\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b", re.I
+)
+
+# sqlite_master becomes a subquery so every shape the app uses keeps working,
+# including "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?".
+# relkind 'r' is an ordinary table; 'v' covers a view if one is ever added.
+_SQLITE_MASTER_SUBQUERY = (
+    "(SELECT c.relname AS name, 'table' AS type FROM pg_class c "
+    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+    "WHERE c.relkind IN ('r', 'v') AND n.nspname = current_schema())"
+)
+
+# ── sqlite scalar date / arithmetic functions ────────────────────────────────
+#
+# Only the forms this codebase actually issues, found by grepping app/ for each.
+# Anything else in this family is caught by the deny-list.
+
+# datetime('now', ?) -> NOW() plus a PostgreSQL interval. SQLite's modifier
+# ('-24 hours', '+330 minutes') is interval syntax, so it casts directly.
+_DATETIME_NOW_MOD = re.compile(
+    r"\bdatetime\(\s*'now'\s*,\s*(\?|%s)\s*\)", re.I
+)
+# datetime(col) is SQLite's "normalise this column" no-op. The column is
+# already a real timestamp on PostgreSQL.
+_DATETIME_COLUMN = re.compile(r"\bdatetime\(\s*([A-Za-z_]\w*)\s*\)", re.I)
+# DATE(col, 'modifier') -> shift by the interval, then truncate to a date.
+_DATE_WITH_MODIFIER = re.compile(
+    r"\bDATE\(\s*([A-Za-z_]\w*)\s*,\s*'([^']+)'\s*\)", re.I
+)
+# Two-argument MAX() is SQLite's scalar max; PostgreSQL spells that GREATEST.
+_MAX_TWO_ARGS = re.compile(r"\bMAX\s*\(\s*([^()]*?,[^()]*?)\s*\)", re.I)
+
+# SQLite constructs with no PostgreSQL spelling. Hitting one means a call site
+# was not found when this module was written, so it is raised loudly here
+# rather than surfacing as an opaque 500 on that endpoint.
+_DENIED = (
+    (re.compile(r"\bstrftime\s*\(", re.I),
+     "strftime()"),
+    (re.compile(r"\bjulianday\s*\(", re.I),
+     "julianday()"),
+    (re.compile(r"\bgroup_concat\s*\(", re.I),
+     "group_concat()"),
+    (re.compile(r"\bIFNULL\s*\(", re.I),
+     "IFNULL()"),
+    (re.compile(r"\bIIF\s*\(", re.I),
+     "IIF()"),
+    (re.compile(r"\blast_insert_rowid\s*\(", re.I),
+     "last_insert_rowid()"),
+    (re.compile(r"\bWITHOUT\s+ROWID\b", re.I),
+     "WITHOUT ROWID"),
+    (re.compile(r"^\s*ATTACH\b", re.I),
+     "ATTACH"),
+    (re.compile(r"^\s*VACUUM\b", re.I),
+     "VACUUM"),
+    (re.compile(r"\bRAISE\s*\(", re.I),
+     "RAISE()"),
+    (re.compile(r"\bGLOB\b", re.I),
+     "GLOB"),
+    (re.compile(r"\bsqlite_sequence\b", re.I),
+     "sqlite_sequence"),
+    (re.compile(r"^\s*INSERT\s+OR\s+(?!IGNORE\b)\w+", re.I),
+     "INSERT OR <verb> other than INSERT OR IGNORE"),
+)
+
+
+def _unsupported(sql: str) -> str | None:
+    """The first SQLite-only construct in `sql`, if any."""
+    if _ANY_PRAGMA.match(sql) and not (
+        _TABLE_INFO.match(sql) or _NOOP_PRAGMA.match(sql)
+    ):
+        return "an unhandled PRAGMA"
+    for pattern, label in _DENIED:
+        if pattern.search(sql):
+            return label
+    return None
+
+
+def _translate(sql: str, *, has_params: bool) -> str:
+    """Render one SQLite statement as PostgreSQL.
+
+    `has_params` decides whether literal `%` is escaped. psycopg only runs the
+    `%`-interpolation pass when parameters are supplied, so escaping when there
+    are none would corrupt DDL that legitimately contains a percent sign.
+    """
+    text = sql.strip()
+
+    table_info = _TABLE_INFO.match(text)
+    if table_info:
+        bare, single, double = table_info.groups()
+        table = (bare or single or double or "").replace("'", "''")
+        return (
+            "SELECT column_name AS name FROM information_schema.columns "
+            f"WHERE table_name = '{table}'"
+        )
+
+    if _NOOP_PRAGMA.match(text):
+        return "SELECT 1"
+
+    unsupported = _unsupported(text)
+    if unsupported:
+        raise NotImplementedError(
+            f"{unsupported} has no PostgreSQL equivalent and is not translated by "
+            f"app.pg. Rewrite this statement portably: {text[:200]}"
+        )
+
+    text = text.replace("sqlite_master", _SQLITE_MASTER_SUBQUERY)
+    text = _BEGIN_IMMEDIATE.sub("BEGIN", text)
+    text = _AUTOINCREMENT_PK.sub("SERIAL PRIMARY KEY", text)
+
+    if _INSERT_OR_IGNORE.match(text):
+        text = _INSERT_OR_IGNORE.sub("INSERT INTO", text, count=1)
+        text = text.rstrip().rstrip(";").rstrip()
+        # ON CONFLICT must precede RETURNING, and a statement that already
+        # carries its own RETURNING keeps it last.
+        returning = _RETURNING.search(text)
+        if returning:
+            text = (
+                text[: returning.start()]
+                + " ON CONFLICT DO NOTHING "
+                + text[returning.start() :]
+            )
+        else:
+            text += " ON CONFLICT DO NOTHING"
+
+    # SQLite scalar date/arith functions, before placeholder substitution so the
+    # rewrites can match the `?` markers.
+    text = _DATETIME_NOW_MOD.sub(r"(NOW() + CAST(\1 AS INTERVAL))", text)
+    text = _DATETIME_COLUMN.sub(r"\1", text)
+    text = _DATE_WITH_MODIFIER.sub(r"((\1 + CAST('\2' AS INTERVAL))::date)", text)
+    text = _MAX_TWO_ARGS.sub(r"GREATEST(\1)", text)
+
+    if not has_params:
+        return text
+
+    # `?` becomes psycopg's %s. Literal percent signs in the surrounding text
+    # must be doubled or psycopg reads them as format specifiers. No statement
+    # in this app embeds a literal % -- the LIKE patterns are all bound as
+    # parameters (app/main.py) -- but doubling keeps that true by construction.
+    parts = text.split("?")
+    out: list[str] = []
+    for index, part in enumerate(parts):
+        out.append(part.replace("%", "%%"))
+        if index < len(parts) - 1:
+            out.append("%s")
+    return "".join(out)
+
+
+# ── error mapping ────────────────────────────────────────────────────────────
+
+def _wrap(exc: BaseException) -> BaseException:
+    """Re-raise psycopg failures as the sqlite3 exceptions callers catch."""
+    if isinstance(exc, psycopg.errors.IntegrityError):
+        return sqlite3.IntegrityError(str(exc))
+    if isinstance(exc, psycopg.errors.OperationalError):
+        return sqlite3.OperationalError(str(exc))
+    if isinstance(exc, psycopg.errors.Error):
+        return sqlite3.OperationalError(str(exc))
+    return exc
+
+
+# ── cursors and connections ──────────────────────────────────────────────────
 
 class Cursor:
     """sqlite3.Cursor look-alike over a psycopg cursor."""
 
-    __slots__ = ("_cur", "lastrowid", "_rowcount")
+    __slots__ = ("_cur", "lastrowid", "_rowcount", "_conn")
 
-    def __init__(self, cur, lastrowid=None, rowcount=None) -> None:
+    def __init__(self, cur, lastrowid=None, rowcount=None, conn=None) -> None:
         self._cur = cur
         self.lastrowid = lastrowid
         self._rowcount = rowcount
+        self._conn = conn
 
     @property
     def rowcount(self) -> int:
@@ -85,11 +377,314 @@ class Cursor:
             return self._rowcount
         return self._cur.rowcount
 
+    def execute(self, sql: str, params=()) -> "Cursor":
+        statement = _translate(sql, has_params=bool(params))
+
+        # BEGIN IMMEDIATE takes SQLite's write lock before any read. Plain
+        # BEGIN is deferred in PostgreSQL, so the advisory lock is what
+        # preserves the read-then-write serialisation callers rely on.
+        if _BEGIN_IMMEDIATE.match(sql):
+            self._conn._begin_immediate()
+            return self
+
+        if (
+            self._conn is not None
+            and _IMPLICIT_TXN.match(sql)
+            and not self._conn._in_txn
+        ):
+            self._conn._begin_implicit()
+
+        statement, returning_id = self._add_returning_id(sql, statement)
+
+        try:
+            self._cur.execute(statement, params or None)
+        except Exception as exc:  # noqa: BLE001 - re-raised as sqlite3 types
+            raise _wrap(exc) from exc
+
+        self._rowcount = None
+        if self._conn is not None and _TRANSACTION_CONTROL.match(sql):
+            self._conn._in_txn = sql.strip().split()[0].upper() == "BEGIN"
+
+        if _is_insert(sql):
+            self.lastrowid = self._read_returned_id() if returning_id else None
+        else:
+            self.lastrowid = None
+        return self
+
+    def _add_returning_id(self, sql: str, statement: str) -> tuple[str, bool]:
+        """Append RETURNING id so lastrowid needs no second round trip.
+
+        Only for tables that actually have an `id` column: sessions,
+        schema_migrations and standard_rates do not, and appending it there
+        would be a syntax error at runtime.
+        """
+        if self._conn is None or not _is_insert(sql) or _RETURNING.search(sql):
+            return statement, False
+        target = _INSERT_INTO.match(sql)
+        if not target:
+            return statement, False
+        if not self._conn._has_id_column(target.group(1)):
+            return statement, False
+        return f"{statement} RETURNING id", True
+
+    def _read_returned_id(self):
+        """Consume the RETURNING id row. None means no row was inserted.
+
+        With ON CONFLICT DO NOTHING a conflict skips the row, so there is no new
+        id; reporting a stale one from earlier on this connection would be
+        worse than reporting none.
+        """
+        row = self._cur.fetchone()
+        if not row:
+            return None
+        try:
+            return int(row[0])
+        except (TypeError, ValueError):
+            return None
+
+    def executemany(self, sql: str, seq_of_params) -> "Cursor":
+        # No RETURNING here: psycopg cannot return rows for executemany, and
+        # nothing in the app reads lastrowid after one.
+        statement = _translate(sql, has_params=True)
+        try:
+            self._cur.executemany(statement, seq_of_params)
+        except Exception as exc:  # noqa: BLE001
+            raise _wrap(exc) from exc
+        self._rowcount = None
+        self.lastrowid = None
+        return self
+
     def fetchone(self):
         return self._cur.fetchone()
 
     def fetchall(self):
         return self._cur.fetchall()
 
+    def fetchmany(self, size=None):
+        return self._cur.fetchmany(size) if size is not None else self._cur.fetchmany()
+
+    def close(self) -> None:
+        self._cur.close()
+
     def __iter__(self):
         return iter(self._cur)
+
+
+def _is_insert(sql: str) -> bool:
+    return bool(re.match(r"^\s*INSERT\b", sql, re.I))
+
+
+class Connection:
+    """sqlite3.Connection look-alike over a pooled psycopg connection."""
+
+    __slots__ = ("_raw", "_in_txn", "_id_columns")
+
+    def __init__(self, raw) -> None:
+        self._raw = raw
+        self._in_txn = False
+        self._id_columns: dict[str, bool] = {}
+
+    # -- transaction plumbing --------------------------------------------------
+
+    def _begin_implicit(self) -> None:
+        """Open the transaction SQLite's implicit DML handling would have opened."""
+        try:
+            self._raw.execute("BEGIN")
+        except Exception as exc:  # noqa: BLE001
+            raise _wrap(exc) from exc
+        self._in_txn = True
+
+    def _begin_immediate(self) -> None:
+        """BEGIN IMMEDIATE: serialise writers before taking any read.
+
+        The advisory lock is transaction-scoped, so COMMIT or ROLLBACK releases
+        it. SQLite allows exactly one writer at a time, so one lock is the
+        faithful equivalent rather than a per-table refinement.
+        """
+        try:
+            self._raw.execute("BEGIN")
+            self._raw.execute(
+                "SELECT pg_advisory_xact_lock(%s)", (_BOOKING_FLOW_LOCK_KEY,)
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise _wrap(exc) from exc
+        self._in_txn = True
+
+    def _has_id_column(self, table: str) -> bool:
+        """Whether `table` has an `id` column, cached per pooled connection."""
+        cached = self._id_columns.get(table)
+        if cached is None:
+            row = self._raw.execute(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = %s AND column_name = 'id' LIMIT 1",
+                (table,),
+            ).fetchone()
+            cached = row is not None
+            self._id_columns[table] = cached
+        return cached
+
+    # -- sqlite3 surface -------------------------------------------------------
+
+    def cursor(self) -> Cursor:
+        return Cursor(self._raw.cursor(), conn=self)
+
+    def execute(self, sql: str, params=()) -> Cursor:
+        return self.cursor().execute(sql, params)
+
+    def executemany(self, sql: str, seq_of_params) -> Cursor:
+        return self.cursor().executemany(sql, seq_of_params)
+
+    def executescript(self, script: str) -> None:
+        """Run a multi-statement DDL script atomically.
+
+        psycopg sends a parameterless query through the simple protocol, so the
+        whole script runs in one round trip and no statement splitting (and no
+        risk of splitting inside a trigger body) is needed. No `%` escaping is
+        applied here for the same reason.
+        """
+        owns = not self._in_txn
+        if owns:
+            self._begin_implicit()
+        try:
+            with self._raw.cursor() as cur:
+                cur.execute(_translate(script, has_params=False))
+            if owns:
+                self.commit()
+        except Exception as exc:  # noqa: BLE001
+            if owns:
+                self.rollback()
+            raise _wrap(exc) from exc
+
+    def commit(self) -> None:
+        if not self._in_txn:
+            return
+        try:
+            self._raw.commit()
+        except Exception as exc:  # noqa: BLE001
+            raise _wrap(exc) from exc
+        finally:
+            self._in_txn = False
+
+    def rollback(self) -> None:
+        if not self._in_txn:
+            return
+        try:
+            self._raw.rollback()
+        except Exception as exc:  # noqa: BLE001
+            raise _wrap(exc) from exc
+        finally:
+            self._in_txn = False
+
+    @property
+    def in_transaction(self) -> bool:
+        return self._in_txn
+
+    @property
+    def autocommit(self) -> bool:
+        return not self._in_txn
+
+    @autocommit.setter
+    def autocommit(self, value: bool) -> None:
+        # The raw connection is always autocommit; the wrapper decides. Setting
+        # it True commits the open transaction, which is the sqlite3 meaning.
+        if value:
+            self.commit()
+
+    def close(self) -> None:
+        """No-op: the connection is pooled per thread and reused.
+
+        A leaked transaction would poison the next request on this thread, so
+        roll back rather than leaving one open.
+        """
+        if self._in_txn:
+            try:
+                self._raw.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+            self._in_txn = False
+
+    def __enter__(self) -> "Connection":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+
+# ── per-thread pool ──────────────────────────────────────────────────────────
+
+_local = threading.local()
+
+
+def _discard(conn) -> None:
+    """Close a pooled raw connection, ignoring an already-broken one."""
+    if conn is None:
+        return
+    try:
+        conn.close()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _pooled() -> Connection:
+    # Read through the module, not a value captured at import time: tests and
+    # runtime reconfiguration patch app.database.DATABASE_URL, and a copy taken
+    # with `from app.database import DATABASE_URL` is silently unaffected by
+    # that, so the adapter would keep talking to the old database.
+    url = database.DATABASE_URL
+    conn = getattr(_local, "conn", None)
+
+    # A pooled connection outlives a DATABASE_URL change, so it has to be
+    # dropped when the URL it was opened for is no longer the configured one.
+    # Without this, repointing DATABASE_URL would appear to work and keep
+    # writing to the previous database.
+    if conn is not None and getattr(_local, "url", None) != url:
+        _discard(conn)
+        _local.conn = None
+        conn = None
+
+    if conn is None or conn.closed:
+        # autocommit keeps psycopg from opening an implicit transaction behind
+        # our back; the wrapper above opens one where SQLite would have.
+        # prepare_threshold=None: Neon's pooled endpoint rejects prepared
+        # statements.
+        raw = psycopg.connect(url, autocommit=True, prepare_threshold=None)
+        raw.row_factory = _row_factory
+
+        # Pin the session TimeZone before the connection is handed out.
+        # Statements this app issues truncate timestamps to a day with
+        # `DATE(created_at, '+330 minutes')`, which becomes
+        # `((created_at + INTERVAL '330 minutes')::date)`: on a timestamptz
+        # column `::date` truncates in the *session* TimeZone, so the result
+        # depends on the server default. A Homebrew/dev server defaults to
+        # Asia/Kolkata and Neon defaults to UTC, so the same query counted three
+        # payments on one IST day as two in development and one in production,
+        # with no error anywhere. SQLite's timestamps are naive UTC text, so UTC
+        # is the only session zone that keeps the two engines in agreement.
+        # SET is not parameterised in PostgreSQL, hence the literal.
+        try:
+            raw.execute("SET TIME ZONE 'UTC'")
+        except Exception:
+            _discard(raw)
+            raise
+
+        _local.conn = raw
+        _local.url = url
+        conn = raw
+    return Connection(conn)
+
+
+def _reset_thread_connection() -> None:
+    """Drop this thread's pooled connection. Used by tests."""
+    _discard(getattr(_local, "conn", None))
+    _local.conn = None
+    _local.url = None
+
+
+def get_connection():
+    """A Postgres-backed stand-in for database.get_connection()."""
+    if not database.DATABASE_URL:
+        raise RuntimeError(
+            "app.pg.get_connection() called without DATABASE_URL set. "
+            "This adapter only runs when a Postgres URL is configured."
+        )
+    return _pooled()
