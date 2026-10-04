@@ -8,9 +8,18 @@ sqlite_master probes, INSERT OR IGNORE, BEGIN IMMEDIATE, sqlite3 date/arith
 functions, and sqlite3.IntegrityError/OperationalError raised for PG failures
 (so the exception handlers in app/main.py still fire).
 
-Three behaviours are deliberately *not* left to psycopg's defaults, because the
+Five behaviours are deliberately *not* left to psycopg's defaults, because the
 defaults would silently differ from SQLite:
 
+  - Timestamps. schema.sql declares TIMESTAMP WITH TIME ZONE, so psycopg returns
+    dt.datetime where SQLite returned str. `_sqlite_value()` renders every
+    timestamp as the naive UTC 'YYYY-MM-DD HH:MM:SS' text SQLite stores, so the
+    ~47 str-parsing call sites, the 21 `str`-typed Pydantic fields and the
+    ledger's SHA-256 hash chain all keep working -- and keep producing the same
+    digest they did on SQLite.
+  - Session TimeZone. `DATE(col, '+330 minutes')` truncates in the session zone,
+    so _pooled() pins every connection to UTC rather than inheriting a server
+    default that differs between a dev machine and Neon.
   - Transactions. The raw connection runs autocommit, and the wrapper opens one
     lazily on the first statement that SQLite would have wrapped (INSERT,
     UPDATE, DELETE, REPLACE), so `database.connection()` keeps its
@@ -23,6 +32,11 @@ defaults would silently differ from SQLite:
   - lastrowid. `lastval()` is session-scoped and table-agnostic, so on a pooled
     connection it happily returns another table's id from an earlier request.
     The generated id is read from `RETURNING id` instead.
+
+DATABASE_URL is read through `app.database` at call time, never captured at
+import time, so there is a single source of truth: patching app.database
+.DATABASE_URL (tests, runtime reconfiguration) repoints this adapter too, and a
+pooled connection opened for a previous URL is dropped rather than reused.
 
 Anything not listed as translated is checked against a deny-list and raises,
 rather than being handed to PostgreSQL to fail confusingly at query time.
@@ -40,13 +54,14 @@ prepared statements.
 """
 from __future__ import annotations
 
+import datetime as dt
 import re
 import sqlite3
 import threading
 
 import psycopg
 
-from app.database import DATABASE_URL
+from app import database
 
 
 # The booking flow serialises all of its writes behind one lock, so the
@@ -57,6 +72,45 @@ _BOOKING_FLOW_LOCK_KEY = 0x53494832_3032_3601  # "SIH2026" + 1
 
 # ── rows ─────────────────────────────────────────────────────────────────────
 
+def _sqlite_value(value):
+    """One PostgreSQL value, rendered the way SQLite would have stored it.
+
+    SQLite has no date or time types. schema.sql's `TIMESTAMP WITH TIME ZONE`
+    columns are TEXT on SQLite, written by CURRENT_TIMESTAMP as
+    'YYYY-MM-DD HH:MM:SS' in UTC with no offset and no fractional seconds, and
+    read back verbatim as str. That single spelling is what the rest of this app
+    was written against, so the mapping belongs here -- at the "Postgres behind
+    the sqlite3 surface" layer -- rather than at the ~47 call sites that parse it:
+
+      - app/services/overview.py:_parse does value.replace("T", " ")[:19], which
+        is str-only: datetime's first two positional parameters are year and
+        month, so a datetime raises TypeError before strptime is reached.
+      - 21 Pydantic models declare their timestamp fields `str`; v2 does not
+        coerce a datetime into one.
+      - app/services/ledger.py feeds str(created_at) into its SHA-256 hash chain,
+        so `str(datetime)` produced a *different digest for the same booking* --
+        silent corruption of the settlement audit trail rather than an error.
+
+    tz-aware datetimes are converted to UTC, microseconds dropped, and formatted
+    '%Y-%m-%d %H:%M:%S'. Dropping the offset is the point: SQLite's text is
+    naive UTC by construction, so rendering naive UTC here keeps the bytes
+    identical to the SQLite deployment *and* keeps the ledger hash chain stable
+    across engines. A naive datetime is already UTC (the session TimeZone is
+    pinned in _pooled()), so it is only formatted.
+
+    dates become ISO text, which is how SQLite stores a DATE column. Everything
+    else passes through untouched: int, float, str, bytes/memoryview, Decimal,
+    None.
+    """
+    if isinstance(value, dt.datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(dt.timezone.utc).replace(tzinfo=None)
+        return value.replace(microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(value, dt.date):  # datetime is a subclass, so it is checked first
+        return value.isoformat()
+    return value
+
+
 class Row:
     """sqlite3.Row look-alike: row["col"], row[0], dict(row), iteration."""
 
@@ -64,8 +118,8 @@ class Row:
 
     def __init__(self, names: tuple[str, ...], values: tuple) -> None:
         self._names = names
-        self._values = values
-        self._by_name = dict(zip(names, values))
+        self._values = tuple(_sqlite_value(value) for value in values)
+        self._by_name = dict(zip(names, self._values))
 
     def keys(self):
         return list(self._names)
@@ -88,8 +142,26 @@ class Row:
         return f"<Row {self._by_name!r}>"
 
 
-def _row_factory(cursor, values):
-    return Row(tuple(d.name for d in cursor.description or ()), tuple(values))
+def _row_factory(cursor):
+    """psycopg 3's row factory: takes the cursor, returns a row maker.
+
+    psycopg 3 calls a row_factory with ONE argument -- the cursor -- and expects
+    a callable back, which it then invokes once per record with the adapted
+    values (psycopg/cursor.py `_make_row_maker`). psycopg *2*'s two-argument
+    (cursor, values) convention raises `TypeError: _row_factory() missing 1
+    required positional argument: 'values'` on the first statement of every
+    connection -- including the BEGIN this module issues before any real SQL is
+    sent, which is why the Postgres path had never executed a statement at all.
+
+    Column names are read inside the row maker rather than captured when the
+    factory is called, because that is where `cursor.description` describes the
+    *current* result set; psycopg's own dict_row does the same.
+    """
+
+    def make_row(values):
+        return Row(tuple(d.name for d in cursor.description or ()), tuple(values))
+
+    return make_row
 
 
 # ── statement classification ─────────────────────────────────────────────────
@@ -543,34 +615,74 @@ class Connection:
 _local = threading.local()
 
 
+def _discard(conn) -> None:
+    """Close a pooled raw connection, ignoring an already-broken one."""
+    if conn is None:
+        return
+    try:
+        conn.close()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _pooled() -> Connection:
+    # Read through the module, not a value captured at import time: tests and
+    # runtime reconfiguration patch app.database.DATABASE_URL, and a copy taken
+    # with `from app.database import DATABASE_URL` is silently unaffected by
+    # that, so the adapter would keep talking to the old database.
+    url = database.DATABASE_URL
     conn = getattr(_local, "conn", None)
+
+    # A pooled connection outlives a DATABASE_URL change, so it has to be
+    # dropped when the URL it was opened for is no longer the configured one.
+    # Without this, repointing DATABASE_URL would appear to work and keep
+    # writing to the previous database.
+    if conn is not None and getattr(_local, "url", None) != url:
+        _discard(conn)
+        _local.conn = None
+        conn = None
+
     if conn is None or conn.closed:
         # autocommit keeps psycopg from opening an implicit transaction behind
         # our back; the wrapper above opens one where SQLite would have.
         # prepare_threshold=None: Neon's pooled endpoint rejects prepared
         # statements.
-        raw = psycopg.connect(DATABASE_URL, autocommit=True, prepare_threshold=None)
+        raw = psycopg.connect(url, autocommit=True, prepare_threshold=None)
         raw.row_factory = _row_factory
+
+        # Pin the session TimeZone before the connection is handed out.
+        # Statements this app issues truncate timestamps to a day with
+        # `DATE(created_at, '+330 minutes')`, which becomes
+        # `((created_at + INTERVAL '330 minutes')::date)`: on a timestamptz
+        # column `::date` truncates in the *session* TimeZone, so the result
+        # depends on the server default. A Homebrew/dev server defaults to
+        # Asia/Kolkata and Neon defaults to UTC, so the same query counted three
+        # payments on one IST day as two in development and one in production,
+        # with no error anywhere. SQLite's timestamps are naive UTC text, so UTC
+        # is the only session zone that keeps the two engines in agreement.
+        # SET is not parameterised in PostgreSQL, hence the literal.
+        try:
+            raw.execute("SET TIME ZONE 'UTC'")
+        except Exception:
+            _discard(raw)
+            raise
+
         _local.conn = raw
+        _local.url = url
         conn = raw
     return Connection(conn)
 
 
 def _reset_thread_connection() -> None:
     """Drop this thread's pooled connection. Used by tests."""
-    raw = getattr(_local, "conn", None)
-    if raw is not None:
-        try:
-            raw.close()
-        except Exception:  # noqa: BLE001
-            pass
+    _discard(getattr(_local, "conn", None))
     _local.conn = None
+    _local.url = None
 
 
 def get_connection():
     """A Postgres-backed stand-in for database.get_connection()."""
-    if not DATABASE_URL:
+    if not database.DATABASE_URL:
         raise RuntimeError(
             "app.pg.get_connection() called without DATABASE_URL set. "
             "This adapter only runs when a Postgres URL is configured."

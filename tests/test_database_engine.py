@@ -221,17 +221,36 @@ def test_booking_flow_still_uses_sqlite_without_a_url(db_path):
     assert isinstance(booking_flow_db.open_connection(), sqlite3.Connection)
 
 
-# ── schema.sql must cover what the SQLite migration chain creates ────────────
+# ── schema.sql must cover what the SQLite path creates ───────────────────────
 #
 # Postgres never runs migrate(); init_db() applies schema.sql instead. Any table
-# or column the migration chain adds but schema.sql omits simply does not exist
-# in production. Two such gaps shipped unnoticed: payment_ledger and
+# or column the SQLite path adds but schema.sql omits simply does not exist in
+# production. Two such gaps shipped unnoticed: payment_ledger and
 # booking_ratings (created lazily by booking_flow_db) and the worker_documents
 # verification and blob columns. This walks both paths and compares them.
+#
+# The SQLite side is not just SCHEMA + migrations. init_db() runs the migration
+# chain and stops, so a *fresh* database also lacks the columns the booking flow
+# adds later, on its first request, with ALTER TABLE ADD COLUMN
+# (app/booking_flow_db.py:_pending_changes). Comparing only the migration chain
+# therefore compares two databases that are both missing those columns and
+# passes -- which is exactly how assignments.score_breakdown, .explanation,
+# .allocation_score, bookings.completed_at and workers.base_rating / .rating_count
+# reached a half-built Postgres schema. The helpers below run the full SQLite
+# path, guard included.
 
-def _columns_via_migrations(db_path):
-    """Every table and column the SQLite path ends up with."""
-    with connection() as conn:
+def _sqlite_columns_after_boot(db_path):
+    """Every table and column the SQLite path ends up with once a request has run.
+
+    init_db() has already been applied by the db_path fixture, so this only adds
+    the booking flow's own schema guard -- the same thing
+    booking_flow_connection() does on its first request.
+    """
+    import app.booking_flow_db as booking_flow_db
+
+    conn = booking_flow_db.open_connection()
+    try:
+        booking_flow_db.ensure_booking_flow_schema(conn)
         tables = {
             row[0]
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -243,17 +262,23 @@ def _columns_via_migrations(db_path):
             for table in tables
             if not table.startswith("sqlite_")
         }
+    finally:
+        conn.close()
 
 
-def _columns_from_schema_sql():
-    """Every table and column schema.sql declares, parsed without a server."""
+def _declarations_from_schema_sql():
+    """Every table and column schema.sql declares, with its declaration text.
+
+    Parsed without a server, and keyed by declaration rather than by column name
+    alone so a test can pin the type and default too.
+    """
     import re
 
     text = (database.BASE_DIR / "schema.sql").read_text(encoding="utf-8")
     parsed = {}
     for match in re.finditer(r"CREATE TABLE IF NOT EXISTS (\w+)\s*\((.*?)\n\);", text, re.S):
         table, body = match.group(1), match.group(2)
-        columns = set()
+        declarations = {}
         for line in body.split("\n"):
             line = line.split("--")[0].strip().rstrip(",")
             if not line:
@@ -261,15 +286,27 @@ def _columns_from_schema_sql():
             first = line.split()[0].upper()
             if first in {"UNIQUE", "CHECK", "FOREIGN", "PRIMARY", "CONSTRAINT"}:
                 continue
-            columns.add(line.split()[0])
-        parsed[table] = columns
+            declarations[line.split()[0]] = " ".join(line.split())
+        parsed[table] = declarations
     return parsed
 
 
+def _columns_from_schema_sql():
+    """Every table and column schema.sql declares, parsed without a server."""
+    return {
+        table: set(declarations)
+        for table, declarations in _declarations_from_schema_sql().items()
+    }
+
+
 def test_schema_sql_is_not_missing_anything_the_migrations_create(db_path):
-    """Postgres gets schema.sql; SQLite gets the migration chain. They must agree."""
-    migrated = _columns_via_migrations(db_path)
+    """Postgres gets schema.sql; SQLite gets the migration chain plus the booking
+    flow's guard. They must agree on every table and column."""
+    migrated = _sqlite_columns_after_boot(db_path)
     declared = _columns_from_schema_sql()
+
+    missing_tables = sorted(set(migrated) - set(declared))
+    assert missing_tables == [], f"schema.sql is missing tables: {missing_tables}"
 
     missing_columns = {
         table: sorted(migrated[table] - declared.get(table, set()))
@@ -277,6 +314,110 @@ def test_schema_sql_is_not_missing_anything_the_migrations_create(db_path):
         if migrated[table] - declared.get(table, set())
     }
     assert missing_columns == {}, f"schema.sql is missing columns: {missing_columns}"
+
+
+# The booking flow adds its columns with ALTER TABLE on a database that lacks
+# them, so on Postgres -- where schema.sql is the only thing that runs at boot --
+# anything it would ALTER has to be declared in schema.sql instead. This asks
+# _pending_changes what it would do to a database that has none of them and holds
+# schema.sql to every answer.
+#
+# It has to be a legacy-shaped database rather than the fresh one: the guard only
+# adds assignments.allocation_score when no ASSIGNMENT_SCORE_COLUMNS member
+# exists, and SCHEMA declares assignments.score, so a fresh database never gets
+# that ALTER and a test built on a fresh database cannot catch it going missing.
+LEGACY_BOOKING_FLOW_DB = """
+CREATE TABLE workers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    jobs_this_week INTEGER NOT NULL DEFAULT 0,
+    rating REAL
+);
+CREATE TABLE bookings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending'
+);
+CREATE TABLE assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_id INTEGER NOT NULL,
+    worker_id INTEGER NOT NULL
+);
+"""
+
+# The SQLite declaration is the source of truth; the Postgres one is what
+# schema.sql must say instead. completed_at is TEXT on SQLite because that is
+# how SQLite spells a timestamp -- schema.sql declares every other *_at column
+# as TIMESTAMP WITH TIME ZONE, and so must this one.
+BOOKING_FLOW_COLUMNS = {
+    ("assignments", "allocation_score"): ("REAL", "REAL"),
+    ("assignments", "score_breakdown"): ("TEXT", "TEXT"),
+    ("assignments", "explanation"): ("TEXT", "TEXT"),
+    ("bookings", "completed_at"): ("TEXT", "TIMESTAMP WITH TIME ZONE"),
+    ("workers", "base_rating"): ("REAL", "REAL"),
+    ("workers", "rating_count"): ("INTEGER NOT NULL DEFAULT 0", "INTEGER NOT NULL DEFAULT 0"),
+}
+
+
+def _columns_the_booking_flow_would_add(path):
+    """The columns _pending_changes ALTERs into a database that has none of them.
+
+    Returns {(table, column): declaration} using booking_flow_db's own DDL, so
+    this stays right if those declarations ever change.
+    """
+    import re
+
+    import app.booking_flow_db as booking_flow_db
+
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.executescript(LEGACY_BOOKING_FLOW_DB)
+        added = {}
+        for statement in booking_flow_db._pending_changes(conn):
+            match = re.match(r"ALTER TABLE (\w+) ADD COLUMN (\w+)\s+(.*)", statement)
+            if match:
+                added[(match.group(1), match.group(2))] = " ".join(match.group(3).split())
+        return added
+    finally:
+        conn.close()
+
+
+def test_booking_flow_alter_table_columns_are_all_declared_in_schema_sql(tmp_path):
+    """A Postgres boot must not depend on the booking flow fixing the schema."""
+    added = _columns_the_booking_flow_would_add(tmp_path / "legacy.db")
+    declared = _columns_from_schema_sql()
+
+    assert set(added) == set(BOOKING_FLOW_COLUMNS), (
+        "the booking flow's ADD COLUMN set changed; update BOOKING_FLOW_COLUMNS "
+        f"and schema.sql. Now: {sorted(added)}"
+    )
+    missing = {
+        f"{table}.{column}": declaration
+        for (table, column), declaration in added.items()
+        if column not in declared.get(table, set())
+    }
+    assert missing == {}, (
+        "schema.sql is missing columns that app/booking_flow_db.py only adds with "
+        f"ALTER TABLE on the first request: {missing}"
+    )
+
+
+def test_schema_sql_types_the_booking_flow_columns_like_sqlite_does(tmp_path):
+    """The column has to exist *and* mean the same thing once it is there."""
+    added = _columns_the_booking_flow_would_add(tmp_path / "legacy.db")
+    declarations = _declarations_from_schema_sql()
+
+    for (table, column), (sqlite_decl, postgres_decl) in BOOKING_FLOW_COLUMNS.items():
+        assert added[(table, column)] == sqlite_decl, (
+            f"{table}.{column}: booking_flow_db declares {added[(table, column)]!r}, "
+            f"this test expects {sqlite_decl!r}"
+        )
+        actual = declarations.get(table, {}).get(column)
+        assert actual == f"{column} {postgres_decl}", (
+            f"schema.sql declares {table}.{column} as {actual!r}; expected "
+            f"{column + ' ' + postgres_decl!r}"
+        )
 
 
 def test_schema_sql_declares_the_booking_flow_tables():
@@ -368,10 +509,20 @@ def test_postgres_boot_applies_schema_sql_and_not_the_schema_constant(monkeypatc
     assert "assistant_audit" in scripts[0]
 
     # Existing databases need ALTERs, because CREATE TABLE IF NOT EXISTS skips
-    # a table that already exists in an older shape.
+    # a table that already exists in an older shape. Counted against the tuple
+    # rather than a literal so the set can grow without a silent skip.
     alters = [c for c in calls if c.startswith("ALTER TABLE")]
-    assert len(alters) == 8, f"expected the 8 document columns, got {len(alters)}"
+    assert len(alters) == len(database._POSTGRES_COLUMN_UPGRADES), (
+        f"expected one ALTER per _POSTGRES_COLUMN_UPGRADES entry "
+        f"({len(database._POSTGRES_COLUMN_UPGRADES)}), got {len(alters)}"
+    )
     assert all("IF NOT EXISTS" in a for a in alters)
+    # The eight document columns are what motivated the mechanism; they stay
+    # covered whatever else is added alongside them.
+    document_alters = [a for a in alters if a.startswith("ALTER TABLE worker_documents")]
+    assert len(document_alters) == 8, (
+        f"expected the 8 document columns, got {len(document_alters)}"
+    )
 
     assert "asserted" in calls, "schema shape was never verified"
 
@@ -396,6 +547,11 @@ class _RecordingConnection:
     def execute(self, sql, params=()):
         self._calls.append(sql)
         return self
+
+    def fetchone(self):
+        # _upgrade_postgres_columns asks information_schema.tables whether each
+        # table exists yet; report yes so the ALTER path is exercised.
+        return (1,)
 
     def commit(self):
         pass

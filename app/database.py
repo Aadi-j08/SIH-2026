@@ -950,8 +950,13 @@ def _init_db_postgres() -> None:
         )
 
     with connection() as conn:
-        conn.executescript(schema_path.read_text(encoding="utf-8"))
+        # Column upgrades FIRST. schema.sql creates indexes over columns such as
+        # worker_documents.verified, and on a database that predates them Postgres
+        # rejects the CREATE INDEX with "column does not exist" before the ALTERs
+        # ever run -- so init_db() would abort on exactly the older databases it
+        # exists to repair.
         _upgrade_postgres_columns(conn)
+        conn.executescript(schema_path.read_text(encoding="utf-8"))
 
     # CREATE TABLE IF NOT EXISTS silently skips a table that already exists in
     # an older shape, so assert the columns that matter actually landed rather
@@ -974,12 +979,47 @@ _POSTGRES_COLUMN_UPGRADES: tuple[tuple[str, str, str], ...] = (
     ("worker_documents", "content_type", "TEXT"),
     ("worker_documents", "byte_size", "INTEGER"),
     ("worker_documents", "content", "BYTEA"),
+    # Columns app/booking_flow_db.py:_pending_changes adds with ALTER TABLE on the
+    # SQLite path. A Postgres boot skips the SQLite migration chain entirely, and
+    # without these the service started on a half-built schema and only grew
+    # these columns mid-request, the first time a booking-flow endpoint ran.
+    ("assignments", "allocation_score", "REAL"),
+    ("assignments", "score_breakdown", "TEXT"),
+    ("assignments", "explanation", "TEXT"),
+    ("bookings", "completed_at", "TIMESTAMP WITH TIME ZONE"),
+    ("workers", "base_rating", "REAL"),
+    ("workers", "rating_count", "INTEGER NOT NULL DEFAULT 0"),
 )
 
 
 def _upgrade_postgres_columns(conn) -> None:
-    for table, column, decl in _POSTGRES_COLUMN_UPGRADES:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {decl}")
+    """Add the columns an older database is missing, before schema.sql runs.
+
+    Two orderings are needed and neither works alone:
+
+      - ALTER first, schema.sql second. schema.sql creates indexes over columns
+        it also declares (idx_worker_documents_verified), so applying it to a
+        database whose worker_documents predates `verified` fails with
+        `column "verified" does not exist` before the ALTER ever runs.
+      - schema.sql first, ALTER second. On a *fresh* database there are no tables
+        yet, and `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` still requires the
+        table to exist.
+
+    So: run the ALTERs first, skipping tables that are not there yet. A fresh
+    database gets them from schema.sql's CREATE TABLE; an older one gets them
+    here so the indexes in schema.sql can then be created.
+    """
+    for table in dict.fromkeys(t for t, _c, _d in _POSTGRES_COLUMN_UPGRADES):
+        present = conn.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = ? LIMIT 1",
+            (table,),
+        ).fetchone()
+        if not present:
+            continue
+        for candidate, column, decl in _POSTGRES_COLUMN_UPGRADES:
+            if candidate != table:
+                continue
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {decl}")
 
 
 def _assert_postgres_schema() -> None:

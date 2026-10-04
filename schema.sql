@@ -43,6 +43,14 @@ CREATE TABLE IF NOT EXISTS workers (
     rating          REAL CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5)),
     availability    TEXT NOT NULL DEFAULT '[]',
     status          VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('pending', 'active', 'rejected')),
+    -- Rating bookkeeping the booking flow maintains (app/booking_flow_db.py):
+    -- base_rating is the running score the average is computed against, so one
+    -- bad review cannot erase a worker's history, and rating_count is how many
+    -- reviews are in it. On SQLite these arrive via ALTER TABLE ADD COLUMN at the
+    -- first booking-flow request; declared here so a Postgres boot does not have
+    -- to mutate its own schema mid-request.
+    base_rating     REAL,
+    rating_count    INTEGER NOT NULL DEFAULT 0,
     cooperative_id  INTEGER NOT NULL DEFAULT 1 REFERENCES cooperative_federations(id),
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -84,6 +92,9 @@ CREATE TABLE IF NOT EXISTS bookings (
     scheduled_for   VARCHAR(100),
     status          VARCHAR(20) NOT NULL DEFAULT 'pending'
                     CHECK (status IN ('pending', 'assigned', 'in_progress', 'completed', 'cancelled')),
+    -- When the job was marked completed; written with CURRENT_TIMESTAMP by
+    -- app/services/booking_flow.py and read by the Kaam job history.
+    completed_at    TIMESTAMP WITH TIME ZONE,
     urgency_level   VARCHAR(20) NOT NULL DEFAULT 'medium'
                     CHECK (urgency_level IN ('low', 'medium', 'high', 'urgent')),
     customer_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -97,6 +108,13 @@ CREATE TABLE IF NOT EXISTS assignments (
     booking_id      INTEGER NOT NULL UNIQUE REFERENCES bookings(id) ON DELETE CASCADE,
     worker_id       INTEGER NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
     score           REAL,
+    -- Allocation-engine output kept with the assignment: the score itself
+    -- (allocation_score is the name older deployments use, and the booking flow
+    -- writes to whichever score column exists), the JSON per-factor breakdown,
+    -- and the plain-language explanation shown to the council.
+    allocation_score REAL,
+    score_breakdown TEXT,
+    explanation     TEXT,
     accepted_at     TIMESTAMP WITH TIME ZONE,
     started_at      TIMESTAMP WITH TIME ZONE,
     start_selfie_url TEXT,
