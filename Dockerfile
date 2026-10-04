@@ -1,4 +1,4 @@
-# SahakarSetu API — one uvicorn worker (SSE + SQLite are in-process).
+# SahakarSetu API — one uvicorn worker (SSE and the DB handle are in-process).
 FROM python:3.13-slim
 
 WORKDIR /app
@@ -11,6 +11,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 COPY scripts ./scripts
+# schema.sql is the single source of truth for the Postgres schema and is read
+# from BASE_DIR at startup (app/database.py:_init_db_postgres). It is a
+# repository-root file, so copying app/ alone left it out of the image and the
+# service aborted on boot with FileNotFoundError: schema.sql ... not found at
+# /app/schema.sql the moment DATABASE_URL was set.
+COPY schema.sql .
 
 ENV SAHAKARSETU_DB=/data/sahakarsetu.db
 ENV PYTHONUNBUFFERED=1
@@ -22,7 +28,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD curl -fsS "http://127.0.0.1:${PORT:-8000}/" || exit 1
 
-# Single worker: live events bus and SQLite writes are process-local.
+# Single worker: the live events bus and the database handle are process-local.
 #
 # Render injects PORT (usually 10000) and routes to it, so the old hardcoded
 # --port 8000 left the app listening somewhere the router never reached. The
@@ -36,7 +42,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
 #
 # Seeding also requires SAHAKARSETU_DEMO_PASSWORD (12+ characters), so an
 # instance that is reachable by anyone else can never come up with the local-only
-# demo1234. The database still lives on the container filesystem, so anything you
+# demo1234. Data lives in Postgres whenever DATABASE_URL is set. Without it the
+# service falls back to SQLite on the container filesystem, where anything you
 # create during the walkthrough is gone on the next deploy: attach a disk at
 # /data if you need it to persist.
 #
