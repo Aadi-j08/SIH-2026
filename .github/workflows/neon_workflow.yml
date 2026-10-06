@@ -28,13 +28,16 @@ jobs:
       db_url: ${{ steps.create_neon_branch_encode.outputs.db_url }}
       db_url_with_pooler: ${{ steps.create_neon_branch_encode.outputs.db_url_with_pooler }}
     needs: setup
+    # vars (like secrets) never reach workflows from fork pull requests,
+    # so this guard skips the Neon integration for forks instead of
+    # failing it. The secrets context is deliberately NOT referenced
+    # here: it is unavailable in jobs.<job_id>.if and breaks the run.
     if: |
       github.event_name == 'pull_request' && (
       github.event.action == 'synchronize'
       || github.event.action == 'opened'
       || github.event.action == 'reopened')
       && vars.NEON_PROJECT_ID != ''
-      && secrets.NEON_API_KEY != ''
     runs-on: ubuntu-latest
     steps:
       - name: Get branch expiration date as an env variable (2 weeks from now)
@@ -91,7 +94,6 @@ jobs:
     if: |
       github.event_name == 'pull_request' && github.event.action == 'closed'
       && vars.NEON_PROJECT_ID != ''
-      && secrets.NEON_API_KEY != ''
     runs-on: ubuntu-latest
     steps:
       - name: Delete Neon Branch
