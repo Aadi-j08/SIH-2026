@@ -75,7 +75,11 @@ The repo ships a ready `render.yaml`. One-time setup in the Render dashboard:
    tells you to copy into `VITE_API_BASE_URL`, so take it from the Render
    dashboard rather than assuming a name.
 
-Verify: `https://…/` returns `{"status":"ok",…}` and `/docs` opens.
+Verify: `https://…/` returns `{"status":"ok",…}` **without** a `docs` field, and
+`https://…/docs` returns **404**. If the Swagger UI still opens, the service is not
+reading `SAHAKARSETU_ENV=production` (it is set in `render.yaml`, but a Render
+service created outside this blueprint does not pick it up) — add
+`SAHAKARSETU_ENV=production` under Environment on the Render dashboard and restart.
 
 ### Seed demo data (once)
 
